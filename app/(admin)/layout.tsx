@@ -1,8 +1,7 @@
 "use client";
-
-import { useState } from "react";
+import { useState, useEffect } from "react"; // <--- Adicionado useEffect
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation"; // <--- Adicionado useRouter
 import { 
   LayoutDashboard, 
   Wrench, 
@@ -13,7 +12,7 @@ import {
   X, 
   Wallet,
   Sparkles,
-  Settings // <--- ADICIONE ESTE ÍCONE AQUI NA LISTA 
+  Settings 
 } from "lucide-react";
 import { useAuth } from "../../src/contexts/AuthContext";
 
@@ -24,26 +23,35 @@ export default function AdminLayout({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter(); // <--- Instância do roteador
   const { signOut, user, profile, loading } = useAuth();
+
+  // --- CORREÇÃO DE SEGURANÇA ---
+  // Monitora: Se parou de carregar E não tem usuário, chuta para o login.
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/");
+    }
+  }, [loading, user, router]);
+  // -----------------------------
 
   const allMenuItems = [
     { name: "Dashboard", icon: LayoutDashboard, path: "/dashboard", restricted: false },
     { name: "IA", icon: Sparkles, path: "/ia", restricted: true },
     { name: "OS", icon: Wrench, path: "/os", restricted: false },
     { name: "Clientes", icon: Users, path: "/clientes", restricted: false },
-    // ALTERAÇÃO AQUI: Nome atualizado
     { name: "Estoque e Serviços", icon: Package, path: "/estoque", restricted: false },
     { name: "Caixa", icon: Wallet, path: "/financeiro", restricted: true },
   ];
 
   const isOwner = profile?.cargo === 'owner';
-  
   const menuItems = allMenuItems.filter(item => {
     if (isOwner) return true;
     return !item.restricted;
   });
 
-  if (loading) return <div className="min-h-screen bg-[#F8F7F2]"></div>;
+  // Se estiver carregando OU não tiver usuário (enquanto redireciona), mostra tela branca
+  if (loading || !user) return <div className="min-h-screen bg-[#F8F7F2]"></div>;
 
   return (
     <div className="min-h-screen bg-[#F8F7F2] flex">
@@ -63,9 +71,12 @@ export default function AdminLayout({
           flex flex-col
         `}
       >
-        <div className="p-8 flex items-start justify-between"> 
+         <div className="p-8 flex items-start justify-between"> 
           <div className="flex flex-col items-center w-full pr-6">
             <div className="w-32 h-32 mb-2 relative"> 
+               {/* OBS: O erro da imagem que você mandou na foto é resolvido no next.config.js
+                  conforme conversamos antes. Aqui é só o layout.
+               */}
                <img src="/logo.svg" alt="NHT Logo" className="w-full h-full object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
             </div>
             <span className="text-xs font-bold text-stone-400 uppercase tracking-[0.2em] text-center">
@@ -100,9 +111,9 @@ export default function AdminLayout({
           })}
         </nav>
 
-<div className="p-4 mt-auto border-t border-stone-100">
+        <div className="p-4 mt-auto border-t border-stone-100">
           
-          {/* --- NOVO: BOTÃO DE CONFIGURAÇÕES (VISÍVEL APENAS PARA DONO) --- */}
+          {/* BOTÃO CONFIGURAÇÕES */}
           {isOwner && (
             <Link href="/configuracoes" onClick={() => setSidebarOpen(false)}>
               <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-2xl text-stone-500 hover:bg-stone-50 font-medium transition-colors cursor-pointer hover:text-[#1A1A1A]">
