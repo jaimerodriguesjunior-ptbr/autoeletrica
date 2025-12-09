@@ -1,53 +1,61 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "../src/lib/supabase"; // Verifique se o caminho ../ está correto para sua estrutura
+import { createClient } from "../src/lib/supabase";
 import { useAuth } from "../src/contexts/AuthContext";
-import { Lock, User, Loader2, AlertCircle } from "lucide-react";
-import Link from "next/link";
+import { Lock, User, Loader2, AlertCircle, Ban, Mail, ArrowRight, X, CheckCircle, Info } from "lucide-react";
 
 export default function Login() {
   const supabase = createClient();
-  const { user } = useAuth(); // Apenas verificamos se já existe usuário
+  const { user } = useAuth();
   
-  // 1. DADOS JÁ PREENCHIDOS (Para facilitar sua vida)
-  const [email, setEmail] = useState("jaimerodriguesjunior@outlook.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState(""); 
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Se o AuthContext já carregar logado, te joga pra dentro
+  // Estados do Modal "Esqueci a Senha"
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [recoverEmail, setRecoverEmail] = useState("");
+  const [recoverStatus, setRecoverStatus] = useState<{type: 'success' | 'info' | 'error' | null, msg: string}>({ type: null, msg: '' });
+  const [loadingRecover, setLoadingRecover] = useState(false);
+
   useEffect(() => {
     if (user) {
-      console.log("⚡ [Login] Usuário detectado via Context. Redirecionando...");
       window.location.href = "/dashboard";
     }
   }, [user]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("🚀 [Login] Botão clicado...");
     setError("");
     setLoading(true);
 
     try {
-      // Tenta logar no Supabase
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) {
-        console.error("❌ [Login] Erro:", error);
-        throw error;
-      }
+      if (authError) throw authError;
 
-      // SE CHEGOU AQUI, O LOGIN FUNCIONOU!
-      console.log("✅ [Login] Sucesso! Forçando entrada no Dashboard...");
-      
-      // Força bruta: Redireciona via navegador (ignora qualquer delay do React)
-      window.location.href = "/dashboard";
+      if (authData.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('ativo')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (profile && profile.ativo === false) {
+           await supabase.auth.signOut();
+           setError("Acesso suspenso. Contate o gerente.");
+           setLoading(false);
+           return;
+        }
+        
+        window.location.href = "/dashboard";
+      }
 
     } catch (err: any) {
       console.error(err);
@@ -58,32 +66,65 @@ export default function Login() {
       } else {
         setError(err.message);
       }
-      setLoading(false); // Só para o loading se der erro
+      setLoading(false);
+    }
+  };
+
+  const handleRecover = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if(!recoverEmail) return;
+    setLoadingRecover(true);
+    setRecoverStatus({ type: null, msg: '' });
+
+    try {
+      const res = await fetch('/api/auth/recover', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ email: recoverEmail })
+      });
+      const data = await res.json();
+      setRecoverStatus({ type: data.type, msg: data.message });
+    } catch (err) {
+      setRecoverStatus({ type: 'error', msg: 'Erro ao conectar com o servidor.' });
+    } finally {
+      setLoadingRecover(false);
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0d1117] relative overflow-hidden">
-      {/* Background Tech (Visual) */}
-      <div className="absolute inset-0 z-0 opacity-20">
-        <div className="absolute top-0 left-0 w-full h-full bg-[url('https://images.unsplash.com/photo-1635326444826-06c8f84991a9?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center mix-blend-overlay"></div>
-        <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-[#0d1117] to-transparent"></div>
-      </div>
+      
+      {/* --- VISUAL ORIGINAL (SEM FILTROS DE COR OU OPACIDADE) --- */}
+      <div 
+        className="absolute inset-0 z-0 bg-cover bg-center"
+        style={{ 
+            backgroundImage: "url('/fundologin.png')" 
+        }}
+      ></div>
+      
+      {/* Mantive apenas um leve gradiente na base para não cortar o visual abruptamente, mas a imagem fica 100% visível */}
+      <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-[#0d1117] to-transparent opacity-80"></div>
 
       <div className="relative z-10 w-full max-w-md p-8">
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-[32px] p-8 shadow-2xl">
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-[32px] p-8 shadow-2xl animate-in fade-in zoom-in duration-500">
           
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2">
-              <span className="text-[#FACC15]">Auto</span>Pro
-            </h1>
-            <p className="text-stone-400 text-sm">Acesso restrito a colaboradores.</p>
-          </div>
+ <div className="text-center mb-8 flex flex-col items-center">
+            {/* Logo da Oficina */}
+            <div className="w-32 h-32 relative mb-2">
+                <img src="/logo.svg" alt="Logo" className="w-full h-full object-contain" />
+            </div>
+            
+            {/* Texto Centro Automotivo */}
+            <span className="text-xs font-bold text-stone-400 uppercase tracking-[0.2em] leading-relaxed mb-4">
+              Centro<br/>Automotivo
+            </span>
 
+            <p className="text-stone-500 text-xs">Acesso restrito a colaboradores.</p>
+          </div>
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl flex items-center gap-3 text-red-200 text-sm">
-                <AlertCircle size={18} className="shrink-0" />
+              <div className={`p-4 rounded-2xl flex items-center gap-3 text-sm border ${error.includes("suspenso") ? "bg-red-500/20 border-red-500 text-red-200" : "bg-yellow-500/10 border-yellow-500/20 text-yellow-200"}`}>
+                {error.includes("suspenso") ? <Ban size={18} /> : <AlertCircle size={18} />}
                 {error}
               </div>
             )}
@@ -121,18 +162,69 @@ export default function Login() {
               disabled={loading}
               className="w-full bg-[#FACC15] hover:bg-[#ffe03d] text-[#1A1A1A] font-bold py-4 rounded-2xl shadow-lg shadow-yellow-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {loading ? "Entrando..." : "Acessar Sistema"}
+              {loading ? "Verificando..." : "Acessar Sistema"}
               {loading && <Loader2 className="animate-spin" size={18}/>}
             </button>
           </form>
 
           <div className="mt-8 text-center">
-            <p className="text-stone-500 text-xs">
-              Esqueceu a senha? <span className="text-[#FACC15] cursor-pointer hover:underline">Falar com o gerente</span>
-            </p>
+            <button 
+                onClick={() => setForgotOpen(true)}
+                className="text-stone-500 text-xs hover:text-[#FACC15] transition hover:underline"
+            >
+              Esqueci minha senha
+            </button>
           </div>
         </div>
       </div>
+
+      {/* --- MODAL ESQUECI A SENHA --- */}
+      {forgotOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl relative">
+                <button onClick={() => setForgotOpen(false)} className="absolute top-4 right-4 text-stone-400 hover:text-red-500"><X /></button>
+                
+                <h3 className="text-xl font-bold text-[#1A1A1A] mb-2">Recuperar Acesso</h3>
+                <p className="text-stone-500 text-sm mb-4">Informe seu e-mail para localizarmos seu cadastro.</p>
+
+                {!recoverStatus.type ? (
+                    <form onSubmit={handleRecover} className="space-y-4">
+                        <div className="relative">
+                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                            <input 
+                                type="email" 
+                                value={recoverEmail}
+                                onChange={(e) => setRecoverEmail(e.target.value)}
+                                className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15]"
+                                placeholder="seu@email.com"
+                                autoFocus
+                                required
+                            />
+                        </div>
+                        <button disabled={loadingRecover} className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3 rounded-2xl flex justify-center gap-2 hover:scale-105 transition">
+                            {loadingRecover ? <Loader2 className="animate-spin"/> : <ArrowRight />} Consultar
+                        </button>
+                    </form>
+                ) : (
+                    <div className={`p-4 rounded-2xl border flex flex-col items-center text-center gap-2 animate-in zoom-in 
+                        ${recoverStatus.type === 'success' ? 'bg-green-50 border-green-100 text-green-800' : 
+                          recoverStatus.type === 'info' ? 'bg-blue-50 border-blue-100 text-blue-800' : 'bg-red-50 border-red-100 text-red-800'}`}
+                    >
+                        {recoverStatus.type === 'success' && <CheckCircle size={32} className="text-green-600"/>}
+                        {recoverStatus.type === 'info' && <Info size={32} className="text-blue-600"/>}
+                        {recoverStatus.type === 'error' && <AlertCircle size={32} className="text-red-500"/>}
+                        
+                        <p className="font-bold text-sm">{recoverStatus.msg}</p>
+                        
+                        <button onClick={() => setForgotOpen(false)} className="text-xs underline mt-2 opacity-70 hover:opacity-100">
+                            Fechar
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+      )}
+
     </div>
   );
 }

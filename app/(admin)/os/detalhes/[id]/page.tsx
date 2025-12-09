@@ -3,14 +3,16 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { 
   ArrowLeft, CheckCircle, Clock, Wrench, Package, 
-  CheckSquare, MessageCircle, User, Car, Loader2, DollarSign
+  CheckSquare, MessageCircle, User, Car, Loader2, DollarSign,
+  Plus, X, Calendar, CreditCard, Trash2, Printer, Camera
 } from "lucide-react";
 import { createClient } from "../../../../../src/lib/supabase";
 import { useAuth } from "../../../../../src/contexts/AuthContext";
 
-// Tipos baseados no banco real
+// Tipos
 type WorkOrderItem = {
   id: string;
   name: string;
@@ -18,15 +20,18 @@ type WorkOrderItem = {
   quantity: number;
   total_price: number;
   tipo: string;
+  product_id: string | null;
 };
 
 type WorkOrderFull = {
-  id: string | number; // Aceita número ou texto
+  id: string | number;
   status: string;
   description: string;
   total: number;
   created_at: string;
+  previsao_entrega: string | null; // Novo campo
   public_token: string;
+  photos: string[] | null;
   clients: {
     nome: string;
     whatsapp: string | null;
@@ -39,6 +44,8 @@ type WorkOrderFull = {
   work_order_items: WorkOrderItem[];
 };
 
+type CatalogItem = { id: string; nome: string; price?: number; preco_venda?: number; estoque_atual?: number };
+
 export default function DetalhesOS() {
   const { id } = useParams();
   const router = useRouter();
@@ -48,56 +55,397 @@ export default function DetalhesOS() {
   const [loading, setLoading] = useState(true);
   const [os, setOs] = useState<WorkOrderFull | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
+  // Previsão de Entrega
+  const [previsao, setPrevisao] = useState("");
+
+  // Estados para Adicionar Item
+  const [listaProdutos, setListaProdutos] = useState<CatalogItem[]>([]);
+  const [listaServicos, setListaServicos] = useState<CatalogItem[]>([]);
+  const [modalAberto, setModalAberto] = useState(false);
+  const [abaItem, setAbaItem] = useState<"pecas" | "servicos">("pecas");
+  const [termoBusca, setTermoBusca] = useState("");
+  const [adicionandoItem, setAdicionandoItem] = useState(false);
+
+  // Estados para Checkout (Financeiro)
+  const [modalCheckoutAberto, setModalCheckoutAberto] = useState(false);
+  const [formaPagamento, setFormaPagamento] = useState("pix");
+  const [dataCheque, setDataCheque] = useState("");
+  const [valorFinal, setValorFinal] = useState(""); 
+  const [parcelas, setParcelas] = useState(1); 
+
+  // 1. Busca Dados da OS
   const fetchOS = useCallback(async () => {
     try {
-      setLoading(true);
-      
       const { data, error } = await supabase
         .from('work_orders')
         .select(`
           *,
           clients ( nome, whatsapp ),
           vehicles ( modelo, placa, fabricante ),
-          work_order_items ( id, name, unit_price, quantity, total_price, tipo )
+          work_order_items ( id, name, unit_price, quantity, total_price, tipo, product_id )
         `)
         .eq('id', id)
         .single();
 
       if (error) throw error;
-
       setOs(data as unknown as WorkOrderFull);
+      
+      if (data) {
+        setValorFinal(data.total.toString());
+        // Formata data para o input type="date" (YYYY-MM-DD)
+        if (data.previsao_entrega) {
+            setPrevisao(new Date(data.previsao_entrega).toISOString().split('T')[0]);
+        }
+      }
+
     } catch (error) {
       console.error("Erro ao buscar detalhes:", error);
       alert("Ordem de serviço não encontrada.");
       router.push("/os");
-    } finally {
-      setLoading(false);
     }
   }, [id, supabase, router]);
 
+  // 2. Busca Catálogo
+  const fetchCatalogo = useCallback(async () => {
+    if (!profile?.organization_id) return;
+    try {
+      const [prodRes, servRes] = await Promise.all([
+        supabase.from("products").select("id, nome, preco_venda, estoque_atual").order("nome"),
+        supabase.from("services").select("id, nome, price").order("nome"),
+      ]);
+      setListaProdutos(prodRes.data || []);
+      setListaServicos(servRes.data || []);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [supabase, profile]);
+
   useEffect(() => {
-    if (id) fetchOS();
-  }, [fetchOS, id]);
+    if (id && profile?.organization_id) {
+      setLoading(true);
+      Promise.all([fetchOS(), fetchCatalogo()]).finally(() => setLoading(false));
+    }
+  }, [fetchOS, fetchCatalogo, id, profile]);
+
+// --- FUNÇÕES DE FOTO (CÓDIGO NOVO) ---
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0 || !os) return;
+    setUploading(true);
+    
+    try {
+      const file = e.target.files[0];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${os.id}/${Date.now()}.${fileExt}`;
+
+      // 1. Upload para o bucket 'os-images'
+      const { error: uploadError } = await supabase.storage
+        .from('os-images')
+        .upload(fileName, file);
+      if (uploadError) throw uploadError;
+
+      // 2. Pegar URL Pública
+      const { data: publicUrlData } = supabase.storage
+        .from('os-images')
+        .getPublicUrl(fileName);
+      const newPhotoUrl = publicUrlData.publicUrl;
+
+      // 3. Atualizar Banco
+      const currentPhotos = os.photos || [];
+      const updatedPhotos = [...currentPhotos, newPhotoUrl];
+
+      const { error: dbError } = await supabase
+        .from('work_orders')
+        .update({ photos: updatedPhotos })
+        .eq('id', os.id);
+      if (dbError) throw dbError;
+
+      // 4. Atualizar Tela
+      setOs({ ...os, photos: updatedPhotos });
+
+    } catch (error: any) {
+      alert("Erro ao enviar foto: " + error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemoveImage = async (photoUrl: string) => {
+    if (!os || !confirm("Excluir esta foto?")) return;
+    try {
+      const currentPhotos = os.photos || [];
+      const updatedPhotos = currentPhotos.filter((p) => p !== photoUrl);
+
+      const { error } = await supabase.from('work_orders').update({ photos: updatedPhotos }).eq('id', os.id);
+      if(error) throw error;
+      
+      setOs({ ...os, photos: updatedPhotos });
+    } catch (error: any) {
+      alert("Erro ao remover foto: " + error.message);
+    }
+  };
+
 
   const handleStatusChange = async (novoStatus: string) => {
     if (!os) return;
     setUpdating(true);
-
     try {
       const { error } = await supabase
         .from('work_orders')
         .update({ status: novoStatus })
         .eq('id', os.id);
-
       if (error) throw error;
-
       setOs({ ...os, status: novoStatus });
-      
     } catch (error: any) {
       alert("Erro ao atualizar status: " + error.message);
     } finally {
       setUpdating(false);
+    }
+  };
+
+  // Salvar Previsão ao mudar a data
+  const handleSalvarPrevisao = async (novaData: string) => {
+    setPrevisao(novaData);
+    if (!os) return;
+    
+    try {
+        await supabase
+            .from('work_orders')
+            .update({ previsao_entrega: novaData || null })
+            .eq('id', os.id);
+    } catch (error) {
+        console.error("Erro ao salvar previsão", error);
+    }
+  };
+
+  // REMOVER ITEM (COM ESTORNO)
+  const handleRemoverItem = async (item: WorkOrderItem) => {
+    if (!os) return;
+    
+    if (os.status === 'cancelado' || os.status === 'entregue') {
+        return alert("Não é possível remover itens de uma OS finalizada ou cancelada.");
+    }
+
+    if (!confirm(`Deseja remover "${item.name}" da OS? O estoque será devolvido.`)) return;
+    
+    setUpdating(true);
+    try {
+      if (item.tipo === "peca" && item.product_id) {
+        const { data: prodData } = await supabase
+          .from('products')
+          .select('estoque_atual')
+          .eq('id', item.product_id)
+          .single();
+        
+        if (prodData) {
+          await supabase
+            .from('products')
+            .update({ estoque_atual: (prodData.estoque_atual || 0) + item.quantity })
+            .eq('id', item.product_id);
+        }
+      }
+
+      await supabase.from('work_order_items').delete().eq('id', item.id);
+
+      const novoTotal = (os.total || 0) - item.total_price;
+      await supabase
+        .from('work_orders')
+        .update({ total: novoTotal })
+        .eq('id', os.id);
+
+      fetchOS(); 
+      alert("Item removido e estoque atualizado.");
+
+    } catch (error: any) {
+      alert("Erro ao remover item: " + error.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleCancelarOS = async () => {
+    if (!os) return;
+    if (!confirm("ATENÇÃO: Isso irá cancelar a OS e devolver todas as peças ao estoque. Continuar?")) return;
+
+    setUpdating(true);
+    try {
+      for (const item of os.work_order_items) {
+        if (item.tipo === "peca" && item.product_id) {
+          const { data: prodData } = await supabase
+            .from('products')
+            .select('estoque_atual')
+            .eq('id', item.product_id)
+            .single();
+          
+          if (prodData) {
+            await supabase
+              .from('products')
+              .update({ estoque_atual: (prodData.estoque_atual || 0) + item.quantity })
+              .eq('id', item.product_id);
+          }
+        }
+      }
+
+      const { error } = await supabase
+        .from('work_orders')
+        .update({ status: 'cancelado' })
+        .eq('id', os.id);
+
+      if (error) throw error;
+
+      alert("OS Cancelada com sucesso.");
+      router.push("/os");
+
+    } catch (error: any) {
+      alert("Erro ao cancelar OS: " + error.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleCheckout = async () => {
+    if (!os || !profile?.organization_id) return;
+    
+    if (formaPagamento === "cheque_pre" && !dataCheque) {
+      return alert("Para Cheque-pré, é obrigatório informar a data de depósito.");
+    }
+
+    setUpdating(true);
+
+    try {
+      const valorTotal = parseFloat(valorFinal);
+      const transacoesParaInserir = [];
+      const hoje = new Date();
+
+      if (formaPagamento === 'cartao_credito') {
+        const valorParcela = valorTotal / parcelas;
+        
+        for (let i = 1; i <= parcelas; i++) {
+          const dataVencimento = new Date(hoje);
+          dataVencimento.setDate(hoje.getDate() + (i * 30));
+          
+          transacoesParaInserir.push({
+            organization_id: profile.organization_id,
+            work_order_id: os.id,
+            description: `Recebimento OS #${os.id} - ${os.clients?.nome} (Parc ${i}/${parcelas})`,
+            amount: valorParcela,
+            type: 'income',
+            category: 'Serviços',
+            status: 'pending', 
+            date: dataVencimento.toISOString().split('T')[0]
+          });
+        }
+
+      } else if (formaPagamento === 'cheque_pre') {
+        transacoesParaInserir.push({
+          organization_id: profile.organization_id,
+          work_order_id: os.id,
+          description: `Recebimento OS #${os.id} - ${os.clients?.nome} (Cheque)`,
+          amount: valorTotal,
+          type: 'income',
+          category: 'Serviços',
+          status: 'pending', 
+          date: dataCheque 
+        });
+
+      } else {
+        transacoesParaInserir.push({
+          organization_id: profile.organization_id,
+          work_order_id: os.id,
+          description: `Recebimento OS #${os.id} - ${os.clients?.nome} (${formaPagamento})`,
+          amount: valorTotal,
+          type: 'income',
+          category: 'Serviços',
+          status: 'paid', 
+          date: hoje.toISOString().split('T')[0]
+        });
+      }
+
+      const { error: osError } = await supabase
+        .from('work_orders')
+        .update({ 
+          status: 'entregue',
+          total: valorTotal 
+        })
+        .eq('id', os.id);
+
+      if (osError) throw osError;
+
+      const { error: transError } = await supabase
+        .from('transactions')
+        .insert(transacoesParaInserir);
+
+      if (transError) throw transError;
+
+      alert("OS Finalizada e Financeiro Lançado!");
+      setModalCheckoutAberto(false);
+      setOs({ ...os, status: 'entregue', total: valorTotal });
+
+    } catch (error: any) {
+      alert("Erro no checkout: " + error.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleAdicionarItem = async (item: CatalogItem, tipo: "peca" | "servico") => {
+    if (!os || !profile?.organization_id) return;
+    setAdicionandoItem(true);
+
+    const valorUnitario = item.price || item.preco_venda || 0;
+    const quantidade = 1;
+    const totalItem = valorUnitario * quantidade;
+
+    try {
+      const { error: itemError } = await supabase
+        .from("work_order_items")
+        .insert({
+          work_order_id: os.id,
+          organization_id: profile.organization_id,
+          product_id: tipo === "peca" ? item.id : null,
+          service_id: tipo === "servico" ? item.id : null,
+          tipo: tipo,
+          name: item.nome,
+          quantity: quantidade,
+          unit_price: valorUnitario,
+          total_price: totalItem
+        });
+
+      if (itemError) throw itemError;
+
+      if (tipo === "peca") {
+        const { data: prodData } = await supabase
+          .from('products')
+          .select('estoque_atual')
+          .eq('id', item.id)
+          .single();
+        
+        if (prodData) {
+          const novoEstoque = (prodData.estoque_atual || 0) - quantidade;
+          await supabase
+            .from('products')
+            .update({ estoque_atual: novoEstoque })
+            .eq('id', item.id);
+        }
+      }
+
+      const novoTotalOS = (os.total || 0) + totalItem;
+      const { error: osError } = await supabase
+        .from("work_orders")
+        .update({ total: novoTotalOS })
+        .eq("id", os.id);
+
+      if (osError) throw osError;
+
+      setModalAberto(false);
+      fetchOS();
+      alert("Item adicionado e estoque atualizado!");
+
+    } catch (error: any) {
+      alert("Erro ao adicionar item: " + error.message);
+    } finally {
+      setAdicionandoItem(false);
     }
   };
 
@@ -109,32 +457,29 @@ export default function DetalhesOS() {
     const flow = ['orcamento', 'aprovado', 'aguardando_peca', 'em_servico', 'pronto', 'entregue'];
     const currentIndex = flow.indexOf(currentStatus);
     const stepIndex = flow.indexOf(stepStatus);
+    
+    if (currentStatus === 'cancelado') return "bg-gray-100 text-gray-400 border-gray-200 grayscale";
 
     if (currentStatus === stepStatus) return "bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A] shadow-lg scale-105";
     if (currentIndex > stepIndex) return "bg-green-100 text-green-700 border-green-200 opacity-60";
     return "bg-white text-stone-400 border-stone-100";
   };
 
-const handleWhatsapp = () => {
+  const handleWhatsapp = () => {
     if (os?.clients?.whatsapp) {
       const number = os.clients.whatsapp.replace(/\D/g, '');
       const osId = String(os.id);
-      
       const baseUrl = window.location.origin;
       const trackingLink = `${baseUrl}/acompanhar?token=${os.public_token}`;
-
-      // MELHORIA: Usando emojis e quebras de linha mais claras
       const message = `Olá ${os.clients.nome}, tudo bem? 👋\n\n` +
-        `Obrigado por escolher a *NHT Centro Automotivo*. Sobre o seu veículo: *${os.vehicles?.modelo}* (OS #${osId}). 🔧 Fechamos o orçamento. \n\n` +
-        `Antes de iniciarmos o trabalho, pedimos que aprove o orçamento e, se desejar, depois você pode acompanhar o status em tempo real clicando no link abaixo:\n\n` +
+        `Sobre o seu veículo: *${os.vehicles?.modelo}* (OS #${osId}).\n` +
+        `Você pode acompanhar o status e o orçamento clicando aqui:\n\n` +
         `${trackingLink}`;
-      
       window.open(`https://wa.me/55${number}?text=${encodeURIComponent(message)}`, '_blank');
     } else {
       alert("Cliente sem WhatsApp cadastrado.");
     }
   };
-
 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={40}/></div>;
   if (!os) return null;
@@ -152,9 +497,8 @@ const handleWhatsapp = () => {
           </Link>
           <div>
             <div className="flex items-center gap-3">
-              {/* CORREÇÃO AQUI: String(os.id) para converter número em texto antes de cortar */}
               <h1 className="text-2xl font-bold text-[#1A1A1A]">OS #{String(os.id).slice(0, 4).toUpperCase()}</h1>
-              <span className="bg-stone-100 text-stone-600 text-xs font-bold px-2 py-1 rounded-md uppercase border border-stone-200">
+              <span className={`text-xs font-bold px-2 py-1 rounded-md uppercase border ${os.status === 'cancelado' ? 'bg-red-100 text-red-600 border-red-200' : 'bg-stone-100 text-stone-600 border-stone-200'}`}>
                 {os.status.replace('_', ' ')}
               </span>
             </div>
@@ -164,12 +508,22 @@ const handleWhatsapp = () => {
           </div>
         </div>
         
-        <button 
-          onClick={handleWhatsapp}
-          className="bg-green-100 text-green-700 px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-green-200 transition"
-        >
-          <MessageCircle size={18} /> Falar com Cliente
-        </button>
+        <div className="flex gap-2">
+            {/* BOTÃO DE IMPRESSÃO (NOVO) */}
+            <Link href={`/imprimir/os/${os.id}`} target="_blank">
+            
+                <button className="bg-white border border-stone-200 text-[#1A1A1A] px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-stone-50 transition">
+                    <Printer size={18} /> Imprimir
+                </button>
+            </Link>
+
+            <button 
+                onClick={handleWhatsapp}
+                className="bg-green-100 text-green-700 px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-green-200 transition"
+            >
+                <MessageCircle size={18} /> Falar com Cliente
+            </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -231,7 +585,7 @@ const handleWhatsapp = () => {
                   <div><p className="font-bold text-sm">Pronto p/ Entrega</p><p className="text-xs opacity-80">Veículo testado e liberado</p></div>
                 </div>
                 {os.status === 'pronto' && (
-                  <button onClick={() => handleStatusChange('entregue')} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                  <button onClick={() => setModalCheckoutAberto(true)} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
                     Entregar & Fechar
                   </button>
                 )}
@@ -248,12 +602,60 @@ const handleWhatsapp = () => {
               {os.description || "Nenhuma descrição informada."}
             </p>
           </div>
+  
+
+{/* === GALERIA DE FOTOS (NOVO) === */}
+          <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 mt-6">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-[#1A1A1A] text-sm flex items-center gap-2">
+                  <Camera size={16} /> Fotos do Veículo
+                </h3>
+                <span className="text-xs text-stone-400">{os.photos?.length || 0} fotos</span>
+            </div>
+
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {/* Botão Adicionar */}
+                <label className="aspect-square rounded-2xl border-2 border-dashed border-stone-200 flex flex-col items-center justify-center cursor-pointer hover:border-[#FACC15] hover:bg-yellow-50 transition gap-1 relative">
+                    {uploading ? <Loader2 className="animate-spin text-stone-400"/> : <Plus size={24} className="text-stone-300"/>}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
+                </label>
+
+                {/* Lista de Fotos */}
+                {os.photos?.map((url, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-stone-100 group">
+                        <Image src={url} alt="Foto OS" fill className="object-cover" />
+                        <button 
+                          onClick={() => handleRemoveImage(url)}
+                          className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition shadow-sm z-10"
+                        >
+                          <X size={12} />
+                        </button>
+                    </div>
+                ))}
+            </div>
+          </div>
+
+
 
         </div>
 
         {/* 3. RESUMO (DIREITA) */}
         <div className="space-y-6">
           <div className="bg-[#F8F7F2] rounded-[32px] p-6 border border-stone-200 h-fit">
+            
+            {/* CAMPO DE PREVISÃO (NOVO) */}
+            <div className="mb-6 bg-white p-3 rounded-2xl border border-stone-100">
+                <label className="text-[10px] font-bold text-stone-400 flex items-center gap-1 mb-1">
+                    <Calendar size={12}/> PREVISÃO DE ENTREGA
+                </label>
+                <input 
+                    type="date" 
+                    value={previsao} 
+                    onChange={(e) => handleSalvarPrevisao(e.target.value)}
+                    className="w-full font-bold text-[#1A1A1A] outline-none bg-transparent"
+                />
+            </div>
+
             <h3 className="font-bold text-[#1A1A1A] mb-4 flex items-center gap-2">
               <User size={16} /> Cliente
             </h3>
@@ -264,21 +666,42 @@ const handleWhatsapp = () => {
 
             <div className="border-t border-stone-300 my-4"></div>
 
-            <h3 className="font-bold text-[#1A1A1A] mb-4">Resumo dos Itens</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-[#1A1A1A]">Itens da OS</h3>
+              {os.status !== 'cancelado' && (
+                <button 
+                  onClick={() => setModalAberto(true)}
+                  className="bg-white hover:bg-stone-100 text-[#1A1A1A] p-2 rounded-full shadow-sm transition"
+                >
+                  <Plus size={16} />
+                </button>
+              )}
+            </div>
+
             <div className="space-y-3 text-sm">
-              
               {os.work_order_items?.map((item) => (
-                <div key={item.id} className="flex justify-between items-start">
+                <div key={item.id} className="flex justify-between items-center">
                   <div>
                     <p className="text-stone-600 font-medium">{item.name}</p>
                     <p className="text-[10px] text-stone-400">{item.quantity}x {formatCurrency(item.unit_price)}</p>
                   </div>
-                  <span className="font-bold text-[#1A1A1A]">{formatCurrency(item.total_price)}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-[#1A1A1A]">{formatCurrency(item.total_price)}</span>
+                    
+                    {/* BOTÃO SEM CONDICIONAL VISUAL (RESOLVIDO) */}
+                    <button 
+                      onClick={() => handleRemoverItem(item)}
+                      className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition"
+                      title="Remover Item"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </div>
               ))}
 
               {(!os.work_order_items || os.work_order_items.length === 0) && (
-                <p className="text-xs text-stone-400 italic">Nenhum item adicionado.</p>
+                <p className="text-xs text-stone-400 italic text-center py-2">Nenhum item adicionado.</p>
               )}
 
               <div className="border-t border-stone-300 my-2 pt-4 flex justify-between text-lg">
@@ -290,11 +713,182 @@ const handleWhatsapp = () => {
           
           <div className="text-center">
             <p className="text-xs text-stone-400 mb-2">Criado em: {new Date(os.created_at).toLocaleDateString()}</p>
-            <button className="text-red-400 text-xs font-bold hover:underline">Cancelar Ordem de Serviço</button>
+            {os.status !== 'cancelado' && os.status !== 'entregue' && (
+              <button 
+                onClick={handleCancelarOS}
+                className="text-red-400 text-xs font-bold hover:underline"
+              >
+                Cancelar Ordem de Serviço
+              </button>
+            )}
+            {os.status === 'cancelado' && <p className="text-red-500 font-bold text-sm">ESTA ORDEM FOI CANCELADA</p>}
           </div>
         </div>
 
       </div>
+
+      {/* MODAL ADICIONAR ITEM */}
+      {modalAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl space-y-4 h-[500px] flex flex-col">
+            <div className="flex justify-between items-center">
+              <h2 className="font-bold text-lg">Adicionar à OS Existente</h2>
+              <button onClick={() => setModalAberto(false)}>
+                <X />
+              </button>
+            </div>
+            <div className="flex gap-2 bg-[#F8F7F2] p-1 rounded-xl">
+              <button
+                onClick={() => setAbaItem("pecas")}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${
+                  abaItem === "pecas" ? "bg-white shadow text-[#1A1A1A]" : "text-stone-400"
+                }`}
+              >
+                Peças
+              </button>
+              <button
+                onClick={() => setAbaItem("servicos")}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${
+                  abaItem === "servicos" ? "bg-white shadow text-[#1A1A1A]" : "text-stone-400"
+                }`}
+              >
+                Serviços
+              </button>
+            </div>
+            <input
+              autoFocus
+              placeholder="Buscar..."
+              value={termoBusca}
+              onChange={(e) => setTermoBusca(e.target.value)}
+              className="w-full bg-[#F8F7F2] p-3 rounded-xl"
+            />
+            <div className="flex-1 overflow-auto space-y-2">
+              {adicionandoItem && (
+                <div className="text-center py-4 text-stone-400 flex flex-col items-center">
+                  <Loader2 className="animate-spin mb-2" /> Salvando...
+                </div>
+              )}
+
+              {!adicionandoItem && abaItem === "pecas" &&
+                listaProdutos
+                  .filter((p) => p.nome.toLowerCase().includes(termoBusca.toLowerCase()))
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => handleAdicionarItem(p, "peca")}
+                      className="w-full flex justify-between p-3 hover:bg-stone-50 rounded-xl text-left"
+                    >
+                      <div>
+                        <p className="font-bold">{p.nome}</p>
+                        <p className="text-xs text-stone-400">Estoque: {p.estoque_atual}</p>
+                      </div>
+                      <span className="font-bold">R$ {p.preco_venda?.toFixed(2)}</span>
+                    </button>
+                  ))}
+
+              {!adicionandoItem && abaItem === "servicos" &&
+                listaServicos
+                  .filter((s) => s.nome.toLowerCase().includes(termoBusca.toLowerCase()))
+                  .map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => handleAdicionarItem(s, "servico")}
+                      className="w-full flex justify-between p-3 hover:bg-stone-50 rounded-xl text-left"
+                    >
+                      <p className="font-bold">{s.nome}</p>
+                      <span className="font-bold">R$ {(s.price || 0).toFixed(2)}</span>
+                    </button>
+                  ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CHECKOUT FINANCEIRO */}
+      {modalCheckoutAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-green-700 flex items-center gap-2">
+                <DollarSign /> Fechamento de OS
+              </h2>
+              <button onClick={() => setModalCheckoutAberto(false)}><X /></button>
+            </div>
+
+            <div className="bg-stone-50 p-4 rounded-2xl text-center">
+              <p className="text-xs text-stone-500 uppercase font-bold">Total a Receber</p>
+              <div className="flex items-center justify-center gap-1 mt-1">
+                <span className="text-stone-400 font-bold">R$</span>
+                <input 
+                  type="number" 
+                  value={valorFinal} 
+                  onChange={(e) => setValorFinal(e.target.value)} 
+                  className="bg-transparent text-3xl font-bold text-[#1A1A1A] w-32 text-center outline-none border-b border-stone-300 focus:border-[#FACC15] transition"
+                />
+              </div>
+              <p className="text-[10px] text-stone-400 mt-2">Você pode ajustar o valor final aqui (descontos)</p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-2">FORMA DE PAGAMENTO</label>
+                <select 
+                  value={formaPagamento} 
+                  onChange={(e) => setFormaPagamento(e.target.value)} 
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A]"
+                >
+                  <option value="pix">Pix</option>
+                  <option value="dinheiro">Dinheiro</option>
+                  <option value="cartao_debito">Cartão de Débito</option>
+                  <option value="cartao_credito">Cartão de Crédito</option>
+                  <option value="cheque_pre">Cheque-pré (A prazo)</option>
+                </select>
+              </div>
+
+              {formaPagamento === "cartao_credito" && (
+                <div className="animate-in slide-in-from-top-2">
+                  <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                    <CreditCard size={12}/> PARCELAS
+                  </label>
+                  <select 
+                    value={parcelas} 
+                    onChange={(e) => setParcelas(Number(e.target.value))} 
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A]"
+                  >
+                    {[1,2,3,4,5,6,10,12].map(n => (
+                      <option key={n} value={n}>{n}x de {formatCurrency(Number(valorFinal)/n)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {formaPagamento === "cheque_pre" && (
+                <div className="animate-in slide-in-from-top-2">
+                  <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                    <Calendar size={12}/> DATA DE DEPÓSITO
+                  </label>
+                  <input 
+                    type="date" 
+                    value={dataCheque}
+                    onChange={(e) => setDataCheque(e.target.value)}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A]"
+                  />
+                </div>
+              )}
+            </div>
+
+            <button 
+              onClick={handleCheckout} 
+              disabled={updating} 
+              className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 hover:scale-105 transition"
+            >
+              {updating ? <Loader2 className="animate-spin" /> : <CheckCircle />} 
+              Confirmar Recebimento
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

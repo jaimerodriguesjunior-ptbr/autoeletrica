@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { 
   ArrowUpRight, ArrowDownRight, Wallet, 
-  Wrench, ShoppingCart, Zap, AlertCircle, X, Save, Loader2
+  Wrench, ShoppingCart, Zap, X, Save, Loader2, Trash2, AlertCircle
 } from "lucide-react";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
@@ -25,37 +25,40 @@ type ExtratoItem = {
   data: string;
   icone: any;
   categoria: string;
+  origem: 'manual' | 'os'; // Identificador para saber se pode editar
 };
 
 export default function Financeiro() {
   const supabase = createClient();
-  const { profile, loading: authLoading } = useAuth(); // Importante: pegar authLoading
+  const { profile, loading: authLoading } = useAuth();
 
   const [extrato, setExtrato] = useState<ExtratoItem[]>([]);
   const [resumo, setResumo] = useState({ receita: 0, despesa: 0, lucro: 0 });
-  
-  // CORREÇÃO: O loading da página só começa true se o auth já não tiver terminado
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  // Estados de UI
+  // Estados de UI (Modais)
   const [modalDespesaAberto, setModalDespesaAberto] = useState(false);
   const [modalReceitaAberto, setModalReceitaAberto] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [modalEdicaoAberto, setModalEdicaoAberto] = useState(false);
 
-  // Estados dos Formulários
+  // Estados dos Formulários (Criação)
   const [desc, setDesc] = useState("");
   const [valor, setValor] = useState("");
   const [cat, setCat] = useState("");
 
-  useEffect(() => {
-    // Se o Auth ainda está carregando, esperamos.
-    if (authLoading) return;
+  // Estados de Edição
+  const [itemParaEditar, setItemParaEditar] = useState<ExtratoItem | null>(null);
+  const [editDesc, setEditDesc] = useState("");
+  const [editValor, setEditValor] = useState("");
+  const [editCat, setEditCat] = useState("");
 
-    // Se o Auth terminou e temos perfil com org, buscamos dados.
+  useEffect(() => {
+    if (authLoading) return;
     if (profile?.organization_id) {
       fetchFinanceiro();
     } else {
-      // Se o Auth terminou mas não tem perfil/org, paramos o loading da tela.
       setLoading(false);
     }
   }, [profile, authLoading]);
@@ -89,7 +92,8 @@ export default function Financeiro() {
         tipo: t.type === 'income' ? 'entrada' : 'saida',
         data: t.date,
         icone: t.type === 'income' ? ArrowUpRight : ShoppingCart,
-        categoria: t.category || 'Geral'
+        categoria: t.category || 'Geral',
+        origem: 'manual'
       }));
 
       const listaOS: ExtratoItem[] = (osData || []).map((os: any) => ({
@@ -99,7 +103,8 @@ export default function Financeiro() {
         tipo: 'entrada',
         data: os.updated_at ? os.updated_at.split('T')[0] : new Date().toISOString(),
         icone: Wrench,
-        categoria: 'Serviços'
+        categoria: 'Serviços',
+        origem: 'os'
       }));
 
       const tudo = [...listaTransacoes, ...listaOS].sort((a, b) => 
@@ -151,6 +156,68 @@ export default function Financeiro() {
     }
   };
 
+  // --- FUNÇÕES DE EDIÇÃO ---
+
+  const abrirModalEdicao = (item: ExtratoItem) => {
+    if (item.origem === 'os') {
+      alert("Este lançamento vem de uma Ordem de Serviço.\nPara alterar o valor, edite a OS correspondente.");
+      return;
+    }
+    setItemParaEditar(item);
+    setEditDesc(item.descricao);
+    setEditValor(item.valor.toString());
+    setEditCat(item.categoria);
+    setModalEdicaoAberto(true);
+  };
+
+  const handleUpdateTransacao = async () => {
+    if (!itemParaEditar || !editDesc || !editValor) return;
+    setSaving(true);
+
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          description: editDesc,
+          amount: Number(editValor),
+          category: editCat
+        })
+        .eq('id', itemParaEditar.id);
+
+      if (error) throw error;
+
+      alert("Atualizado com sucesso!");
+      setModalEdicaoAberto(false);
+      fetchFinanceiro();
+    } catch (error: any) {
+      alert("Erro ao atualizar: " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteTransacao = async () => {
+    if (!itemParaEditar) return;
+    if (!confirm("Tem certeza que deseja apagar este lançamento?")) return;
+    
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', itemParaEditar.id);
+
+      if (error) throw error;
+
+      setModalEdicaoAberto(false);
+      fetchFinanceiro();
+    } catch (error: any) {
+      alert("Erro ao excluir: " + error.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const formatMoney = (val: number) => 
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
@@ -163,6 +230,7 @@ export default function Financeiro() {
         </div>
       </div>
 
+      {/* BENTO GRID (Resumo) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-[32px] border border-stone-100 shadow-sm relative overflow-hidden group">
           <div className="relative z-10">
@@ -200,6 +268,7 @@ export default function Financeiro() {
         <div className="lg:col-span-2 bg-white rounded-[32px] p-8 border border-stone-100 shadow-sm">
           <div className="flex justify-between items-center mb-6">
             <h3 className="font-bold text-lg text-[#1A1A1A]">Extrato</h3>
+            <span className="text-xs text-stone-400 italic">Toque no item para editar</span>
           </div>
 
           <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
@@ -211,20 +280,24 @@ export default function Financeiro() {
                <p className="text-center py-10 text-stone-400">Nenhuma movimentação registrada.</p>
             ) : (
               extrato.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-4 bg-[#F8F7F2] rounded-2xl hover:bg-stone-100 transition">
+                <button 
+                  key={item.id} 
+                  onClick={() => abrirModalEdicao(item)}
+                  className="w-full flex items-center justify-between p-4 bg-[#F8F7F2] rounded-2xl hover:bg-stone-200 transition text-left group"
+                >
                   <div className="flex items-center gap-4">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${item.tipo === 'entrada' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                       <item.icone size={18} />
                     </div>
                     <div>
-                      <p className="font-bold text-[#1A1A1A] text-sm">{item.descricao}</p>
-                      <p className="text-xs text-stone-400">{item.categoria} • {new Date(item.data).toLocaleDateString('pt-BR')}</p>
+                      <p className="font-bold text-[#1A1A1A] text-sm group-hover:underline decoration-stone-400">{item.descricao}</p>
+                      <p className="text-xs text-stone-400">{item.categoria} • {new Date(item.data).toLocaleDateString('pt-BR')} {item.origem === 'os' && <span className="ml-2 bg-stone-200 px-1 rounded text-[10px]">OS</span>}</p>
                     </div>
                   </div>
                   <span className={`font-bold ${item.tipo === 'entrada' ? 'text-green-600' : 'text-red-500'}`}>
                     {item.tipo === 'entrada' ? '+' : '-'} {formatMoney(item.valor)}
                   </span>
-                </div>
+                </button>
               ))
             )}
           </div>
@@ -249,6 +322,7 @@ export default function Financeiro() {
         </div>
       </div>
 
+      {/* MODAL NOVA DESPESA */}
       {modalDespesaAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
@@ -282,6 +356,7 @@ export default function Financeiro() {
         </div>
       )}
 
+      {/* MODAL NOVA RECEITA */}
       {modalReceitaAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
@@ -305,6 +380,73 @@ export default function Financeiro() {
           </div>
         </div>
       )}
+
+      {/* MODAL DE EDIÇÃO (NOVO) */}
+      {modalEdicaoAberto && itemParaEditar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-[#1A1A1A] flex items-center gap-2">
+                Editar Lançamento
+              </h2>
+              <button onClick={() => setModalEdicaoAberto(false)}><X /></button>
+            </div>
+
+            <div className="space-y-4">
+               <div>
+                <label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label>
+                <input 
+                  type="text" 
+                  value={editDesc} 
+                  onChange={e=>setEditDesc(e.target.value)} 
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium" 
+                />
+               </div>
+               
+               <div>
+                <label className="text-xs font-bold text-stone-400 ml-2">VALOR (R$)</label>
+                <input 
+                  type="number" 
+                  value={editValor} 
+                  onChange={e=>setEditValor(e.target.value)} 
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none" 
+                />
+               </div>
+
+               <div>
+                <label className="text-xs font-bold text-stone-400 ml-2">CATEGORIA</label>
+                {/* Se for receita manual, pode não ter categoria definida, então deixamos um input simples se preferir ou select */}
+                <select value={editCat} onChange={e=>setEditCat(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none">
+                    <option value="Geral">Geral</option>
+                    <option value="Operacional">Operacional</option>
+                    <option value="Administrativo">Administrativo</option>
+                    <option value="Pessoal">Pessoal</option>
+                    <option value="Outras Receitas">Outras Receitas</option>
+                </select>
+               </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button 
+                onClick={handleDeleteTransacao} 
+                disabled={deleting}
+                className="p-4 bg-red-100 text-red-500 rounded-2xl hover:bg-red-200 transition disabled:opacity-50"
+              >
+                {deleting ? <Loader2 className="animate-spin"/> : <Trash2 size={24} />}
+              </button>
+              
+              <button 
+                onClick={handleUpdateTransacao} 
+                disabled={saving} 
+                className="flex-1 bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl flex justify-center gap-2 hover:scale-105 transition"
+              >
+                {saving ? <Loader2 className="animate-spin"/> : <Save />} Salvar Alterações
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

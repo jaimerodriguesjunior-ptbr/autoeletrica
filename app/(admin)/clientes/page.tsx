@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/src/lib/supabase"; 
-import { useAuth } from "@/src/contexts/AuthContext"; // Usando nosso novo hook
+import { createClient } from "../../../src/lib/supabase"; 
+import { useAuth } from "../../../src/contexts/AuthContext";
 import { 
-  Search, Plus, Phone, ArrowRight, Loader2, UserX, AlertTriangle
+  Search, Plus, Phone, ArrowRight, Loader2, UserX
 } from "lucide-react";
 
-// Tipo local para exibição, combinando dados
+// Tipo local para exibição
 type ClientView = {
   id: string;
   nome: string;
@@ -19,14 +19,13 @@ type ClientView = {
 
 export default function Clientes() {
   const supabase = createClient();
-  const { profile, loading: authLoading } = useAuth(); // Pega dados do usuário
+  const { profile, loading: authLoading } = useAuth(); 
   
   const [clients, setClients] = useState<ClientView[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    // Só busca se tivermos um perfil carregado (garante organization_id)
     if (profile) {
       fetchClients();
     }
@@ -35,8 +34,6 @@ export default function Clientes() {
   const fetchClients = async () => {
     setLoading(true);
     try {
-      // Busca clientes e conta os veículos (count)
-      // Nota: No Supabase JS, joins complexos podem ser feitos assim
       const { data, error } = await supabase
         .from('clients')
         .select(`
@@ -47,10 +44,9 @@ export default function Clientes() {
           vehicles (count)
         `)
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
 
-      // Formata os dados para nossa view
       const formattedData = data?.map((c: any) => ({
         id: c.id,
         nome: c.nome,
@@ -73,7 +69,6 @@ export default function Clientes() {
     (c.whatsapp && c.whatsapp.includes(searchTerm))
   );
 
-  // Se estiver carregando a sessão, mostra loading simples
   if (authLoading) return null;
 
   return (
@@ -156,9 +151,12 @@ export default function Clientes() {
                       {new Date(c.created_at).toLocaleDateString('pt-BR')}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button className="p-3 hover:bg-stone-100 rounded-full text-stone-400 hover:text-[#1A1A1A] transition">
-                        <ArrowRight size={20} />
-                      </button>
+                      {/* CORREÇÃO AQUI: Link para a página de edição */}
+                      <Link href={`/clientes/${c.id}`}>
+                        <button className="p-3 hover:bg-stone-100 rounded-full text-stone-400 hover:text-[#1A1A1A] transition">
+                          <ArrowRight size={20} />
+                        </button>
+                      </Link>
                     </td>
                   </tr>
                 ))}

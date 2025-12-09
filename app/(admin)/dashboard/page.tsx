@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { 
   TrendingUp, Wrench, AlertCircle, Calendar, 
-  MoreHorizontal, ArrowUpRight, CheckCircle, Car, Loader2
+  MoreHorizontal, ArrowUpRight, CheckCircle, Car, Loader2, Clock
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "../../../src/lib/supabase"; 
-import { useAuth } from "../../../src/contexts/AuthContext"; 
+import { useAuth } from "../../../src/contexts/AuthContext";
 
 export default function Dashboard() {
   const supabase = createClient();
@@ -23,6 +23,8 @@ export default function Dashboard() {
     prioridade: 0
   });
   const [recentOS, setRecentOS] = useState<any[]>([]);
+  // NOVO: Estado para a agenda
+  const [entregas, setEntregas] = useState<any[]>([]);
 
   useEffect(() => {
     if (profile?.organization_id) {
@@ -34,20 +36,19 @@ export default function Dashboard() {
     try {
       const orgId = profile?.organization_id;
 
-      // 1. Faturamento (Soma de 'income' na tabela transactions)
+      // 1. Faturamento
       const { data: transacoes } = await supabase
         .from('transactions')
         .select('amount')
         .eq('organization_id', orgId)
         .eq('type', 'income');
-      
       const totalFaturamento = transacoes?.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
 
-      // 2. Contagem de OS (Produtividade e Fila)
+      // 2. Contagem de OS
       const { data: osData } = await supabase
         .from('work_orders')
         .select('status, total');
-
+      
       const finalizados = osData?.filter(os => os.status === 'entregue' || os.status === 'pronto').length || 0;
       const naFila = osData?.filter(os => ['orcamento', 'aprovado', 'aguardando_peca', 'em_servico'].includes(os.status)).length || 0;
       const prioridades = osData?.filter(os => os.status === 'aguardando_peca').length || 0;
@@ -72,8 +73,28 @@ export default function Dashboard() {
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false })
         .limit(5);
-
+      
       setRecentOS(ultimas || []);
+
+      // 4. NOVO: Busca Agenda (Hoje e Atrasados)
+      const hojeStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      
+      const { data: agendaData } = await supabase
+        .from('work_orders')
+        .select(`
+            id,
+            previsao_entrega,
+            clients (nome),
+            vehicles (modelo, placa)
+        `)
+        .eq('organization_id', orgId)
+        .not('previsao_entrega', 'is', null) // Tem que ter data
+        .neq('status', 'entregue') // Não pode estar finalizado
+        .neq('status', 'cancelado') // Nem cancelado
+        .lte('previsao_entrega', hojeStr) // Data menor ou igual a hoje
+        .order('previsao_entrega', { ascending: true }); // Mais antigos primeiro (prioridade)
+
+      setEntregas(agendaData || []);
 
     } catch (error) {
       console.error("Erro dashboard:", error);
@@ -88,7 +109,7 @@ export default function Dashboard() {
   const userName = profile?.nome || "Colaborador";
 
   const formatMoney = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-
+  
   const getStatusLabel = (status: string) => {
     const map: Record<string, string> = {
         orcamento: "Orçamento", aprovado: "Aprovado", aguardando_peca: "Peça??", 
@@ -153,7 +174,6 @@ export default function Dashboard() {
                   <MoreHorizontal size={20} />
                 </button>
               </div>
-              {/* Gráfico Decorativo (Estático para MVP) */}
               <div className="mt-8 flex items-end gap-3 h-24 opacity-80">
                 {[40, 65, 45, 80, 55, 90, 70, 85].map((h, i) => (
                   <div key={i} className={`flex-1 rounded-t-xl transition-all hover:opacity-80 ${i === 5 ? 'bg-[#FACC15]' : 'bg-stone-100'}`} style={{ height: `${h}%` }}></div>
@@ -220,18 +240,44 @@ export default function Dashboard() {
 
         </div>
 
-        {/* BLOCO C: Agenda (Mantido estático para MVP ou futuro) */}
-        <div className="bg-white rounded-[32px] p-8 border border-stone-100 shadow-sm">
-          <div className="flex justify-between items-center mb-6">
+        {/* BLOCO C: Agenda (ATUALIZADO E FUNCIONAL) */}
+        <div className="bg-white rounded-[32px] p-8 border border-stone-100 shadow-sm flex flex-col h-full max-h-[350px]">
+          <div className="flex justify-between items-center mb-4 shrink-0">
             <h3 className="font-bold text-lg text-[#1A1A1A]">Entregas Hoje</h3>
             <Calendar size={18} className="text-stone-400" />
           </div>
-          <div className="space-y-4 text-center text-stone-400 text-sm py-4">
-             <p>Funcionalidade de agenda em breve.</p>
+          
+          <div className="overflow-y-auto pr-2 space-y-3 custom-scrollbar flex-1">
+             {loadingData ? (
+                <div className="text-center py-4 text-stone-400"><Loader2 className="animate-spin mx-auto"/></div>
+             ) : entregas.length === 0 ? (
+                <div className="text-center py-10 text-stone-400 text-sm">
+                    <p>Nenhuma entrega pendente para hoje.</p>
+                </div>
+             ) : (
+                entregas.map(item => {
+                    const hoje = new Date().toISOString().split('T')[0];
+                    const atrasado = item.previsao_entrega < hoje;
+                    
+                    return (
+                        <Link href={`/os/detalhes/${item.id}`} key={item.id} className="block group">
+                            <div className="flex items-center justify-between p-3 bg-[#F8F7F2] rounded-2xl hover:bg-stone-200 transition border border-stone-50 hover:border-stone-200">
+                                <div>
+                                    <p className="font-bold text-[#1A1A1A] text-sm">{item.vehicles?.modelo}</p>
+                                    <p className="text-[10px] text-stone-500">{item.clients?.nome}</p>
+                                </div>
+                                <div className={`text-[10px] font-bold px-2 py-1 rounded-lg ${atrasado ? 'bg-red-100 text-red-600' : 'bg-[#FACC15] text-[#1A1A1A]'}`}>
+                                    {atrasado ? 'ATRASADO' : 'HOJE'}
+                                </div>
+                            </div>
+                        </Link>
+                    )
+                })
+             )}
           </div>
         </div>
 
-        {/* BLOCO D: Lista Recente (REAL) */}
+        {/* BLOCO D: Lista Recente */}
         <div className="md:col-span-2 bg-white rounded-[32px] p-8 border border-stone-100 shadow-sm">
            <div className="flex justify-between items-center mb-6">
             <h3 className="font-bold text-lg text-[#1A1A1A]">Últimas Ordens de Serviço</h3>
@@ -263,7 +309,7 @@ export default function Dashboard() {
                         </span>
                     </td>
                     {isOwner && (
-                        <td className="py-4 text-right font-bold text-[#1A1A1A]">
+                      <td className="py-4 text-right font-bold text-[#1A1A1A]">
                             {formatMoney(os.total)}
                         </td>
                     )}

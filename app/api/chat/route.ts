@@ -7,22 +7,19 @@ const supabase = createClient(
 );
 
 export async function POST(req: Request) {
-  // ⚠️ LEMBRETE: Se seu .env ainda não estiver lendo, cole a chave aqui:
-  // const apiKey = "AIzaSyDqZx8...";
-  // ⚠️ SUA CHAVE AQUI (Lembre de trocar quando arrumar o .env)
- const apiKey ="AIzaSyBzsYcRvblYb9a_PjT5ICvs1-sU3NcR_Nk" 
-  const model = 'gemini-2.5-flash'; 
+  // Lê a chave correta do .env.local
+  const apiKey = process.env.AUTOELETRICA_IA_KEY; 
+  const model = 'gemini-2.5-flash';
+
   if (!apiKey) {
-    return NextResponse.json({ text: "Erro: Chave API não configurada." });
+    return NextResponse.json({ 
+      text: "Erro de Configuração: A chave da API (AUTOELETRICA_IA_KEY) não foi encontrada." 
+    });
   }
 
   try {
-    // AGORA RECEBEMOS O 'historyCount' TAMBÉM
     const { message, historyCount } = await req.json();
 
-    // LÓGICA DE LIMITE DE DICAS 💡
-    // Se o histórico for menor que 2 mensagens anteriores (ou seja, está no começo), mostra dicas.
-    // Se não vier nada (undefined), assumimos 0 e mostramos.
     const contador = historyCount || 0;
     const mostrarDicas = contador < 2; 
 
@@ -40,8 +37,16 @@ export async function POST(req: Request) {
 
     const textoFinanceiro = transacoes?.map(t => {
       const status = t.status === 'paid' ? '✅' : '⚠️';
-      const data = new Date(t.date).toLocaleDateString('pt-BR');
-      return `- ${data} | ${t.type === 'income' ? '+' : '-'} R$ ${t.amount} | ${t.description} (${status})`;
+      
+      // CORREÇÃO DE DATA: Evita o new Date() que muda o fuso horário.
+      // O banco retorna YYYY-MM-DD (ex: 2025-12-09). Vamos apenas inverter a string.
+      let dataFormatada = t.date;
+      if (t.date && t.date.includes('-')) {
+        const partes = t.date.split('-'); // [2025, 12, 09]
+        dataFormatada = `${partes[2]}/${partes[1]}/${partes[0]}`; // 09/12/2025
+      }
+
+      return `- ${dataFormatada} | ${t.type === 'income' ? '+' : '-'} R$ ${t.amount} | ${t.description} (${status})`;
     }).join('\n');
 
     // 2. ESTOQUE
@@ -80,12 +85,17 @@ export async function POST(req: Request) {
       `;
     } else {
       regrasDica = `
-      3. NÃO DÊ MAIS DICAS DE PERGUNTA. O usuário já sabe usar o sistema. Apenas responda e encerre.
+      3. NÃO DÊ MAIS DICAS DE PERGUNTA.
+      O usuário já sabe usar o sistema. Apenas responda e encerre.
       `;
     }
 
+    // CORREÇÃO: Pegamos a data atual do servidor (Brasil) para orientar a IA
+    const dataHoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
     const context = `
       ATUE COMO: Secretária Executiva da 'NHT Centro Automotivo'.
+      HOJE É: ${dataHoje}
       
       DADOS:
       - Saldo Caixa: R$ ${saldo.toFixed(2)}
@@ -110,6 +120,7 @@ export async function POST(req: Request) {
 
     // 5. ENVIO
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -118,14 +129,15 @@ export async function POST(req: Request) {
 
     if (!response.ok) {
        const err = await response.text();
-       return NextResponse.json({ text: `Erro IA: ${err}` });
+       console.error("Erro API Google:", err);
+       return NextResponse.json({ text: `Erro na comunicação com a IA.` });
     }
     
     const data = await response.json();
     return NextResponse.json({ text: data?.candidates?.[0]?.content?.parts?.[0]?.text });
 
   } catch (error: any) {
-    console.error("Erro:", error);
-    return NextResponse.json({ text: "Erro interno." });
+    console.error("Erro Geral:", error);
+    return NextResponse.json({ text: "Erro interno no servidor." });
   }
 }

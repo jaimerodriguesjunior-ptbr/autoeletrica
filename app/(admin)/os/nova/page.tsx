@@ -7,18 +7,15 @@ import {
   Plus,
   Trash2,
   Save,
-  MessageCircle,
   Car,
   CheckCircle,
-  Wrench,
   X,
   Search,
   ChevronLeft,
-  Package,
-  AlertTriangle,
   Loader2,
   AlertCircle,
   ArrowRight,
+  Minus,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -159,32 +156,31 @@ export default function NovaOS() {
     setAnoInput("");
     setObsVeiculoInput("");
     setVeiculoConfirmado(null);
+    setClienteSelecionado(null);
   };
 
   // ============================================================
   // PASSO 1: VEÍCULO
   // ============================================================
 
- // ... (código anterior)
-
   const handleBuscarVeiculo = async () => {
-    // Validação básica
     if (!placaInput || placaInput.length < 7) return alert("Digite uma placa válida.");
-    
+
     setSearchingVehicle(true);
     setVeiculoNaoEncontrado(false);
 
-    // Limpa campos para garantir que não fique lixo de memória
     setModeloInput("");
     setFabricanteInput("");
     setAnoInput("");
     setObsVeiculoInput("");
 
     try {
-      // 1. Busca EXCLUSIVA no Banco de Dados da Oficina
       const { data, error } = await supabase
         .from("vehicles")
-        .select("id, placa, modelo, fabricante, ano, obs")
+        .select(`
+          id, placa, modelo, fabricante, ano, obs,
+          clients ( id, nome, whatsapp )
+        `)
         .eq("organization_id", profile?.organization_id)
         .eq("placa", placaInput.toUpperCase())
         .maybeSingle();
@@ -192,18 +188,21 @@ export default function NovaOS() {
       if (error) throw error;
 
       if (data) {
-        // CENÁRIO A: Veículo JÁ CADASTRADO
-        // Recupera os dados e avança para a OS
         setVeiculoConfirmado({
           id: data.id,
           placa: data.placa,
           modelo: data.modelo,
           fabricante: data.fabricante,
         });
+
+        // @ts-ignore
+        if (data.clients) {
+          // @ts-ignore
+          setClienteSelecionado(data.clients);
+        }
+
         setStep(2);
       } else {
-        // CENÁRIO B: Veículo NÃO CADASTRADO
-        // Simplesmente libera o formulário para cadastro manual
         setVeiculoNaoEncontrado(true);
       }
 
@@ -215,18 +214,12 @@ export default function NovaOS() {
     }
   };
 
-  // ... (restante do código: handleCadastrarVeiculoAvancar, etc)
-  
-// ... (logo após o handleBuscarVeiculo)
-
   const handleCadastrarVeiculoAvancar = async () => {
-    // Validação simples
     if (!modeloInput) return alert("Informe o modelo do veículo.");
-    
+
     setSearchingVehicle(true);
 
     try {
-      // Cria o veículo no banco
       const { data, error } = await supabase
         .from("vehicles")
         .insert({
@@ -236,22 +229,19 @@ export default function NovaOS() {
           fabricante: fabricanteInput,
           ano: anoInput,
           obs: obsVeiculoInput,
-          // Nota: Não vinculamos client_id aqui, pois o vínculo será feito na OS
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      // Define como confirmado e avança
       setVeiculoConfirmado({
         id: data.id,
         placa: data.placa,
         modelo: data.modelo,
         fabricante: data.fabricante,
       });
-      
-      setStep(2); // Vai para o passo da OS
+      setStep(2);
 
     } catch (error: any) {
       alert("Erro ao cadastrar veículo: " + error.message);
@@ -260,9 +250,7 @@ export default function NovaOS() {
     }
   };
 
-  // ... (continua para handleFinalizarOS)
-
- // ============================================================
+  // ============================================================
   // PASSO 2: FINALIZAR OS
   // ============================================================
 
@@ -273,18 +261,14 @@ export default function NovaOS() {
     setSaving(true);
 
     try {
-      // 1. REMOVIDO: Não atualizamos mais o dono do veículo automaticamente
-      // para preservar o cadastro original. O vínculo é feito apenas na OS abaixo.
-      // await supabase.from("vehicles").update({ client_id: clienteSelecionado.id }).eq("id", veiculoConfirmado.id);
-
-      // 2. Header OS (Aqui fica gravado quem é o cliente e o carro NESTA data)
       const total = itens.reduce((acc, item) => acc + item.valor * item.qtd, 0);
+
       const { data: osData, error: osError } = await supabase
         .from("work_orders")
         .insert({
           organization_id: profile?.organization_id,
-          client_id: clienteSelecionado.id, // O dono neste momento
-          vehicle_id: veiculoConfirmado.id, // O carro
+          client_id: clienteSelecionado.id,
+          vehicle_id: veiculoConfirmado.id,
           status: "orcamento",
           description: defeito,
           total: total,
@@ -294,26 +278,22 @@ export default function NovaOS() {
 
       if (osError) throw osError;
 
-      // 3. Itens
+      await supabase
+        .from("vehicles")
+        .update({ client_id: clienteSelecionado.id })
+        .eq("id", veiculoConfirmado.id);
+
       if (itens.length > 0) {
         const itensParaSalvar = itens.map((item) => ({
           work_order_id: osData.id,
           organization_id: profile?.organization_id,
           product_id: item.tipo === "peca" ? item.db_id : null,
           service_id: item.tipo === "servico" ? item.db_id : null,
-
-          // Campos novos
           tipo: item.tipo,
           name: item.nome,
           quantity: item.qtd,
           unit_price: item.valor,
           total_price: item.valor * item.qtd,
-
-          // Campos legados (se seu banco ainda usar, senão pode ignorar)
-          nome_item: item.nome,
-          valor_unitario: item.valor,
-          subtotal: item.valor * item.qtd,
-          quantidade: item.qtd,
         }));
 
         const { error: itemsError } = await supabase.from("work_order_items").insert(itensParaSalvar);
@@ -322,6 +302,7 @@ export default function NovaOS() {
 
       alert("OS Criada com Sucesso!");
       window.location.href = "/os";
+
     } catch (error: any) {
       console.error("Erro ao salvar:", error);
       alert("Erro ao finalizar OS: " + error.message);
@@ -331,7 +312,7 @@ export default function NovaOS() {
   };
 
   // ============================================================
-  // CADASTRO RÁPIDO DE CLIENTE (função separada)
+  // CADASTRO RÁPIDO DE CLIENTE
   // ============================================================
 
   const handleSalvarNovoCliente = async () => {
@@ -365,20 +346,54 @@ export default function NovaOS() {
     }
   };
 
-  // --- UTILS ---
+  // --- UTILS (LÓGICA NOVA DE QUANTIDADE) ---
   const selecionarItem = (item: any, tipo: "peca" | "servico") => {
-    const semEstoque = tipo === "peca" && (item.estoque_atual || 0) <= 0;
-    const valorUnitario = item.price || item.preco_venda || item.preco_base || 0;
+    // 1. Verifica se já existe na lista
+    const itemExistente = itens.find(i => i.db_id === item.id && i.tipo === tipo);
 
-    setItens([
-      ...itens,
-      { id: Math.random(), db_id: item.id, nome: item.nome, valor: valorUnitario, tipo, qtd: 1, semEstoque },
-    ]);
+    if (itemExistente) {
+      // Se existe, incrementa a quantidade
+      setItens(prev => prev.map(i => 
+        i.id === itemExistente.id ? { ...i, qtd: i.qtd + 1 } : i
+      ));
+    } else {
+      // Se não, adiciona novo
+      const semEstoque = tipo === "peca" && (item.estoque_atual || 0) <= 0;
+      const valorUnitario = item.price || item.preco_venda || 0;
+      
+      setItens([
+        ...itens,
+        { 
+          id: Math.random(), 
+          db_id: item.id, 
+          nome: item.nome, 
+          valor: valorUnitario, 
+          tipo, 
+          qtd: 1, 
+          semEstoque 
+        },
+      ]);
+    }
+    
+    // Opcional: Manter modal aberto para adicionar mais coisas?
+    // Por enquanto fechamos para dar feedback visual na lista
     setModalItemAberto(false);
   };
 
+  const alterarQuantidade = (id: string | number, delta: number) => {
+    setItens(prev => prev.map(item => {
+      if (item.id === id) {
+        const novaQtd = item.qtd + delta;
+        return novaQtd > 0 ? { ...item, qtd: novaQtd } : item;
+      }
+      return item;
+    }));
+  };
+
   const removerItem = (id: string | number) => setItens(itens.filter((item) => item.id !== id));
+  
   const total = itens.reduce((acc, item) => acc + item.valor * item.qtd, 0);
+  
   const selecionarCliente = (c: Client) => {
     setClienteSelecionado(c);
     setModalClienteAberto(false);
@@ -661,12 +676,33 @@ export default function NovaOS() {
                   <div>
                     <p className="font-bold text-sm text-[#1A1A1A]">{item.nome}</p>
                     <p className="text-[10px] text-stone-500 uppercase font-bold">
-                      {item.tipo} • {item.qtd}x
+                      {item.tipo}
                     </p>
                   </div>
-                  <div className="flex gap-3 items-center">
-                    <span className="font-bold text-[#1A1A1A]">R$ {(item.valor * item.qtd).toFixed(2)}</span>
-                    <button onClick={() => removerItem(item.id)} className="text-stone-300 hover:text-red-500">
+                  
+                  {/* CONTROLE DE QUANTIDADE NOVO */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center bg-white rounded-lg px-1">
+                      <button 
+                        onClick={() => alterarQuantidade(item.id, -1)}
+                        className="p-1 hover:text-red-500"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span className="text-xs font-bold w-6 text-center">{item.qtd}</span>
+                      <button 
+                        onClick={() => alterarQuantidade(item.id, 1)}
+                        className="p-1 hover:text-green-500"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+
+                    <div className="text-right min-w-[70px]">
+                      <span className="font-bold text-[#1A1A1A] block">R$ {(item.valor * item.qtd).toFixed(2)}</span>
+                    </div>
+
+                    <button onClick={() => removerItem(item.id)} className="text-stone-300 hover:text-red-500 pl-2 border-l border-stone-200">
                       <Trash2 size={16} />
                     </button>
                   </div>

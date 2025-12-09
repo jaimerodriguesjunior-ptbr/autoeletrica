@@ -12,7 +12,8 @@ import {
   Menu, 
   X, 
   Wallet,
-  Sparkles 
+  Sparkles,
+  Settings // <--- ADICIONE ESTE ÍCONE AQUI NA LISTA 
 } from "lucide-react";
 import { useAuth } from "../../src/contexts/AuthContext";
 
@@ -23,33 +24,29 @@ export default function AdminLayout({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
-  // Pegamos o perfil para saber o cargo
-  const { signOut, user, profile, loading } = useAuth(); 
+  const { signOut, user, profile, loading } = useAuth();
 
-  // Definição dos itens com permissão
   const allMenuItems = [
     { name: "Dashboard", icon: LayoutDashboard, path: "/dashboard", restricted: false },
-    { name: "Assistente IA", icon: Sparkles, path: "/ia", restricted: true }, // Só Dono
-    { name: "Serviços (OS)", icon: Wrench, path: "/os", restricted: false },
+    { name: "IA", icon: Sparkles, path: "/ia", restricted: true },
+    { name: "OS", icon: Wrench, path: "/os", restricted: false },
     { name: "Clientes", icon: Users, path: "/clientes", restricted: false },
-    { name: "Estoque", icon: Package, path: "/estoque", restricted: false },
-    { name: "Financeiro", icon: Wallet, path: "/financeiro", restricted: true }, // Só Dono
+    // ALTERAÇÃO AQUI: Nome atualizado
+    { name: "Estoque e Serviços", icon: Package, path: "/estoque", restricted: false },
+    { name: "Caixa", icon: Wallet, path: "/financeiro", restricted: true },
   ];
 
-  // FILTRO DE SEGURANÇA:
-  // Se for 'owner', vê tudo. Se for 'employee', só vê o que não é restricted.
   const isOwner = profile?.cargo === 'owner';
   
   const menuItems = allMenuItems.filter(item => {
-    if (isOwner) return true; // Dono vê tudo
-    return !item.restricted;  // Funcionário só vê o que é livre
+    if (isOwner) return true;
+    return !item.restricted;
   });
 
   if (loading) return <div className="min-h-screen bg-[#F8F7F2]"></div>;
 
   return (
     <div className="min-h-screen bg-[#F8F7F2] flex">
-      {/* Mobile Overlay */}
       {sidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -57,7 +54,6 @@ export default function AdminLayout({
         />
       )}
 
-      {/* Sidebar */}
       <aside 
         className={`
           fixed lg:static inset-y-0 left-0 z-50
@@ -104,7 +100,19 @@ export default function AdminLayout({
           })}
         </nav>
 
-        <div className="p-4 mt-auto border-t border-stone-100">
+<div className="p-4 mt-auto border-t border-stone-100">
+          
+          {/* --- NOVO: BOTÃO DE CONFIGURAÇÕES (VISÍVEL APENAS PARA DONO) --- */}
+          {isOwner && (
+            <Link href="/configuracoes" onClick={() => setSidebarOpen(false)}>
+              <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-2xl text-stone-500 hover:bg-stone-50 font-medium transition-colors cursor-pointer hover:text-[#1A1A1A]">
+                <Settings size={20} />
+                <span>Configurações</span>
+              </div>
+            </Link>
+          )}
+
+          {/* PERFIL DO USUÁRIO */}
           <div className="bg-stone-50 rounded-2xl p-4 mb-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[#FACC15] text-[#1A1A1A] flex items-center justify-center font-bold text-sm">
               {user?.email?.substring(0, 2).toUpperCase() || "US"}
@@ -130,19 +138,44 @@ export default function AdminLayout({
       </aside>
 
       <main className="flex-1 min-w-0 h-screen overflow-y-auto">
-        <header className="sticky top-0 z-30 bg-[#F8F7F2]/80 backdrop-blur-md px-6 py-4 lg:hidden">
+        <header className="sticky top-0 z-30 bg-[#F8F7F2]/95 backdrop-blur-md px-6 py-4 lg:hidden flex justify-between items-center">
           <button 
             onClick={() => setSidebarOpen(true)}
             className="p-2 bg-white rounded-xl shadow-sm border border-stone-200 text-[#1A1A1A]"
           >
             <Menu size={24} />
           </button>
+          <span className="font-bold text-[#1A1A1A]">AutoPro</span>
         </header>
 
-        <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24">
+        <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 lg:pb-24">
           {children}
         </div>
       </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-100 p-2 z-50 lg:hidden flex justify-around items-center pb-safe shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+        {menuItems.map((item) => {
+          const isActive = pathname === item.path || pathname.startsWith(item.path + "/");
+          return (
+            <Link 
+              key={item.path} 
+              href={item.path}
+              className="flex flex-col items-center gap-1 p-2 w-full"
+            >
+              <div className={`
+                p-2 rounded-xl transition-all duration-200
+                ${isActive ? "bg-[#1A1A1A] text-[#FACC15]" : "text-stone-400"}
+              `}>
+                <item.icon size={22} />
+              </div>
+              <span className={`text-[10px] font-bold ${isActive ? "text-[#1A1A1A]" : "text-stone-300"}`}>
+                {item.name}
+              </span>
+            </Link>
+          )
+        })}
+      </nav>
+
     </div>
   );
 }
