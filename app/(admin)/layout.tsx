@@ -1,178 +1,148 @@
 "use client";
 
-import { useEffect, useState } from "react";
-// Usamos botões nativos e tags <img> para evitar erros no ambiente de preview
+import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { 
-  Wrench, Users, LayoutDashboard, Package, FileText, LogOut, 
-  ChevronLeft, ChevronRight, Sparkles 
+  LayoutDashboard, 
+  Wrench, 
+  Users, 
+  Package, 
+  LogOut, 
+  Menu, 
+  X, 
+  Wallet,
+  Sparkles 
 } from "lucide-react";
+import { useAuth } from "../../src/contexts/AuthContext";
 
 export default function AdminLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
-  const [role, setRole] = useState("admin");
-  const [userName, setUserName] = useState("Usuário");
-  const [collapsed, setCollapsed] = useState(false);
-  const [currentPath, setCurrentPath] = useState("");
+}) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
+  // Pegamos o perfil para saber o cargo
+  const { signOut, user, profile, loading } = useAuth(); 
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // 1. Recupera dados
-      const savedRole = localStorage.getItem("userRole");
-      const savedName = localStorage.getItem("userName");
-
-      // 2. Validação de Segurança para o Cargo
-      // Se o cargo salvo for válido, usa ele. Se for inválido/vazio, força "owner" para não sumir o menu.
-      if (savedRole && ["admin", "employee", "owner"].includes(savedRole)) {
-        setRole(savedRole);
-      } else {
-        console.warn("Cargo inválido ou não encontrado no storage. Assumindo 'owner'.", savedRole);
-        setRole("owner"); // Fallback seguro
-      }
-
-      if (savedName && savedName !== "undefined") {
-        setUserName(savedName);
-      }
-      
-      setCurrentPath(window.location.pathname);
-    }
-  }, []);
-
-  const menuItems = [
-    { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard", roles: ["admin", "employee", "owner"] },
-    { name: "Assistente IA", icon: Sparkles, href: "/ia", roles: ["admin", "owner"] },
-    { name: "Serviços (OS)", icon: Wrench, href: "/os", roles: ["admin", "employee", "owner"] },
-    { name: "Clientes", icon: Users, href: "/clientes", roles: ["admin", "employee", "owner"] },
-    { name: "Estoque", icon: Package, href: "/estoque", roles: ["admin", "employee", "owner"] },
-    { name: "Financeiro", icon: FileText, href: "/financeiro", roles: ["admin", "owner"] },
+  // Definição dos itens com permissão
+  const allMenuItems = [
+    { name: "Dashboard", icon: LayoutDashboard, path: "/dashboard", restricted: false },
+    { name: "Assistente IA", icon: Sparkles, path: "/ia", restricted: true }, // Só Dono
+    { name: "Serviços (OS)", icon: Wrench, path: "/os", restricted: false },
+    { name: "Clientes", icon: Users, path: "/clientes", restricted: false },
+    { name: "Estoque", icon: Package, path: "/estoque", restricted: false },
+    { name: "Financeiro", icon: Wallet, path: "/financeiro", restricted: true }, // Só Dono
   ];
 
-  const handleNavigation = (href: string) => {
-    window.location.href = href;
-  };
+  // FILTRO DE SEGURANÇA:
+  // Se for 'owner', vê tudo. Se for 'employee', só vê o que não é restricted.
+  const isOwner = profile?.cargo === 'owner';
+  
+  const menuItems = allMenuItems.filter(item => {
+    if (isOwner) return true; // Dono vê tudo
+    return !item.restricted;  // Funcionário só vê o que é livre
+  });
+
+  if (loading) return <div className="min-h-screen bg-[#F8F7F2]"></div>;
 
   return (
-    <div className="flex h-screen flex-col md:flex-row overflow-hidden bg-[linear-gradient(to_bottom_right,#F0EFEA,#E3DFC8)] relative">
-      
-      {/* GLOW DE FUNDO */}
-      <div className="hidden md:block fixed top-[-20%] left-[-10%] w-[500px] h-[800px] bg-yellow-400/20 rounded-full blur-[150px] pointer-events-none z-0"></div>
+    <div className="min-h-screen bg-[#F8F7F2] flex">
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
-      {/* === MENU LATERAL (DESKTOP) === */}
+      {/* Sidebar */}
       <aside 
-        className={`${collapsed ? 'w-24' : 'w-72'} hidden md:flex flex-col p-4 h-full z-10 relative transition-all duration-300 ease-in-out`}
+        className={`
+          fixed lg:static inset-y-0 left-0 z-50
+          w-72 bg-white border-r border-stone-200
+          transform transition-transform duration-200 ease-in-out
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+          flex flex-col
+        `}
       >
-        <div className="bg-white/40 backdrop-blur-xl h-full rounded-[32px] flex flex-col shadow-lg border border-white/50 relative group">
-          
-          {/* BOTÃO DE RECOLHER */}
-          <button 
-            onClick={() => setCollapsed(!collapsed)}
-            className="absolute -right-3 top-10 bg-white text-[#1A1A1A] p-1.5 rounded-full shadow-md border border-stone-100 hover:scale-110 transition z-50"
-          >
-            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        <div className="p-8 flex items-start justify-between"> 
+          <div className="flex flex-col items-center w-full pr-6">
+            <div className="w-32 h-32 mb-2 relative"> 
+               <img src="/logo.svg" alt="NHT Logo" className="w-full h-full object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
+            </div>
+            <span className="text-xs font-bold text-stone-400 uppercase tracking-[0.2em] text-center">
+              Centro Automotivo
+            </span>
+          </div>
+          <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-stone-400 absolute right-4 top-8">
+            <X size={24} />
           </button>
+        </div>
 
-          {/* === ÁREA DO LOGO CENTRALIZADA === */}
-          <div className={`py-8 px-4 transition-all duration-300 flex flex-col items-center justify-center`}>
-            
-            {/* Imagem do Logo */}
-            <div className={`relative transition-all duration-300 flex justify-center ${collapsed ? 'w-10 h-10' : 'w-24 h-24'}`}>
-               <img
-                 src="/logo.svg"
-                 alt="Logo"
-                 className="object-contain w-full h-full"
-                 onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    e.currentTarget.parentElement!.innerHTML = '<div class="w-full h-full bg-[#FACC15] rounded-full flex items-center justify-center text-[10px] font-bold text-[#1A1A1A] shadow-sm border-2 border-white">AP</div>';
-                 }}
-               />
+        <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
+          {menuItems.map((item) => {
+            const isActive = pathname === item.path || pathname.startsWith(item.path + "/");
+            return (
+              <Link 
+                key={item.path} 
+                href={item.path}
+                onClick={() => setSidebarOpen(false)}
+              >
+                <div className={`
+                  flex items-center gap-3 px-4 py-4 rounded-2xl transition-all duration-200
+                  ${isActive 
+                    ? "bg-[#1A1A1A] text-white shadow-lg shadow-stone-200 font-bold" 
+                    : "text-stone-500 hover:bg-stone-50 font-medium"}
+                `}>
+                  <item.icon size={20} className={isActive ? "text-[#FACC15]" : ""} />
+                  <span>{item.name}</span>
+                </div>
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="p-4 mt-auto border-t border-stone-100">
+          <div className="bg-stone-50 rounded-2xl p-4 mb-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-[#FACC15] text-[#1A1A1A] flex items-center justify-center font-bold text-sm">
+              {user?.email?.substring(0, 2).toUpperCase() || "US"}
             </div>
-
-            {/* Texto "Centro Automotivo" */}
-            <div className={`text-center mt-3 transition-all duration-300 overflow-hidden ${collapsed ? 'h-0 opacity-0 w-0' : 'h-auto opacity-100 w-auto'}`}>
-              <h2 className="font-bold text-[#1A1A1A] text-sm uppercase tracking-widest leading-tight">
-                Centro<br/>Automotivo
-              </h2>
-            </div>
-
-          </div>
-          
-          {/* LINKS DE NAVEGAÇÃO */}
-          <nav className="flex-1 px-4 space-y-2 mt-2">
-            {menuItems.map((item) => {
-              if (!item.roles.includes(role)) return null;
-              
-              const isActive = currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href));
-              
-              return (
-                <button 
-                  key={item.href}
-                  onClick={() => handleNavigation(item.href)}
-                  title={collapsed ? item.name : ""}
-                  className={`w-full flex items-center gap-3 p-4 rounded-full transition-all duration-300 ${
-                    isActive 
-                      ? "bg-[#1A1A1A] text-white shadow-md" 
-                      : "text-stone-600 hover:bg-white/50"
-                  } ${collapsed ? 'justify-center' : ''}`}
-                >
-                  <item.icon size={20} className="min-w-[20px]" /> 
-                  <span className={`font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
-                    {item.name}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* PERFIL DO USUÁRIO */}
-          <div className="p-4 mt-auto">
-            <div className={`bg-white/60 backdrop-blur-md p-3 rounded-3xl flex items-center gap-3 border border-white/40 transition-all ${collapsed ? 'justify-center' : ''}`}>
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-[#1A1A1A] shadow-sm ${role === 'owner' || role === 'admin' ? 'bg-[#FACC15]' : 'bg-blue-200'} shrink-0`}>
-                {userName.substring(0,2).toUpperCase()}
-              </div>
-              
-              <div className={`flex-1 min-w-0 transition-all duration-300 ${collapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}>
-                <p className="text-sm font-bold truncate">{userName}</p>
-                <p className="text-[10px] text-stone-500 capitalize">
-                  {role === 'owner' ? 'Proprietário' : (role === 'admin' ? 'Admin' : 'Funcionário')}
-                </p>
-              </div>
-              
-              {!collapsed && (
-                <button onClick={() => handleNavigation("/")} className="text-stone-400 hover:text-red-500 transition" title="Sair">
-                  <LogOut size={18} />
-                </button>
-              )}
+            <div className="overflow-hidden">
+              <p className="text-sm font-bold text-[#1A1A1A] truncate">
+                {profile?.nome || "Usuário"}
+              </p>
+              <p className="text-[10px] uppercase font-bold text-[#FACC15] tracking-wider">
+                {profile?.cargo === 'owner' ? '👑 GERENTE' : '🔧 COLABORADOR'}
+              </p>
             </div>
           </div>
+
+          <button 
+            onClick={signOut}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 font-bold transition-colors"
+          >
+            <LogOut size={20} />
+            <span>Sair do Sistema</span>
+          </button>
         </div>
       </aside>
 
-      {/* === ÁREA DE CONTEÚDO PRINCIPAL === */}
-      <main className="flex-1 overflow-auto p-4 md:p-6 pb-24 md:pb-6 relative z-0">
-          <div className="fixed top-[10%] right-[-10%] w-[600px] h-[600px] bg-yellow-300/20 rounded-full blur-[130px] -z-10 pointer-events-none"></div>
+      <main className="flex-1 min-w-0 h-screen overflow-y-auto">
+        <header className="sticky top-0 z-30 bg-[#F8F7F2]/80 backdrop-blur-md px-6 py-4 lg:hidden">
+          <button 
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 bg-white rounded-xl shadow-sm border border-stone-200 text-[#1A1A1A]"
+          >
+            <Menu size={24} />
+          </button>
+        </header>
+
+        <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24">
           {children}
+        </div>
       </main>
-
-      {/* === MENU MOBILE === */}
-      <nav className="fixed bottom-6 left-6 right-6 bg-[#1A1A1A]/90 backdrop-blur-md text-white md:hidden flex justify-around items-center p-4 rounded-full shadow-2xl z-50 border border-white/10">
-        {menuItems.map((item) => {
-          if (!item.roles.includes(role)) return null;
-          const isActive = currentPath === item.href || (item.href !== '/dashboard' && currentPath.startsWith(item.href));
-          
-          return ( 
-            <button 
-                key={item.href} 
-                onClick={() => handleNavigation(item.href)} 
-                className={`p-2 rounded-full transition ${isActive ? "bg-white/20 text-[#FACC15]" : "text-stone-400"}`}
-            >
-                <item.icon size={24} />
-            </button>
-          );
-        })}
-      </nav>
-
     </div>
   );
 }

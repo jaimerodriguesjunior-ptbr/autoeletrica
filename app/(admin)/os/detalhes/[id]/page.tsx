@@ -26,6 +26,7 @@ type WorkOrderFull = {
   description: string;
   total: number;
   created_at: string;
+  public_token: string;
   clients: {
     nome: string;
     whatsapp: string | null;
@@ -114,15 +115,26 @@ export default function DetalhesOS() {
     return "bg-white text-stone-400 border-stone-100";
   };
 
-  const handleWhatsapp = () => {
+const handleWhatsapp = () => {
     if (os?.clients?.whatsapp) {
       const number = os.clients.whatsapp.replace(/\D/g, '');
-      const osId = String(os.id); // Garante que é string
-      window.open(`https://wa.me/55${number}?text=Olá ${os.clients.nome}, sobre a OS #${osId} do ${os.vehicles?.modelo}...`, '_blank');
+      const osId = String(os.id);
+      
+      const baseUrl = window.location.origin;
+      const trackingLink = `${baseUrl}/acompanhar?token=${os.public_token}`;
+
+      // MELHORIA: Usando emojis e quebras de linha mais claras
+      const message = `Olá ${os.clients.nome}, tudo bem? 👋\n\n` +
+        `Obrigado por escolher a *NHT Centro Automotivo*. Sobre o seu veículo: *${os.vehicles?.modelo}* (OS #${osId}). 🔧 Fechamos o orçamento. \n\n` +
+        `Antes de iniciarmos o trabalho, pedimos que aprove o orçamento e, se desejar, depois você pode acompanhar o status em tempo real clicando no link abaixo:\n\n` +
+        `${trackingLink}`;
+      
+      window.open(`https://wa.me/55${number}?text=${encodeURIComponent(message)}`, '_blank');
     } else {
       alert("Cliente sem WhatsApp cadastrado.");
     }
   };
+
 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={40}/></div>;
   if (!os) return null;

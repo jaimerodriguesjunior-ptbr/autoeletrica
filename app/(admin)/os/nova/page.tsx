@@ -165,15 +165,26 @@ export default function NovaOS() {
   // PASSO 1: VEÍCULO
   // ============================================================
 
+ // ... (código anterior)
+
   const handleBuscarVeiculo = async () => {
+    // Validação básica
     if (!placaInput || placaInput.length < 7) return alert("Digite uma placa válida.");
+    
     setSearchingVehicle(true);
     setVeiculoNaoEncontrado(false);
 
+    // Limpa campos para garantir que não fique lixo de memória
+    setModeloInput("");
+    setFabricanteInput("");
+    setAnoInput("");
+    setObsVeiculoInput("");
+
     try {
+      // 1. Busca EXCLUSIVA no Banco de Dados da Oficina
       const { data, error } = await supabase
         .from("vehicles")
-        .select("id, placa, modelo, fabricante")
+        .select("id, placa, modelo, fabricante, ano, obs")
         .eq("organization_id", profile?.organization_id)
         .eq("placa", placaInput.toUpperCase())
         .maybeSingle();
@@ -181,6 +192,8 @@ export default function NovaOS() {
       if (error) throw error;
 
       if (data) {
+        // CENÁRIO A: Veículo JÁ CADASTRADO
+        // Recupera os dados e avança para a OS
         setVeiculoConfirmado({
           id: data.id,
           placa: data.placa,
@@ -189,20 +202,31 @@ export default function NovaOS() {
         });
         setStep(2);
       } else {
+        // CENÁRIO B: Veículo NÃO CADASTRADO
+        // Simplesmente libera o formulário para cadastro manual
         setVeiculoNaoEncontrado(true);
       }
+
     } catch (error: any) {
+      console.error(error);
       alert("Erro ao buscar veículo: " + error.message);
     } finally {
       setSearchingVehicle(false);
     }
   };
 
+  // ... (restante do código: handleCadastrarVeiculoAvancar, etc)
+  
+// ... (logo após o handleBuscarVeiculo)
+
   const handleCadastrarVeiculoAvancar = async () => {
+    // Validação simples
     if (!modeloInput) return alert("Informe o modelo do veículo.");
+    
     setSearchingVehicle(true);
 
     try {
+      // Cria o veículo no banco
       const { data, error } = await supabase
         .from("vehicles")
         .insert({
@@ -212,19 +236,23 @@ export default function NovaOS() {
           fabricante: fabricanteInput,
           ano: anoInput,
           obs: obsVeiculoInput,
+          // Nota: Não vinculamos client_id aqui, pois o vínculo será feito na OS
         })
         .select()
         .single();
 
       if (error) throw error;
 
+      // Define como confirmado e avança
       setVeiculoConfirmado({
         id: data.id,
         placa: data.placa,
         modelo: data.modelo,
         fabricante: data.fabricante,
       });
-      setStep(2);
+      
+      setStep(2); // Vai para o passo da OS
+
     } catch (error: any) {
       alert("Erro ao cadastrar veículo: " + error.message);
     } finally {
@@ -232,7 +260,9 @@ export default function NovaOS() {
     }
   };
 
-  // ============================================================
+  // ... (continua para handleFinalizarOS)
+
+ // ============================================================
   // PASSO 2: FINALIZAR OS
   // ============================================================
 
@@ -243,18 +273,18 @@ export default function NovaOS() {
     setSaving(true);
 
     try {
-      // 1. Vincula Cliente ao Veículo
-      await supabase.from("vehicles").update({ client_id: clienteSelecionado.id }).eq("id", veiculoConfirmado.id);
+      // 1. REMOVIDO: Não atualizamos mais o dono do veículo automaticamente
+      // para preservar o cadastro original. O vínculo é feito apenas na OS abaixo.
+      // await supabase.from("vehicles").update({ client_id: clienteSelecionado.id }).eq("id", veiculoConfirmado.id);
 
-      // 2. Header OS
+      // 2. Header OS (Aqui fica gravado quem é o cliente e o carro NESTA data)
       const total = itens.reduce((acc, item) => acc + item.valor * item.qtd, 0);
-
       const { data: osData, error: osError } = await supabase
         .from("work_orders")
         .insert({
           organization_id: profile?.organization_id,
-          client_id: clienteSelecionado.id,
-          vehicle_id: veiculoConfirmado.id,
+          client_id: clienteSelecionado.id, // O dono neste momento
+          vehicle_id: veiculoConfirmado.id, // O carro
           status: "orcamento",
           description: defeito,
           total: total,
@@ -279,7 +309,7 @@ export default function NovaOS() {
           unit_price: item.valor,
           total_price: item.valor * item.qtd,
 
-          // Campos legados
+          // Campos legados (se seu banco ainda usar, senão pode ignorar)
           nome_item: item.nome,
           valor_unitario: item.valor,
           subtotal: item.valor * item.qtd,
@@ -663,7 +693,7 @@ export default function NovaOS() {
               className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-full shadow-lg hover:scale-105 transition flex items-center justify-center gap-2 disabled:opacity-70"
             >
               {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-              Finalizar Ordem de Serviço
+              Iniciar Ordem de Serviço (OS)
             </button>
           </div>
         </div>
