@@ -5,11 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { 
   CheckCircle, Clock, Wrench, Car, Camera, 
   MessageCircle, ChevronDown, ChevronUp, ShieldCheck, 
-  Package, AlertCircle, Loader2 
+  Package, AlertCircle, Loader2, X 
 } from "lucide-react";
+// eslint-disable-next-line @next/next/no-img-element
 import { createClient } from "../../src/lib/supabase";
 
-// Componente Interno para usar o useSearchParams com segurança
 function ConteudoPortal() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
@@ -22,6 +22,7 @@ function ConteudoPortal() {
   // Controle visual
   const [detalhesAbertos, setDetalhesAbertos] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
+  const [fotoExpandida, setFotoExpandida] = useState<string | null>(null);
 
   useEffect(() => {
     if (token) {
@@ -30,6 +31,7 @@ function ConteudoPortal() {
       setErro("Link inválido ou expirado.");
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const fetchOS = async () => {
@@ -38,7 +40,7 @@ function ConteudoPortal() {
         .from('work_orders')
         .select(`
           *,
-          vehicles ( modelo, placa, cor ),
+          vehicles ( modelo, placa, cor, fabricante ),
           clients ( nome, whatsapp ),
           work_order_items ( name, total_price )
         `)
@@ -50,7 +52,6 @@ function ConteudoPortal() {
 
       setOs(data);
     } catch (error: any) {
-      console.error(error);
       setErro("Não foi possível carregar os dados. Verifique o link.");
     } finally {
       setLoading(false);
@@ -68,21 +69,18 @@ function ConteudoPortal() {
 
       if (error) throw error;
 
-      // Atualiza localmente para feedback instantâneo
       setOs({ ...os, status: 'aprovado' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      alert("Orçamento aprovado com sucesso! Iniciaremos o trabalho em breve.");
+      alert("Orçamento aprovado com sucesso!");
 
     } catch (error) {
-      alert("Erro ao aprovar. Tente novamente ou contate a oficina.");
+      alert("Erro ao aprovar. Tente novamente.");
     } finally {
       setAtualizando(false);
     }
   };
 
   const handleContato = () => {
-    // Tenta usar o número da oficina (fixo por enquanto ou poderia vir de organization)
-    // Se não tiver, usa um genérico
     window.open(`https://wa.me/5545999999999?text=Olá, estou vendo a OS #${os?.id}`, '_blank');
   };
 
@@ -97,10 +95,8 @@ function ConteudoPortal() {
     if (status === 'em_servico') currentStep = 4;
     if (status === 'pronto' || status === 'entregue') currentStep = 5;
 
-    // Passado
     if (step < currentStep) return "bg-green-500 text-white border-green-500";
     
-    // Presente
     if (step === currentStep) {
         if (status === 'orcamento') return "bg-[#FACC15] text-[#1A1A1A] border-[#FACC15] animate-pulse";
         if (status === 'aguardando_peca') return "bg-orange-500 text-white border-orange-500 animate-pulse";
@@ -109,7 +105,6 @@ function ConteudoPortal() {
         return "bg-green-500 text-white border-green-500"; 
     }
     
-    // Futuro
     return "bg-white text-stone-300 border-stone-200";
   };
 
@@ -132,71 +127,74 @@ function ConteudoPortal() {
     </div>
   );
 
+  const nomeVeiculo = os.vehicles?.modelo;
+  const placaVeiculo = os.vehicles?.placa;
+
   return (
     <div className="min-h-screen bg-[#F8F7F2] pb-64 relative">
       
-      {/* CABEÇALHO NOVO (Logo + Portal) */}
-      <div className="bg-white p-4 shadow-sm border-b border-stone-100 flex items-center justify-center gap-6">
-        <div className="flex flex-col items-center">
-          <div className="w-16 h-12 relative">
-             {/* Certifique-se que o logo.svg existe em public/ */}
-             <img src="/logo.svg" alt="Logo" className="w-full h-full object-contain" />
-          </div>
-          <span className="text-[8px] font-bold text-stone-400 uppercase tracking-[0.2em] leading-tight text-center">
-            Centro<br/>Automotivo
-          </span>
+      {/* 1. CABEÇALHO */}
+      <header className="bg-white py-5 px-6 shadow-sm border-b border-stone-100 sticky top-0 z-50">
+        <div className="flex items-center justify-center h-full">
+            <div className="flex items-center justify-center pr-6">
+                 <img src="/logo.svg" alt="NHT Centro Automotivo" className="h-12 w-auto object-contain" />
+            </div>
+            <div className="w-px h-10 bg-stone-300"></div>
+            <div className="pl-6 flex items-center">
+                <h1 className="text-sm font-bold text-[#001f3f] uppercase tracking-wide">
+                PORTAL DO CLIENTE
+                </h1>
+            </div>
         </div>
-        <div className="h-8 w-px bg-stone-200"></div>
-        <h1 className="text-sm font-bold text-[#1A1A1A] uppercase tracking-wide">
-          Portal do Cliente
-        </h1>
-      </div>
+      </header>
 
-      <div className="p-6">
-        <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 text-center">
-          <div className="inline-block p-4 bg-[#F8F7F2] rounded-full mb-4">
-            <Car size={32} className="text-[#1A1A1A]" />
-          </div>
+      <div className="p-6 max-w-xl mx-auto">
+        <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
           
-          <h2 className="text-2xl font-bold text-[#1A1A1A]">
-            {os.vehicles?.modelo || "Veículo"}
-          </h2>
-          <p className="text-stone-500 font-mono text-sm mb-6">
-            {os.vehicles?.placa || "---"}
-          </p>
+          {/* 2. LAYOUT DO VEÍCULO (Ajustado: Horizontal) */}
+          <div className="flex items-center gap-4 mb-8">
+              <div className="w-16 h-16 bg-[#F8F7F2] rounded-full flex items-center justify-center shrink-0">
+                <Car size={32} className="text-[#1A1A1A]" />
+              </div>
+              
+              <div className="text-left">
+                  <h2 className="text-2xl font-bold text-[#1A1A1A] leading-none">
+                    {nomeVeiculo || "Veículo não identificado"}
+                  </h2>
+                  <p className="text-stone-500 font-mono text-sm uppercase mt-1">
+                    {placaVeiculo || "---"}
+                  </p>
+              </div>
+          </div>
 
           <div className="relative px-1">
             <div className="absolute left-4 right-4 top-4 h-1 bg-stone-100 -z-10"></div>
             
-            {/* TIMELINE DE 5 PASSOS */}
+            {/* TIMELINE */}
             <div className="flex justify-between items-start">
-              {/* 1. Diagnóstico */}
               <div className="flex flex-col items-center gap-2 w-12">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(1)}`}>
-                    <CheckCircle size={12} />
+                   <CheckCircle size={12} />
                 </div>
                 <span className="text-[8px] font-bold text-stone-500 leading-tight">Diag.</span>
               </div>
 
-              {/* 2. Aprovação */}
               <div className="flex flex-col items-center gap-2 w-12">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(2)}`}>
-                    <Clock size={12} />
+                   <Clock size={12} />
                 </div>
                 <span className="text-[8px] font-bold text-stone-500 leading-tight">Aprov.</span>
               </div>
 
-              {/* 3. Peças */}
               <div className="flex flex-col items-center gap-2 w-12">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(3)}`}>
-                  <Package size={12} />
+                 <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(3)}`}>
+                   <Package size={12} />
                 </div>
                 <span className={`text-[8px] font-bold leading-tight ${os.status === 'aguardando_peca' ? 'text-orange-600' : 'text-stone-500'}`}>
-                  {os.status === 'aguardando_peca' ? 'Aguard. Peça' : 'Peças'}
+                   {os.status === 'aguardando_peca' ? 'Peças' : 'Peças'}
                 </span>
               </div>
 
-              {/* 4. Serviço */}
               <div className="flex flex-col items-center gap-2 w-12">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(4)}`}>
                     <Wrench size={12} />
@@ -204,7 +202,6 @@ function ConteudoPortal() {
                 <span className="text-[8px] font-bold text-stone-500 leading-tight">Serviço</span>
               </div>
 
-              {/* 5. Pronto */}
               <div className="flex flex-col items-center gap-2 w-12">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(5)}`}>
                     <CheckCircle size={12} />
@@ -218,20 +215,20 @@ function ConteudoPortal() {
 
       {/* AVISOS DE STATUS */}
       {os.status === "aguardando_peca" && (
-        <div className="px-6 pb-6 animate-in zoom-in duration-300">
+        <div className="px-6 pb-6 max-w-xl mx-auto animate-in zoom-in duration-300">
           <div className="bg-orange-50 text-orange-800 p-6 rounded-[32px] text-center border border-orange-100">
             <Package size={48} className="mx-auto mb-2 text-orange-400" />
             <h3 className="text-xl font-bold">Aguardando Peças</h3>
             <p className="text-sm mt-1 opacity-80">
-              Já encomendamos as peças necessárias. Assim que chegarem, iniciamos o serviço.
+               Já encomendamos as peças necessárias. Assim que chegarem, iniciamos o serviço.
             </p>
           </div>
         </div>
       )}
 
       {os.status === "aprovado" && (
-        <div className="px-6 pb-6 animate-in zoom-in">
-            <div className="bg-green-600 text-white p-6 rounded-[32px] text-center shadow-lg">
+        <div className="px-6 pb-6 max-w-xl mx-auto animate-in zoom-in">
+           <div className="bg-green-600 text-white p-6 rounded-[32px] text-center shadow-lg">
                 <ShieldCheck size={48} className="mx-auto mb-2" />
                 <h3 className="text-xl font-bold">Aprovado!</h3>
                 <p className="text-sm opacity-90">Verificando estoque e fila...</p>
@@ -240,8 +237,8 @@ function ConteudoPortal() {
       )}
       
       {os.status === "em_servico" && (
-        <div className="px-6 pb-6 animate-in zoom-in">
-            <div className="bg-blue-600 text-white p-6 rounded-[32px] text-center shadow-lg">
+        <div className="px-6 pb-6 max-w-xl mx-auto animate-in zoom-in">
+           <div className="bg-blue-600 text-white p-6 rounded-[32px] text-center shadow-lg">
                 <Wrench size={48} className="mx-auto mb-2" />
                 <h3 className="text-xl font-bold">Mãos à obra!</h3>
                 <p className="text-sm opacity-90">O mecânico está trabalhando no seu carro agora.</p>
@@ -250,7 +247,7 @@ function ConteudoPortal() {
       )}
 
       {(os.status === "pronto" || os.status === "entregue") && (
-        <div className="px-6 pb-6 animate-in zoom-in">
+        <div className="px-6 pb-6 max-w-xl mx-auto animate-in zoom-in">
             <div className="bg-[#1A1A1A] text-[#FACC15] p-6 rounded-[32px] text-center shadow-lg">
                 <CheckCircle size={48} className="mx-auto mb-2" />
                 <h3 className="text-xl font-bold">Pode vir buscar!</h3>
@@ -259,22 +256,38 @@ function ConteudoPortal() {
         </div>
       )}
 
-      {/* GALERIA (MANTIDA PLACEHOLDER POR ENQUANTO) */}
-      <div className="px-6 mb-6">
+      {/* GALERIA DE FOTOS */}
+      <div className="px-6 mb-6 max-w-xl mx-auto">
         <h3 className="font-bold text-[#1A1A1A] ml-2 mb-3 flex items-center gap-2">
             <Camera size={18} /> Fotos e Evidências
         </h3>
-        <div className="flex gap-4 overflow-x-auto pb-4 snap-x scrollbar-hide">
-            {[1, 2].map((i) => (
-                <div key={i} className="flex-none w-64 h-48 bg-stone-200 rounded-[24px] relative overflow-hidden snap-center shadow-sm border border-stone-100 flex items-center justify-center">
-                    <p className="text-stone-400 text-xs font-bold">Foto {i} (Em breve)</p>
-                </div>
-            ))}
-        </div>
+        
+        {Array.isArray(os.photos) && os.photos.length > 0 ? (
+            <div className="grid grid-cols-2 gap-4">
+                {os.photos.map((url: string, idx: number) => (
+                    <div 
+                        key={idx} 
+                        className="relative aspect-square bg-stone-200 rounded-[24px] overflow-hidden shadow-sm border border-stone-100 cursor-pointer group hover:scale-[1.02] transition-transform"
+                        onClick={() => setFotoExpandida(url)}
+                    >
+                        <img 
+                            src={url} 
+                            alt={`Evidência ${idx + 1}`} 
+                            className="w-full h-full object-cover"
+                        />
+                    </div>
+                ))}
+            </div>
+        ) : (
+            <div className="bg-stone-100 rounded-[24px] p-8 text-center border border-dashed border-stone-300">
+                <Camera size={32} className="mx-auto text-stone-300 mb-2" />
+                <p className="text-xs text-stone-400 font-medium">Nenhuma foto disponível.</p>
+            </div>
+        )}
       </div>
       
       {/* FINANCEIRO */}
-      <div className="px-6">
+      <div className="px-6 max-w-xl mx-auto">
         <div className="bg-white rounded-[32px] shadow-sm border border-stone-100 overflow-hidden">
             <button onClick={() => setDetalhesAbertos(!detalhesAbertos)} className="w-full p-6 flex items-center justify-between hover:bg-stone-50 transition">
                 <div>
@@ -302,7 +315,7 @@ function ConteudoPortal() {
 
       {/* BARRA FIXA INFERIOR */}
       {os.status === "orcamento" ? (
-        <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t border-stone-100 flex flex-col gap-3 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50 rounded-t-[32px]">
+        <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t border-stone-100 flex flex-col gap-3 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50 rounded-t-[32px] max-w-xl mx-auto">
           <button 
             onClick={handleAprovar} 
             disabled={atualizando}
@@ -319,7 +332,7 @@ function ConteudoPortal() {
           </button>
         </div>
       ) : (
-        <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t border-stone-100 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50 rounded-t-[32px]">
+        <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t border-stone-100 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50 rounded-t-[32px] max-w-xl mx-auto">
           <button 
             onClick={handleContato} 
             className="w-full bg-green-50 text-green-700 font-bold py-4 rounded-2xl flex items-center justify-center gap-2"
@@ -328,11 +341,25 @@ function ConteudoPortal() {
           </button>
         </div>
       )}
+
+      {/* MODAL DE FOTO EXPANDIDA */}
+      {fotoExpandida && (
+        <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" onClick={() => setFotoExpandida(null)}>
+            <button className="absolute top-4 right-4 text-white/70 hover:text-white p-2">
+                <X size={32} />
+            </button>
+            <img 
+                src={fotoExpandida} 
+                alt="Foto Expandida" 
+                className="max-w-full max-h-[90vh] rounded-xl object-contain shadow-2xl"
+            />
+        </div>
+      )}
+
     </div>
   );
 }
 
-// Wrapper Principal com Suspense
 export default function TelaCliente() {
   return (
     <Suspense fallback={<div className="h-screen bg-[#F8F7F2]"></div>}>

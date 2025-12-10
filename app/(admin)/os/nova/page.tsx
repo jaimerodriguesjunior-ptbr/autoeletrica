@@ -16,6 +16,7 @@ import {
   AlertCircle,
   ArrowRight,
   Minus,
+  Calendar,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -74,6 +75,7 @@ export default function NovaOS() {
 
   // Passo 2: OS
   const [defeito, setDefeito] = useState("");
+  const [previsaoEntrega, setPrevisaoEntrega] = useState("");
   const [itens, setItens] = useState<OSItem[]>([]);
   const [fotosEvidencia, setFotosEvidencia] = useState<string[]>([]);
 
@@ -157,6 +159,7 @@ export default function NovaOS() {
     setObsVeiculoInput("");
     setVeiculoConfirmado(null);
     setClienteSelecionado(null);
+    setPrevisaoEntrega("");
   };
 
   // ============================================================
@@ -272,6 +275,7 @@ export default function NovaOS() {
           status: "orcamento",
           description: defeito,
           total: total,
+          previsao_entrega: previsaoEntrega || null,
         })
         .select()
         .single();
@@ -346,18 +350,14 @@ export default function NovaOS() {
     }
   };
 
-  // --- UTILS (LÓGICA NOVA DE QUANTIDADE) ---
   const selecionarItem = (item: any, tipo: "peca" | "servico") => {
-    // 1. Verifica se já existe na lista
     const itemExistente = itens.find(i => i.db_id === item.id && i.tipo === tipo);
 
     if (itemExistente) {
-      // Se existe, incrementa a quantidade
       setItens(prev => prev.map(i => 
         i.id === itemExistente.id ? { ...i, qtd: i.qtd + 1 } : i
       ));
     } else {
-      // Se não, adiciona novo
       const semEstoque = tipo === "peca" && (item.estoque_atual || 0) <= 0;
       const valorUnitario = item.price || item.preco_venda || 0;
       
@@ -374,9 +374,6 @@ export default function NovaOS() {
         },
       ]);
     }
-    
-    // Opcional: Manter modal aberto para adicionar mais coisas?
-    // Por enquanto fechamos para dar feedback visual na lista
     setModalItemAberto(false);
   };
 
@@ -405,10 +402,6 @@ export default function NovaOS() {
         <Loader2 className="animate-spin text-[#FACC15]" size={40} />
       </div>
     );
-
-  // =====================================================================
-  // RENDER
-  // =====================================================================
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-32">
@@ -455,7 +448,7 @@ export default function NovaOS() {
                     setPlacaInput(e.target.value.toUpperCase());
                     setVeiculoNaoEncontrado(false);
                   }}
-                  placeholder="ABC-1234"
+                  placeholder="ABC1234" 
                   className="w-full text-center text-3xl font-bold uppercase tracking-widest bg-[#F8F7F2] rounded-2xl py-6 outline-none focus:ring-2 focus:ring-[#FACC15] placeholder:text-stone-300 pr-16"
                   maxLength={8}
                 />
@@ -642,10 +635,10 @@ export default function NovaOS() {
             </div>
           </div>
 
-          {/* Relato */}
+          {/* CARD 1: RELATO (Defeito) */}
           <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
             <h3 className="font-bold text-[#1A1A1A] mb-2 flex items-center gap-2">
-              <ArrowRight size={18} className="text-[#FACC15]" /> O que precisa ser feito?
+              <ArrowRight size={18} className="text-[#FACC15]" /> Reclamação do cliente/Problema
             </h3>
             <textarea
               rows={3}
@@ -656,7 +649,7 @@ export default function NovaOS() {
             ></textarea>
           </div>
 
-          {/* Itens */}
+          {/* CARD 2: ITENS */}
           <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
@@ -680,7 +673,7 @@ export default function NovaOS() {
                     </p>
                   </div>
                   
-                  {/* CONTROLE DE QUANTIDADE NOVO */}
+                  {/* CONTROLE DE QUANTIDADE */}
                   <div className="flex items-center gap-3">
                     <div className="flex items-center bg-white rounded-lg px-1">
                       <button 
@@ -719,6 +712,19 @@ export default function NovaOS() {
               <p className="text-stone-500 font-bold text-sm">Total Estimado</p>
               <p className="text-2xl font-bold text-[#1A1A1A]">R$ {total.toFixed(2)}</p>
             </div>
+          </div>
+
+          {/* CARD 3: PREVISÃO (Último passo, separado) */}
+          <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
+             <label className="text-xs font-bold text-stone-400 mb-2 flex items-center gap-1">
+                <Calendar size={14} /> Previsão de Entrega (Opcional)
+             </label>
+             <input 
+                type="date"
+                value={previsaoEntrega}
+                onChange={(e) => setPrevisaoEntrega(e.target.value)}
+                className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none focus:ring-2 focus:ring-[#FACC15]"
+             />
           </div>
 
           {/* Botão Final */}

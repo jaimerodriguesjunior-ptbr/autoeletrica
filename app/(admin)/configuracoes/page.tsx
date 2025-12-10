@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
 import { 
-  Users, Plus, Ban, Save, X, Loader2, Key, Shield, Unlock, 
-  Building2, MapPin, Phone, FileText, LayoutList
+  Users, Plus, Ban, Save, X, Loader2, Key, Unlock, 
+  Building2, MapPin, Phone, FileText
 } from "lucide-react";
 
 // Tipos
@@ -74,15 +74,25 @@ export default function Configuracoes() {
     if (data) setCompany(data);
   };
 
-  // --- AÇÕES DE EQUIPE (MANTIDAS) ---
+  // --- AÇÕES DE EQUIPE ---
   const handleCreateUser = async () => {
     if (!newNome || !newEmail || !newPass) return alert("Preencha tudo.");
+    
+    if (!profile?.organization_id) return alert("Erro: Organização não identificada.");
+
     setSaving(true);
     try {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create', email: newEmail, password: newPass, nome: newNome, cargo: newCargo })
+        body: JSON.stringify({ 
+            action: 'create', 
+            email: newEmail, 
+            password: newPass, 
+            nome: newNome, 
+            cargo: newCargo,
+            organization_id: profile.organization_id 
+        })
       });
       if (!res.ok) throw new Error("Erro ao criar.");
       alert("Sucesso!"); setModalNovoOpen(false); fetchUsers();
@@ -107,11 +117,10 @@ export default function Configuracoes() {
     fetchUsers();
   };
 
-  // --- AÇÕES DE EMPRESA (NOVAS) ---
+  // --- AÇÕES DE EMPRESA ---
   const handleSaveCompany = async () => {
     setSaving(true);
     try {
-      // Upsert: Atualiza se tiver ID, cria se não tiver
       const { error } = await supabase
         .from('company_settings')
         .upsert(company);
@@ -148,7 +157,7 @@ export default function Configuracoes() {
       </div>
 
       {/* =================================================================================
-          CONTEÚDO DA ABA: EQUIPE (O CÓDIGO ANTIGO FICA AQUI DENTRO)
+          CONTEÚDO DA ABA: EQUIPE
          ================================================================================= */}
       {activeTab === 'team' && (
         <div className="animate-in fade-in slide-in-from-left-4 duration-300">
@@ -166,32 +175,45 @@ export default function Configuracoes() {
                     <table className="w-full text-left">
                     <thead className="bg-[#F8F7F2] text-stone-500 text-xs uppercase font-bold">
                         <tr>
-                        <th className="px-6 py-4">Nome / Email</th>
-                        <th className="px-6 py-4">Cargo</th>
-                        <th className="px-6 py-4 text-center">Status</th>
-                        <th className="px-6 py-4 text-right">Ações</th>
+                        <th className="px-3 md:px-6 py-4">Nome / Email</th>
+                        <th className="px-3 md:px-6 py-4">Cargo</th>
+                        <th className="px-3 md:px-6 py-4 text-center">Status</th>
+                        <th className="px-3 md:px-6 py-4 text-right">Ações</th>
                         </tr>
                     </thead>
                     <tbody className="text-sm">
                         {users.map((u) => (
-                        <tr key={u.id} className="border-b border-stone-50 hover:bg-[#F9F8F4] transition">
-                            <td className="px-6 py-4">
-                            <p className="font-bold text-[#1A1A1A]">{u.nome}</p>
-                            <p className="text-stone-400 text-xs">{u.email}</p>
+                        <tr key={u.id} className="border-b border-stone-50 hover:bg-[#F9F8F4] transition group">
+                            <td className="px-3 md:px-6 py-4">
+                                <p className="font-bold text-[#1A1A1A]">{u.nome}</p>
+                                <p className="text-stone-400 text-xs">{u.email}</p>
                             </td>
-                            <td className="px-6 py-4">
-                            {u.cargo === 'owner' ? <span className="text-[#FACC15] font-bold text-[10px] border border-[#FACC15] px-2 py-1 rounded">GERENTE</span> : <span className="bg-stone-100 text-stone-500 px-2 py-1 rounded text-[10px]">COLABORADOR</span>}
+                            <td className="px-3 md:px-6 py-4">
+                                {u.cargo === 'owner' ? <span className="text-[#FACC15] font-bold text-[10px] border border-[#FACC15] px-2 py-1 rounded">GERENTE</span> : <span className="bg-stone-100 text-stone-500 px-2 py-1 rounded text-[10px]">COLABORADOR</span>}
                             </td>
-                            <td className="px-6 py-4 text-center">
-                            {u.ativo ? <span className="text-green-600 font-bold text-xs bg-green-50 px-2 py-1 rounded">ATIVO</span> : <span className="text-red-500 font-bold text-xs bg-red-50 px-2 py-1 rounded">BLOQUEADO</span>}
+                            <td className="px-3 md:px-6 py-4 text-center">
+                                {u.ativo ? <span className="text-green-600 font-bold text-xs bg-green-50 px-2 py-1 rounded">ATIVO</span> : <span className="text-red-500 font-bold text-xs bg-red-50 px-2 py-1 rounded">BLOQUEADO</span>}
                             </td>
-                            <td className="px-6 py-4 text-right flex justify-end gap-2">
-                            <button onClick={() => { setSelectedUser(u); setModalSenhaOpen(true); }} className="p-2 bg-stone-100 hover:bg-stone-200 rounded-xl" title="Alterar Senha"><Key size={16} /></button>
-                            {u.id !== profile?.id && (
-                                <button onClick={() => handleToggleStatus(u)} className={`p-2 rounded-xl ${u.ativo ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-600'}`}>
-                                {u.ativo ? <Ban size={16} /> : <Unlock size={16} />}
-                                </button>
-                            )}
+                            <td className="px-3 md:px-6 py-4 text-right">
+                                <div className="flex justify-end gap-2">
+                                    <button 
+                                        onClick={() => { setSelectedUser(u); setModalSenhaOpen(true); }} 
+                                        className="p-2 bg-stone-100 hover:bg-[#FACC15] hover:text-[#1A1A1A] rounded-xl transition shadow-sm" 
+                                        title="Alterar Senha"
+                                    >
+                                        <Key size={16} />
+                                    </button>
+                                    
+                                    {u.id !== profile?.id && (
+                                        <button 
+                                            onClick={() => handleToggleStatus(u)} 
+                                            className={`p-2 rounded-xl transition shadow-sm ${u.ativo ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}
+                                            title={u.ativo ? "Bloquear Acesso" : "Liberar Acesso"}
+                                        >
+                                            {u.ativo ? <Ban size={16} /> : <Unlock size={16} />}
+                                        </button>
+                                    )}
+                                </div>
                             </td>
                         </tr>
                         ))}
@@ -204,14 +226,13 @@ export default function Configuracoes() {
       )}
 
       {/* =================================================================================
-          CONTEÚDO DA ABA: DADOS DA OFICINA (NOVO)
-         ================================================================================= */}
+          CONTEÚDO DA ABA: DADOS DA OFICINA
+      ================================================================================= */}
       {activeTab === 'company' && (
         <div className="bg-white p-8 rounded-[32px] border border-stone-100 shadow-sm animate-in fade-in slide-in-from-right-4 duration-300 max-w-3xl">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                <div className="col-span-2">
-                    <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">NOME FANTASIA (Como aparece na OS)</label>
+            <div className="flex flex-col gap-6">
+                <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">NOME FANTASIA</label>
                     <div className="relative">
                         <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
                         <input 
@@ -252,7 +273,7 @@ export default function Configuracoes() {
                     </div>
                 </div>
 
-                <div className="col-span-2">
+                <div>
                     <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">ENDEREÇO COMPLETO</label>
                     <div className="relative">
                         <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
@@ -266,7 +287,7 @@ export default function Configuracoes() {
                     </div>
                 </div>
 
-                <div className="col-span-2 mt-4 pt-6 border-t border-stone-100 flex justify-end">
+                <div className="mt-4 pt-6 border-t border-stone-100 flex justify-end">
                     <button 
                         onClick={handleSaveCompany} 
                         disabled={saving}
@@ -276,12 +297,11 @@ export default function Configuracoes() {
                         Salvar Alterações
                     </button>
                 </div>
-
             </div>
         </div>
       )}
 
-      {/* --- MODAIS (MANTIDOS DO CÓDIGO ANTERIOR) --- */}
+      {/* --- MODAIS --- */}
       {modalNovoOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-4">

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { 
   ArrowUpRight, ArrowDownRight, Wallet, 
-  Wrench, ShoppingCart, Zap, X, Save, Loader2, Trash2, AlertCircle
+  Wrench, ShoppingCart, Zap, X, Save, Loader2, Trash2, Calendar
 } from "lucide-react";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
@@ -25,7 +25,7 @@ type ExtratoItem = {
   data: string;
   icone: any;
   categoria: string;
-  origem: 'manual' | 'os'; // Identificador para saber se pode editar
+  origem: 'manual' | 'os';
 };
 
 export default function Financeiro() {
@@ -43,16 +43,19 @@ export default function Financeiro() {
   const [modalReceitaAberto, setModalReceitaAberto] = useState(false);
   const [modalEdicaoAberto, setModalEdicaoAberto] = useState(false);
 
-  // Estados dos Formulários (Criação)
+  // Estados dos Formulários
   const [desc, setDesc] = useState("");
   const [valor, setValor] = useState("");
   const [cat, setCat] = useState("");
+  // NOVO: Estado para data (inicia com hoje)
+  const [dataMovimentacao, setDataMovimentacao] = useState(new Date().toISOString().split('T')[0]);
 
   // Estados de Edição
   const [itemParaEditar, setItemParaEditar] = useState<ExtratoItem | null>(null);
   const [editDesc, setEditDesc] = useState("");
   const [editValor, setEditValor] = useState("");
   const [editCat, setEditCat] = useState("");
+  const [editData, setEditData] = useState(""); // NOVO
 
   useEffect(() => {
     if (authLoading) return;
@@ -126,8 +129,24 @@ export default function Financeiro() {
     }
   };
 
+  const abrirModalDespesa = () => {
+    setDesc("");
+    setValor("");
+    setCat("");
+    setDataMovimentacao(new Date().toISOString().split('T')[0]); // Reseta para hoje
+    setModalDespesaAberto(true);
+  };
+
+  const abrirModalReceita = () => {
+    setDesc("");
+    setValor("");
+    setCat("");
+    setDataMovimentacao(new Date().toISOString().split('T')[0]); // Reseta para hoje
+    setModalReceitaAberto(true);
+  };
+
   const handleSalvarTransacao = async (tipo: 'income' | 'expense') => {
-    if (!desc || !valor) return alert("Preencha os campos!");
+    if (!desc || !valor || !dataMovimentacao) return alert("Preencha os campos!");
     setSaving(true);
 
     try {
@@ -137,16 +156,14 @@ export default function Financeiro() {
         amount: Number(valor),
         type: tipo,
         category: cat || (tipo === 'income' ? 'Outras Receitas' : 'Operacional'),
-        date: new Date().toISOString().split('T')[0],
+        date: dataMovimentacao, // USA A DATA SELECIONADA
         status: 'paid'
       });
 
       if (error) throw error;
 
-      alert("Salvo!");
       setModalDespesaAberto(false);
       setModalReceitaAberto(false);
-      setDesc(""); setValor(""); setCat("");
       fetchFinanceiro();
 
     } catch (error: any) {
@@ -167,11 +184,12 @@ export default function Financeiro() {
     setEditDesc(item.descricao);
     setEditValor(item.valor.toString());
     setEditCat(item.categoria);
+    setEditData(item.data); // Preenche a data existente
     setModalEdicaoAberto(true);
   };
 
   const handleUpdateTransacao = async () => {
-    if (!itemParaEditar || !editDesc || !editValor) return;
+    if (!itemParaEditar || !editDesc || !editValor || !editData) return;
     setSaving(true);
 
     try {
@@ -180,13 +198,13 @@ export default function Financeiro() {
         .update({
           description: editDesc,
           amount: Number(editValor),
-          category: editCat
+          category: editCat,
+          date: editData // Atualiza a data
         })
         .eq('id', itemParaEditar.id);
 
       if (error) throw error;
 
-      alert("Atualizado com sucesso!");
       setModalEdicaoAberto(false);
       fetchFinanceiro();
     } catch (error: any) {
@@ -291,7 +309,7 @@ export default function Financeiro() {
                     </div>
                     <div>
                       <p className="font-bold text-[#1A1A1A] text-sm group-hover:underline decoration-stone-400">{item.descricao}</p>
-                      <p className="text-xs text-stone-400">{item.categoria} • {new Date(item.data).toLocaleDateString('pt-BR')} {item.origem === 'os' && <span className="ml-2 bg-stone-200 px-1 rounded text-[10px]">OS</span>}</p>
+                      <p className="text-xs text-stone-400">{item.categoria} • {new Date(item.data).toLocaleDateString('pt-BR', {timeZone: 'UTC'})} {item.origem === 'os' && <span className="ml-2 bg-stone-200 px-1 rounded text-[10px]">OS</span>}</p>
                     </div>
                   </div>
                   <span className={`font-bold ${item.tipo === 'entrada' ? 'text-green-600' : 'text-red-500'}`}>
@@ -304,17 +322,17 @@ export default function Financeiro() {
         </div>
 
         <div className="space-y-6">
-          <div className="bg-stone-100 rounded-[32px] p-6 border border-stone-200">
+           <div className="bg-stone-100 rounded-[32px] p-6 border border-stone-200">
              <div className="flex justify-between items-center mb-4">
                 <h4 className="font-bold text-stone-600 text-xs uppercase flex items-center gap-2">
                   <Zap size={14} /> Ações Rápidas
                 </h4>
              </div>
              <div className="space-y-3">
-               <button onClick={() => setModalReceitaAberto(true)} className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2">
+               <button onClick={abrirModalReceita} className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2">
                   <ArrowUpRight size={20}/> Entrada Avulsa
                </button>
-               <button onClick={() => setModalDespesaAberto(true)} className="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2">
+               <button onClick={abrirModalDespesa} className="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2">
                   <ArrowDownRight size={20}/> Registrar Despesa
                </button>
              </div>
@@ -332,11 +350,22 @@ export default function Financeiro() {
             </div>
             <div className="space-y-4">
                <div>
+                <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                    <Calendar size={12}/> DATA
+                </label>
+                <input 
+                    type="date" 
+                    value={dataMovimentacao} 
+                    onChange={e=>setDataMovimentacao(e.target.value)} 
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" 
+                />
+               </div>
+               <div>
                 <label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label>
                 <input type="text" value={desc} onChange={e=>setDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none" placeholder="Ex: Conta de Luz" />
                </div>
                <div>
-                <label className="text-xs font-bold text-stone-400 ml-2">VALOR (R$)</label>
+                 <label className="text-xs font-bold text-stone-400 ml-2">VALOR (R$)</label>
                 <input type="number" value={valor} onChange={e=>setValor(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none" placeholder="0.00" />
                </div>
                <div>
@@ -360,11 +389,22 @@ export default function Financeiro() {
       {modalReceitaAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
-            <div className="flex justify-between items-center">
+             <div className="flex justify-between items-center">
               <h2 className="text-xl font-bold text-green-600 flex items-center gap-2"><ArrowUpRight /> Nova Receita Extra</h2>
               <button onClick={() => setModalReceitaAberto(false)}><X /></button>
             </div>
-            <div className="space-y-4">
+             <div className="space-y-4">
+               <div>
+                <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                    <Calendar size={12}/> DATA
+                </label>
+                <input 
+                    type="date" 
+                    value={dataMovimentacao} 
+                    onChange={e=>setDataMovimentacao(e.target.value)} 
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" 
+                />
+               </div>
                <div>
                 <label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label>
                 <input type="text" value={desc} onChange={e=>setDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none" placeholder="Ex: Venda de Sucata" />
@@ -381,7 +421,7 @@ export default function Financeiro() {
         </div>
       )}
 
-      {/* MODAL DE EDIÇÃO (NOVO) */}
+      {/* MODAL DE EDIÇÃO */}
       {modalEdicaoAberto && itemParaEditar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
@@ -394,6 +434,17 @@ export default function Financeiro() {
 
             <div className="space-y-4">
                <div>
+                <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                    <Calendar size={12}/> DATA
+                </label>
+                <input 
+                    type="date" 
+                    value={editData} 
+                    onChange={e=>setEditData(e.target.value)} 
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" 
+                />
+               </div>
+               <div>
                 <label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label>
                 <input 
                   type="text" 
@@ -402,7 +453,6 @@ export default function Financeiro() {
                   className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium" 
                 />
                </div>
-               
                <div>
                 <label className="text-xs font-bold text-stone-400 ml-2">VALOR (R$)</label>
                 <input 
@@ -412,10 +462,8 @@ export default function Financeiro() {
                   className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none" 
                 />
                </div>
-
                <div>
                 <label className="text-xs font-bold text-stone-400 ml-2">CATEGORIA</label>
-                {/* Se for receita manual, pode não ter categoria definida, então deixamos um input simples se preferir ou select */}
                 <select value={editCat} onChange={e=>setEditCat(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none">
                     <option value="Geral">Geral</option>
                     <option value="Operacional">Operacional</option>
@@ -427,15 +475,15 @@ export default function Financeiro() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button 
+               <button 
                 onClick={handleDeleteTransacao} 
                 disabled={deleting}
                 className="p-4 bg-red-100 text-red-500 rounded-2xl hover:bg-red-200 transition disabled:opacity-50"
-              >
+               >
                 {deleting ? <Loader2 className="animate-spin"/> : <Trash2 size={24} />}
               </button>
               
-              <button 
+               <button 
                 onClick={handleUpdateTransacao} 
                 disabled={saving} 
                 className="flex-1 bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl flex justify-center gap-2 hover:scale-105 transition"

@@ -1,7 +1,7 @@
 "use client";
-import { useState, useEffect } from "react"; // <--- Adicionado useEffect
+import { useState, useEffect } from "react"; 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation"; // <--- Adicionado useRouter
+import { usePathname, useRouter } from "next/navigation"; 
 import { 
   LayoutDashboard, 
   Wrench, 
@@ -23,17 +23,14 @@ export default function AdminLayout({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
-  const router = useRouter(); // <--- Instância do roteador
+  const router = useRouter(); 
   const { signOut, user, profile, loading } = useAuth();
 
-  // --- CORREÇÃO DE SEGURANÇA ---
-  // Monitora: Se parou de carregar E não tem usuário, chuta para o login.
   useEffect(() => {
     if (!loading && !user) {
       router.push("/");
     }
   }, [loading, user, router]);
-  // -----------------------------
 
   const allMenuItems = [
     { name: "Dashboard", icon: LayoutDashboard, path: "/dashboard", restricted: false },
@@ -50,7 +47,6 @@ export default function AdminLayout({
     return !item.restricted;
   });
 
-  // Se estiver carregando OU não tiver usuário (enquanto redireciona), mostra tela branca
   if (loading || !user) return <div className="min-h-screen bg-[#F8F7F2]"></div>;
 
   return (
@@ -74,9 +70,7 @@ export default function AdminLayout({
          <div className="p-8 flex items-start justify-between"> 
           <div className="flex flex-col items-center w-full pr-6">
             <div className="w-32 h-32 mb-2 relative"> 
-               {/* OBS: O erro da imagem que você mandou na foto é resolvido no next.config.js
-                  conforme conversamos antes. Aqui é só o layout.
-               */}
+               {/* eslint-disable-next-line @next/next/no-img-element */}
                <img src="/logo.svg" alt="NHT Logo" className="w-full h-full object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
             </div>
             <span className="text-xs font-bold text-stone-400 uppercase tracking-[0.2em] text-center">
@@ -116,10 +110,10 @@ export default function AdminLayout({
           {/* BOTÃO CONFIGURAÇÕES */}
           {isOwner && (
             <Link href="/configuracoes" onClick={() => setSidebarOpen(false)}>
-              <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-2xl text-stone-500 hover:bg-stone-50 font-medium transition-colors cursor-pointer hover:text-[#1A1A1A]">
+               <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-2xl text-stone-500 hover:bg-stone-50 font-medium transition-colors cursor-pointer hover:text-[#1A1A1A]">
                 <Settings size={20} />
                 <span>Configurações</span>
-              </div>
+               </div>
             </Link>
           )}
 
@@ -133,7 +127,7 @@ export default function AdminLayout({
                 {profile?.nome || "Usuário"}
               </p>
               <p className="text-[10px] uppercase font-bold text-[#FACC15] tracking-wider">
-                {profile?.cargo === 'owner' ? '👑 GERENTE' : '🔧 COLABORADOR'}
+                 {profile?.cargo === 'owner' ? '👑 GERENTE' : '🔧 COLABORADOR'}
               </p>
             </div>
           </div>
@@ -164,7 +158,17 @@ export default function AdminLayout({
         </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-100 p-2 z-50 lg:hidden flex justify-around items-center pb-safe shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+      {/* MENU INFERIOR (Mobile) 
+          AJUSTE: Adicionei a classe condicional `hidden` se `sidebarOpen` for true.
+          Caso contrário, ele aparece normalmente (`flex`).
+      */}
+      <nav 
+        className={`
+          fixed bottom-0 left-0 right-0 bg-white border-t border-stone-100 p-2 z-50 lg:hidden 
+          justify-around items-center pb-safe shadow-[0_-4px_20px_rgba(0,0,0,0.05)]
+          ${sidebarOpen ? "hidden" : "flex"} 
+        `}
+      >
         {menuItems.map((item) => {
           const isActive = pathname === item.path || pathname.startsWith(item.path + "/");
           return (

@@ -2,16 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { 
-  Plus, Search, Filter, Car, Calendar, User, 
+  Plus, Search, Car, User, 
   ChevronRight, Clock, Loader2, AlertCircle
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
 
-// Interface baseada no retorno real do Join do Supabase
+// Interface ajustada para refletir que ID pode vir como número
 type WorkOrder = {
-  id: string;
+  id: string | number;
   status: string;
   total: number;
   created_at: string;
@@ -42,7 +42,6 @@ export default function ServicosOS() {
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      // O Supabase entende as relações (FKs) e traz os objetos aninhados
       const { data, error } = await supabase
         .from('work_orders')
         .select(`
@@ -58,7 +57,6 @@ export default function ServicosOS() {
 
       if (error) throw error;
 
-      // Type casting seguro pois sabemos a estrutura do select
       setOrders(data as unknown as WorkOrder[]);
     } catch (error) {
       console.error("Erro ao buscar OS:", error);
@@ -103,16 +101,18 @@ export default function ServicosOS() {
     return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' }).format(date);
   };
 
-  // --- Lógica de Filtro ---
+  // --- Lógica de Filtro (CORRIGIDA) ---
 
   const filteredOrders = orders.filter(os => {
     // 1. Filtro de Texto (Busca)
     const searchLower = searchTerm.toLowerCase();
+    
+    // Proteção: Converte valores para String antes de comparar e trata nulos
     const matchSearch = 
-      os.clients?.nome.toLowerCase().includes(searchLower) ||
-      os.vehicles?.placa.toLowerCase().includes(searchLower) ||
-      os.vehicles?.modelo.toLowerCase().includes(searchLower) ||
-      os.id.toLowerCase().includes(searchLower);
+      (os.clients?.nome || "").toLowerCase().includes(searchLower) ||
+      (os.vehicles?.placa || "").toLowerCase().includes(searchLower) ||
+      (os.vehicles?.modelo || "").toLowerCase().includes(searchLower) ||
+      String(os.id).toLowerCase().includes(searchLower); // <--- AQUI ESTAVA O ERRO (Adicionado String())
 
     if (!matchSearch) return false;
 
@@ -199,16 +199,16 @@ export default function ServicosOS() {
                     {/* Lado Esquerdo */}
                     <div className="flex items-center gap-4 w-full md:w-auto">
                       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm bg-stone-50 text-stone-400 group-hover:bg-white transition`}>
-                        <Car size={24} />
+                         <Car size={24} />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-[#1A1A1A] text-lg">
-                            {os.vehicles?.modelo || "Veículo não identificado"}
+                             {os.vehicles?.modelo || "Veículo não identificado"}
                           </span>
                           {os.vehicles?.placa && (
                             <span className="text-xs font-mono bg-stone-100 text-stone-500 px-2 py-0.5 rounded-md border border-stone-200">
-                              {os.vehicles.placa}
+                             {os.vehicles.placa}
                             </span>
                           )}
                         </div>
@@ -256,7 +256,7 @@ export default function ServicosOS() {
               </div>
             )
           )}
-        </div>
+      </div>
       </div>
     </div>
   );
