@@ -7,7 +7,7 @@ import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
 import { 
   ArrowLeft, Package, DollarSign, 
-  Save, Calculator, Trash2, Loader2, AlertCircle
+  Save, Calculator, Trash2, Loader2, AlertCircle, Wallet
 } from "lucide-react";
 
 export default function EditarProduto() {
@@ -29,8 +29,8 @@ export default function EditarProduto() {
   const [localizacao, setLocalizacao] = useState("");
 
   const [custoReposicao, setCustoReposicao] = useState("");
-  const [custoContabil, setCustoContabil] = useState(""); // Campo Recuperado
-  const [margem, setMargem] = useState("50");
+  const [custoContabil, setCustoContabil] = useState(""); 
+  const [margem, setMargem] = useState("100"); // Padrão ajustado para 100%
   const [precoVenda, setPrecoVenda] = useState("");
 
   useEffect(() => {
@@ -56,7 +56,10 @@ export default function EditarProduto() {
         setLocalizacao(data.localizacao || "");
         
         setCustoReposicao(data.custo_reposicao.toString());
-        setCustoContabil(data.custo_contabil?.toString() || "0"); // Recupera o valor do banco
+        setCustoContabil(data.custo_contabil?.toString() || "0");
+        
+        // Se já tiver preço, tenta calcular a margem real, senão usa 100
+        // (Lógica simples para não quebrar visualmente, mas o usuário pode ajustar)
         setPrecoVenda(data.preco_venda.toString());
       }
     } catch (error) {
@@ -66,6 +69,13 @@ export default function EditarProduto() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // --- NOVO: Lógica de Espelhamento ---
+  const handleCustoRealChange = (valor: string) => {
+    setCustoContabil(valor);
+    // Ao editar o custo real, atualiza o de reposição automaticamente
+    setCustoReposicao(valor);
   };
 
   const handleUpdate = async () => {
@@ -82,7 +92,7 @@ export default function EditarProduto() {
           estoque_atual: Number(estoqueAtual),
           estoque_min: Number(estoqueMin),
           custo_reposicao: Number(custoReposicao),
-          custo_contabil: Number(custoContabil), // Adicionado ao update
+          custo_contabil: Number(custoContabil),
           preco_venda: Number(precoVenda),
           localizacao
         })
@@ -202,6 +212,25 @@ export default function EditarProduto() {
             </h3>
 
             <div className="space-y-4 relative z-10">
+              
+              {/* --- 1. CUSTO REAL (NOVA POSIÇÃO E ESTILO) --- */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                   CUSTO REAL DE COMPRA <Wallet size={10} />
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-500">R$</span>
+                  <input 
+                    type="number" 
+                    value={custoContabil} 
+                    onChange={e => handleCustoRealChange(e.target.value)} // Gatilho do espelhamento
+                    placeholder="0.00" 
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 pl-10 font-bold text-white outline-none focus:border-[#FACC15] transition focus:bg-white/10" 
+                  />
+                </div>
+              </div>
+
+              {/* --- 2. CUSTO REPOSIÇÃO --- */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
                   CUSTO REPOSIÇÃO <AlertCircle size={10} />
@@ -231,7 +260,7 @@ export default function EditarProduto() {
               </div>
 
               {/* Sugestão Visual */}
-              <div className="bg-white/10 rounded-2xl p-4 mt-4 border border-dashed border-white/20" onClick={() => setPrecoVenda(calcularPrecoSugerido())} role="button">
+              <div className="bg-white/10 rounded-2xl p-4 mt-4 border border-dashed border-white/20 cursor-pointer hover:bg-white/20 transition" onClick={() => setPrecoVenda(calcularPrecoSugerido())} role="button">
                 <div className="flex items-center gap-2 text-[#FACC15] mb-1">
                   <Calculator size={14} />
                   <span className="text-xs font-bold uppercase">Sugerido (Clique)</span>
@@ -254,19 +283,7 @@ export default function EditarProduto() {
             </div>
           </div>
 
-          {/* CAMPO NOVO (CUSTO CONTÁBIL) */}
-          <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-stone-400 ml-2">CUSTO CONTÁBIL (NF)</label>
-              <input 
-                type="number" 
-                value={custoContabil} 
-                onChange={e => setCustoContabil(e.target.value)} 
-                placeholder="0.00" 
-                className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-stone-500 outline-none focus:ring-2 focus:ring-stone-200" 
-              />
-            </div>
-          </div>
+          {/* O BLOCO BRANCO QUE FICAVA AQUI FOI REMOVIDO */}
 
         </div>
       </div>

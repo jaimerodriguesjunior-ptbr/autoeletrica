@@ -7,7 +7,7 @@ import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
 import { 
   ArrowLeft, Package, DollarSign, Barcode, 
-  Save, AlertCircle, Calculator, Loader2
+  Save, AlertCircle, Calculator, Loader2, Wallet
 } from "lucide-react";
 
 export default function NovoProduto() {
@@ -21,17 +21,26 @@ export default function NovoProduto() {
   const [nome, setNome] = useState("");
   const [marca, setMarca] = useState("");
   const [codigoRef, setCodigoRef] = useState("");
-  const [ean, setEan] = useState(""); // Código de barras (futuro)
+  const [ean, setEan] = useState(""); 
   
   const [estoqueAtual, setEstoqueAtual] = useState("");
   const [estoqueMin, setEstoqueMin] = useState("5");
   const [localizacao, setLocalizacao] = useState("");
 
   // Precificação
-  const [custoReposicao, setCustoReposicao] = useState(""); // Custo atual de compra
-  const [custoContabil, setCustoContabil] = useState(""); // Custo da NF (opcional)
-  const [margem, setMargem] = useState("50");
+  const [custoReposicao, setCustoReposicao] = useState(""); 
+  const [custoContabil, setCustoContabil] = useState(""); 
+  
+  // --- ALTERADO: Margem padrão agora é 100% ---
+  const [margem, setMargem] = useState("100"); 
   const [precoVenda, setPrecoVenda] = useState("");
+
+  // --- NOVO: Lógica de Espelhamento ---
+  // Quando muda o Custo Real, atualiza também o de Reposição
+  const handleCustoRealChange = (valor: string) => {
+    setCustoContabil(valor);
+    setCustoReposicao(valor);
+  };
 
   // Calculadora Automática
   const calcularPrecoSugerido = () => {
@@ -140,7 +149,7 @@ export default function NovoProduto() {
           </div>
         </div>
 
-        {/* DIREITA: PREÇO */}
+        {/* DIREITA: PREÇO (LAYOUT NOVO) */}
         <div className="space-y-6">
           <div className="bg-[#1A1A1A] text-white rounded-[32px] p-6 shadow-xl relative overflow-hidden">
             <div className="absolute top-[-20%] right-[-20%] w-40 h-40 bg-[#FACC15] rounded-full blur-[60px] opacity-20"></div>
@@ -150,6 +159,25 @@ export default function NovoProduto() {
             </h3>
 
             <div className="space-y-4 relative z-10">
+              
+              {/* --- 1. CUSTO REAL (NOVO LUGAR) --- */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                  CUSTO REAL DE COMPRA <Wallet size={10} />
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-500">R$</span>
+                  <input 
+                    type="number" 
+                    value={custoContabil}
+                    onChange={(e) => handleCustoRealChange(e.target.value)} // Gatilho duplo
+                    placeholder="0.00" 
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 pl-10 font-bold text-white outline-none focus:border-[#FACC15] transition focus:bg-white/10" 
+                  />
+                </div>
+              </div>
+
+              {/* --- 2. CUSTO REPOSIÇÃO (ESPELHADO MAS EDITÁVEL) --- */}
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
                   CUSTO REPOSIÇÃO <AlertCircle size={10} />
@@ -173,7 +201,7 @@ export default function NovoProduto() {
                     type="number" 
                     value={margem}
                     onChange={(e) => setMargem(e.target.value)}
-                    placeholder="50" 
+                    placeholder="100" 
                     className="w-full bg-white/10 border border-white/10 rounded-2xl p-4 font-bold text-white outline-none focus:border-[#FACC15] transition" 
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-500">%</span>
@@ -181,7 +209,7 @@ export default function NovoProduto() {
               </div>
 
               {/* Sugestão Visual */}
-              <div className="bg-white/10 rounded-2xl p-4 mt-4 border border-dashed border-white/20" onClick={() => setPrecoVenda(calcularPrecoSugerido())} role="button">
+              <div className="bg-white/10 rounded-2xl p-4 mt-4 border border-dashed border-white/20 cursor-pointer hover:bg-white/20 transition" onClick={() => setPrecoVenda(calcularPrecoSugerido())} role="button">
                 <div className="flex items-center gap-2 text-[#FACC15] mb-1">
                   <Calculator size={14} />
                   <span className="text-xs font-bold uppercase">Sugerido (Clique para usar)</span>
@@ -203,13 +231,9 @@ export default function NovoProduto() {
               </div>
             </div>
           </div>
+          
+          {/* REMOVIDO: Antigo bloco do Custo Contábil */}
 
-          <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
-             <div className="space-y-1">
-                <label className="text-xs font-bold text-stone-400 ml-2">CUSTO CONTÁBIL (NF)</label>
-                <input type="number" value={custoContabil} onChange={e => setCustoContabil(e.target.value)} placeholder="0.00" className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-stone-500 outline-none" />
-              </div>
-          </div>
         </div>
       </div>
 
