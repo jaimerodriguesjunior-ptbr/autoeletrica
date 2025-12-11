@@ -76,7 +76,6 @@ export default function EstoqueEServicos() {
   // --- LÓGICA DE PRODUTOS ---
   const getProductStatus = (p: Product) => {
     if (p.estoque_atual <= p.estoque_min) return 'baixo';
-    // Se o custo de reposição for maior que o contábil (pagou barato, mas hoje está caro)
     if (p.custo_reposicao > p.custo_contabil) return 'atencao_preco';
     return 'ok';
   };
@@ -184,36 +183,7 @@ export default function EstoqueEServicos() {
         )}
       </div>
 
-      {/* 2. ALERTAS RÁPIDOS (Visíveis apenas na aba Produtos) */}
-      {view === 'products' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-stone-100 flex items-center gap-4">
-            <div className="bg-blue-100 p-3 rounded-xl text-blue-600"><Package size={24} /></div>
-            <div>
-              <p className="text-xs font-bold text-stone-400 uppercase">Total Itens</p>
-              <p className="text-2xl font-bold text-[#1A1A1A]">{totalItens}</p>
-            </div>
-          </div>
-          
-          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-stone-100 flex items-center gap-4">
-            <div className="bg-red-100 p-3 rounded-xl text-red-600"><AlertTriangle size={24} /></div>
-            <div>
-              <p className="text-xs font-bold text-stone-400 uppercase">Reposição Urgente</p>
-              <p className="text-2xl font-bold text-[#1A1A1A]">{totalBaixo}</p>
-            </div>
-          </div>
-
-          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-stone-100 flex items-center gap-4">
-            <div className="bg-yellow-100 p-3 rounded-xl text-yellow-600"><TrendingUp size={24} /></div>
-            <div>
-              <p className="text-xs font-bold text-stone-400 uppercase">Preço Defasado</p>
-              <p className="text-2xl font-bold text-[#1A1A1A]">{totalDefasado}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3. SELETOR DE ABAS PRINCIPAIS */}
+      {/* 2. SELETOR DE ABAS PRINCIPAIS (MOVIDO PARA CIMA) */}
       <div className="flex p-1 bg-stone-200 rounded-[20px] w-fit">
         <button 
           onClick={() => setView('products')}
@@ -232,6 +202,35 @@ export default function EstoqueEServicos() {
           Mão de Obra
         </button>
       </div>
+
+      {/* 3. ALERTAS RÁPIDOS (MOVIDO PARA BAIXO - Visíveis apenas na aba Produtos) */}
+      {view === 'products' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-stone-100 flex items-center gap-4">
+            <div className="bg-blue-100 p-3 rounded-xl text-blue-600"><Package size={24} /></div>
+            <div>
+              <p className="text-xs font-bold text-stone-400 uppercase">Total Itens</p>
+              <p className="text-2xl font-bold text-[#1A1A1A]">{totalItens}</p>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-stone-100 flex items-center gap-4">
+            <div className="bg-red-100 p-3 rounded-xl text-red-600"><AlertTriangle size={24} /></div>
+            <div>
+              <p className="text-xs font-bold text-stone-400 uppercase">Reposição Urgente</p>
+              <p className="text-2xl font-bold text-[#1A1A1A]">{totalBaixo}</p>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-stone-100 flex items-center gap-4">
+            <div className="bg-yellow-100 p-3 rounded-xl text-yellow-600"><TrendingUp size={24} /></div>
+            <div>
+              <p className="text-xs font-bold text-stone-400 uppercase">Preço Defasado</p>
+              <p className="text-2xl font-bold text-[#1A1A1A]">{totalDefasado}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 4. ÁREA DE LISTAGEM */}
       <div className="bg-white rounded-[32px] border border-stone-100 shadow-sm overflow-hidden min-h-[300px]">
@@ -308,10 +307,9 @@ export default function EstoqueEServicos() {
                       <td className="px-6 py-4">
                         <p className="font-bold text-[#1A1A1A]">{p.nome}</p>
                         <p className="text-xs text-stone-400">{p.marca || "Marca não inf."}</p>
-                        {/* Se tiver alerta de preço, mostra o detalhe aqui */}
                         {status === 'atencao_preco' && (
                           <div className="mt-1 flex items-center gap-2 text-[10px] bg-yellow-50 text-yellow-700 px-2 py-1 rounded w-fit">
-                            <span>Pagou: R$ {p.custo_contabil.toFixed(2)}</span>
+                             <span>Pagou: R$ {p.custo_contabil.toFixed(2)}</span>
                             <ArrowRight size={10} />
                             <span className="font-bold">Hoje: R$ {p.custo_reposicao.toFixed(2)}</span>
                           </div>

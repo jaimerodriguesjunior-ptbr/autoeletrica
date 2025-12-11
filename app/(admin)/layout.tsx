@@ -42,10 +42,17 @@ export default function AdminLayout({
   ];
 
   const isOwner = profile?.cargo === 'owner';
+  
+  // Menu completo (para a Sidebar)
   const menuItems = allMenuItems.filter(item => {
     if (isOwner) return true;
     return !item.restricted;
   });
+
+  // Menu filtrado (apenas para a barra inferior mobile)
+  const bottomMenuItems = menuItems.filter(item => 
+    ["/ia", "/os", "/clientes", "/estoque"].includes(item.path)
+  );
 
   if (loading || !user) return <div className="min-h-screen bg-[#F8F7F2]"></div>;
 
@@ -58,6 +65,7 @@ export default function AdminLayout({
         />
       )}
 
+      {/* SIDEBAR (Menu Completo) */}
       <aside 
         className={`
           fixed lg:static inset-y-0 left-0 z-50
@@ -158,10 +166,7 @@ export default function AdminLayout({
         </div>
       </main>
 
-      {/* MENU INFERIOR (Mobile) 
-          AJUSTE: Adicionei a classe condicional `hidden` se `sidebarOpen` for true.
-          Caso contrário, ele aparece normalmente (`flex`).
-      */}
+      {/* MENU INFERIOR (Mobile - Apenas 4 itens principais) */}
       <nav 
         className={`
           fixed bottom-0 left-0 right-0 bg-white border-t border-stone-100 p-2 z-50 lg:hidden 
@@ -169,7 +174,7 @@ export default function AdminLayout({
           ${sidebarOpen ? "hidden" : "flex"} 
         `}
       >
-        {menuItems.map((item) => {
+        {bottomMenuItems.map((item) => {
           const isActive = pathname === item.path || pathname.startsWith(item.path + "/");
           return (
             <Link 
@@ -184,7 +189,7 @@ export default function AdminLayout({
                 <item.icon size={22} />
               </div>
               <span className={`text-[10px] font-bold ${isActive ? "text-[#1A1A1A]" : "text-stone-300"}`}>
-                {item.name}
+                {item.name === "Estoque e Serviços" ? "Estoque e Serviços" : item.name}
               </span>
             </Link>
           )

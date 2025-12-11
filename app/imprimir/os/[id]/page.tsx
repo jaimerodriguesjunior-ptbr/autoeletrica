@@ -22,13 +22,19 @@ export default function ImprimirOS() {
     }
   }, [id]);
 
- // --- NOVO: Auto-Print e Auto-Close ---
+ // --- ALTERADO: Lógica Inteligente (Mobile vs PC) ---
   useEffect(() => {
     if (!loading && os) {
       
-      // 1. Prepara o gatilho para fechar DEPOIS que o diálogo sumir
+      // Detecção simples de dispositivo móvel
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+      // 1. Prepara o gatilho. Se for PC, fecha. Se for Mobile, NÃO fecha.
       const handleAfterPrint = () => {
-        window.close();
+        if (!isMobile) {
+            window.close();
+        }
+        // Se for mobile, não faz nada, permitindo que o usuário clique em "Voltar" manualmente.
       };
 
       window.addEventListener("afterprint", handleAfterPrint);
@@ -91,7 +97,7 @@ export default function ImprimirOS() {
   // Lógica do Status
   const isFinalizado = ['pronto', 'entregue', 'pago'].includes(os.status?.toLowerCase());
   
-  // --- CORREÇÃO AQUI: Usando 'tipo', 'peca' e 'servico' conforme o banco ---
+  // Dados financeiros
   const totalPecas = os.work_order_items?.filter((i:any) => i.tipo === 'peca').reduce((acc:number, i:any) => acc + i.total_price, 0) || 0;
   const totalServicos = os.work_order_items?.filter((i:any) => i.tipo === 'servico').reduce((acc:number, i:any) => acc + i.total_price, 0) || 0;
 
@@ -190,7 +196,6 @@ export default function ImprimirOS() {
                 <tbody className="text-gray-800">
                     {os.work_order_items?.map((item:any, idx:number) => (
                         <tr key={idx} className="border-b border-gray-100">
-                           {/* --- CORREÇÃO AQUI: Verificação de tipo --- */}
                            <td className="py-2">{item.name} <span className="text-[9px] text-gray-400 uppercase ml-1">({item.tipo === 'peca' ? 'Peça' : 'Serviço'})</span></td>
                             <td className="py-2 text-center">{item.quantity}</td>
                             <td className="py-2 text-right">{item.unit_price.toFixed(2)}</td>
@@ -274,11 +279,11 @@ export default function ImprimirOS() {
                         </p>
                     </div>
 
- <div className="flex justify-end items-end mt-16">
-                       <div className="text-center">
+                    <div className="flex justify-end items-end mt-16">
+                        <div className="text-center">
                             <div className="border-b border-black w-40 mb-1"></div>
                             <p className="text-[9px] uppercase font-bold">{empresaNome}</p>
-                       </div>
+                        </div>
                     </div>
                 </>
               ) : (
