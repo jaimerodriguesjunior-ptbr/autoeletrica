@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { 
-  ArrowUpRight, ArrowDownRight, Wallet, 
+import {
+  ArrowUpRight, ArrowDownRight, Wallet,
   Wrench, ShoppingCart, Zap, X, Save, Loader2, Trash2, Calendar,
   CheckCircle2, Clock, Filter
 } from "lucide-react";
@@ -78,9 +78,9 @@ export default function Financeiro() {
   useEffect(() => {
     const hoje = new Date().toISOString().split('T')[0];
     if (dataMovimentacao > hoje) {
-        setEfetivado(false);
+      setEfetivado(false);
     } else {
-        setEfetivado(true);
+      setEfetivado(true);
     }
   }, [dataMovimentacao]);
 
@@ -96,16 +96,7 @@ export default function Financeiro() {
 
       if (errTrans) throw errTrans;
 
-      // 2. Receitas de OS
-      const { data: osData, error: errOS } = await supabase
-        .from('work_orders')
-        .select('id, total, updated_at, clients(nome)')
-        .eq('organization_id', profile?.organization_id)
-        .eq('status', 'entregue');
-
-      if (errOS) throw errOS;
-
-      // 3. Unificar
+      // 3. Unificar (Agora só transações)
       const listaTransacoes: ExtratoItem[] = (transacoes || []).map((t: Transaction) => ({
         id: t.id,
         descricao: t.description,
@@ -118,19 +109,7 @@ export default function Financeiro() {
         status: (t.status === 'pending') ? 'pending' : 'paid'
       }));
 
-      const listaOS: ExtratoItem[] = (osData || []).map((os: any) => ({
-        id: `os-${os.id}`,
-        descricao: `OS #${os.id} - ${os.clients?.nome || 'Cliente'}`,
-        valor: Number(os.total),
-        tipo: 'entrada',
-        data: os.updated_at ? os.updated_at.split('T')[0] : new Date().toISOString(),
-        icone: Wrench,
-        categoria: 'Serviços',
-        origem: 'os',
-        status: 'paid'
-      }));
-
-      const tudo = [...listaTransacoes, ...listaOS].sort((a, b) => 
+      const tudo = [...listaTransacoes].sort((a, b) =>
         new Date(b.data).getTime() - new Date(a.data).getTime()
       );
 
@@ -147,7 +126,7 @@ export default function Financeiro() {
   const extratoFiltrado = extrato.filter(item => {
     // Filtro Mês/Ano
     if (filtroMes && !item.data.startsWith(filtroMes)) return false;
-    
+
     // Filtro Tipo
     if (filtroTipo !== 'todos' && item.tipo !== filtroTipo) return false;
 
@@ -170,6 +149,7 @@ export default function Financeiro() {
   const abrirModalDespesa = () => {
     setDesc(""); setValor(""); setCat(""); setDataMovimentacao(new Date().toISOString().split('T')[0]); setModalDespesaAberto(true);
   };
+
   const abrirModalReceita = () => {
     setDesc(""); setValor(""); setCat(""); setDataMovimentacao(new Date().toISOString().split('T')[0]); setModalReceitaAberto(true);
   };
@@ -202,8 +182,8 @@ export default function Financeiro() {
     setSaving(true);
     try {
       const { error } = await supabase.from('transactions').update({
-          description: editDesc, amount: Number(editValor), category: editCat, date: editData, status: editEfetivado ? 'paid' : 'pending'
-        }).eq('id', itemParaEditar.id);
+        description: editDesc, amount: Number(editValor), category: editCat, date: editData, status: editEfetivado ? 'paid' : 'pending'
+      }).eq('id', itemParaEditar.id);
       if (error) throw error;
       setModalEdicaoAberto(false); fetchFinanceiro();
     } catch (error: any) { alert("Erro: " + error.message); } finally { setSaving(false); }
@@ -233,41 +213,41 @@ export default function Financeiro() {
       {/* PAINEL DE CONTROLE (FILTROS) */}
       <div className="bg-white p-4 rounded-[24px] shadow-sm border border-stone-100 flex flex-wrap gap-4 items-center">
         <div className="flex items-center gap-2 text-stone-500 text-sm font-bold">
-            <Filter size={18} /> <span className="hidden md:inline">Filtros:</span>
+          <Filter size={18} /> <span className="hidden md:inline">Filtros:</span>
         </div>
-        
+
         {/* Filtro Mês */}
-        <input 
-            type="month" 
-            value={filtroMes} 
-            onChange={(e) => setFiltroMes(e.target.value)}
-            className="bg-[#F8F7F2] px-4 py-2 rounded-xl text-sm font-bold text-[#1A1A1A] outline-none border border-transparent focus:border-[#FACC15]"
+        <input
+          type="month"
+          value={filtroMes}
+          onChange={(e) => setFiltroMes(e.target.value)}
+          className="bg-[#F8F7F2] px-4 py-2 rounded-xl text-sm font-bold text-[#1A1A1A] outline-none border border-transparent focus:border-[#FACC15]"
         />
 
         {/* Filtro Status */}
         <div className="flex bg-[#F8F7F2] p-1 rounded-xl">
-            {['todos', 'paid', 'pending'].map((s) => (
-                <button
-                    key={s}
-                    onClick={() => setFiltroStatus(s as any)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition ${filtroStatus === s ? 'bg-white shadow text-[#1A1A1A]' : 'text-stone-400'}`}
-                >
-                    {s === 'todos' ? 'Tudo' : s === 'paid' ? 'Realizado' : 'Pendente'}
-                </button>
-            ))}
+          {['todos', 'paid', 'pending'].map((s) => (
+            <button
+              key={s}
+              onClick={() => setFiltroStatus(s as any)}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition ${filtroStatus === s ? 'bg-white shadow text-[#1A1A1A]' : 'text-stone-400'}`}
+            >
+              {s === 'todos' ? 'Tudo' : s === 'paid' ? 'Realizado' : 'Pendente'}
+            </button>
+          ))}
         </div>
 
         {/* Filtro Tipo */}
         <div className="flex bg-[#F8F7F2] p-1 rounded-xl">
-            {['todos', 'entrada', 'saida'].map((t) => (
-                <button
-                    key={t}
-                    onClick={() => setFiltroTipo(t as any)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition ${filtroTipo === t ? 'bg-white shadow text-[#1A1A1A]' : 'text-stone-400'}`}
-                >
-                    {t === 'todos' ? 'Tudo' : t === 'entrada' ? 'Entradas' : 'Saídas'}
-                </button>
-            ))}
+          {['todos', 'entrada', 'saida'].map((t) => (
+            <button
+              key={t}
+              onClick={() => setFiltroTipo(t as any)}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition ${filtroTipo === t ? 'bg-white shadow text-[#1A1A1A]' : 'text-stone-400'}`}
+            >
+              {t === 'todos' ? 'Tudo' : t === 'entrada' ? 'Entradas' : 'Saídas'}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -277,7 +257,7 @@ export default function Financeiro() {
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-green-100 text-green-700 rounded-xl"><ArrowUpRight size={20}/></div>
+                <div className="p-2 bg-green-100 text-green-700 rounded-xl"><ArrowUpRight size={20} /></div>
                 <span className="text-xs font-bold text-stone-400 uppercase">Receita (Pago)</span>
               </div>
               {resumoFiltrado.aReceber > 0 && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg">A Receber: {formatMoney(resumoFiltrado.aReceber)}</span>}
@@ -290,7 +270,7 @@ export default function Financeiro() {
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-red-100 text-red-700 rounded-xl"><ArrowDownRight size={20}/></div>
+                <div className="p-2 bg-red-100 text-red-700 rounded-xl"><ArrowDownRight size={20} /></div>
                 <span className="text-xs font-bold text-stone-400 uppercase">Despesa (Pago)</span>
               </div>
               {resumoFiltrado.aPagar > 0 && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg">A Pagar: {formatMoney(resumoFiltrado.aPagar)}</span>}
@@ -303,7 +283,7 @@ export default function Financeiro() {
           <div className="absolute top-[-20%] right-[-20%] w-40 h-40 bg-[#FACC15] rounded-full blur-[60px] opacity-20"></div>
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-2">
-              <div className="p-2 bg-white/20 rounded-xl text-[#FACC15]"><Wallet size={20}/></div>
+              <div className="p-2 bg-white/20 rounded-xl text-[#FACC15]"><Wallet size={20} /></div>
               <span className="text-xs font-bold text-white/50 uppercase">Resultado do Período</span>
             </div>
             <h3 className="text-4xl font-bold text-[#FACC15]">{loading ? "..." : formatMoney(lucroFiltrado)}</h3>
@@ -316,21 +296,21 @@ export default function Financeiro() {
           <div className="flex justify-between items-center mb-6">
             <h3 className="font-bold text-lg text-[#1A1A1A]">Extrato Detalhado</h3>
             <span className="text-xs text-stone-400 italic">
-                {extratoFiltrado.length} registros
+              {extratoFiltrado.length} registros
             </span>
           </div>
 
           <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
             {loading ? (
-               <div className="text-center py-10 text-stone-400 flex flex-col items-center">
-                 <Loader2 className="animate-spin mb-2" /> Carregando...
-               </div>
+              <div className="text-center py-10 text-stone-400 flex flex-col items-center">
+                <Loader2 className="animate-spin mb-2" /> Carregando...
+              </div>
             ) : extratoFiltrado.length === 0 ? (
-               <p className="text-center py-10 text-stone-400">Nenhum registro encontrado para este filtro.</p>
+              <p className="text-center py-10 text-stone-400">Nenhum registro encontrado para este filtro.</p>
             ) : (
               extratoFiltrado.map((item) => (
-                <button 
-                  key={item.id} 
+                <button
+                  key={item.id}
                   onClick={() => abrirModalEdicao(item)}
                   className={`w-full flex items-center justify-between p-4 rounded-2xl transition text-left group border ${item.status === 'pending' ? 'bg-yellow-50 border-yellow-100 hover:bg-yellow-100' : 'bg-[#F8F7F2] border-transparent hover:bg-stone-200'}`}
                 >
@@ -340,10 +320,10 @@ export default function Financeiro() {
                     </div>
                     <div>
                       <p className="font-bold text-[#1A1A1A] text-sm group-hover:underline decoration-stone-400">
-                        {item.descricao} 
+                        {item.descricao}
                         {item.status === 'pending' && <span className="ml-2 text-[10px] bg-yellow-200 text-yellow-800 px-1 rounded uppercase font-bold">Agendado</span>}
                       </p>
-                      <p className="text-xs text-stone-400">{item.categoria} • {new Date(item.data).toLocaleDateString('pt-BR', {timeZone: 'UTC'})} {item.origem === 'os' && <span className="ml-2 bg-stone-200 px-1 rounded text-[10px]">OS</span>}</p>
+                      <p className="text-xs text-stone-400">{item.categoria} • {new Date(item.data).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} {item.origem === 'os' && <span className="ml-2 bg-stone-200 px-1 rounded text-[10px]">OS</span>}</p>
                     </div>
                   </div>
                   <span className={`font-bold ${item.status === 'pending' ? 'text-yellow-600' : (item.tipo === 'entrada' ? 'text-green-600' : 'text-red-500')}`}>
@@ -356,20 +336,20 @@ export default function Financeiro() {
         </div>
 
         <div className="space-y-6">
-           <div className="bg-stone-100 rounded-[32px] p-6 border border-stone-200">
-             <div className="flex justify-between items-center mb-4">
-                <h4 className="font-bold text-stone-600 text-xs uppercase flex items-center gap-2">
-                  <Zap size={14} /> Ações Rápidas
-                </h4>
-             </div>
-             <div className="space-y-3">
-               <button onClick={abrirModalReceita} className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2">
-                  <ArrowUpRight size={20}/> Entrada Avulsa
-               </button>
-               <button onClick={abrirModalDespesa} className="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2">
-                  <ArrowDownRight size={20}/> Registrar Despesa
-               </button>
-             </div>
+          <div className="bg-stone-100 rounded-[32px] p-6 border border-stone-200">
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="font-bold text-stone-600 text-xs uppercase flex items-center gap-2">
+                <Zap size={14} /> Ações Rápidas
+              </h4>
+            </div>
+            <div className="space-y-3">
+              <button onClick={abrirModalReceita} className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2">
+                <ArrowUpRight size={20} /> Entrada Avulsa
+              </button>
+              <button onClick={abrirModalDespesa} className="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2">
+                <ArrowDownRight size={20} /> Registrar Despesa
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -383,27 +363,27 @@ export default function Financeiro() {
               <button onClick={() => setModalDespesaAberto(false)}><X /></button>
             </div>
             <div className="space-y-4">
-               <div className="grid grid-cols-2 gap-4">
-                   <div>
-                        <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Calendar size={12}/> DATA</label>
-                        <input type="date" value={dataMovimentacao} onChange={e=>setDataMovimentacao(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" />
-                   </div>
-                   <div className="flex items-end">
-                       <button onClick={() => setEfetivado(!efetivado)} className={`w-full p-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${efetivado ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-stone-400 border-stone-200'}`}>
-                           {efetivado ? <CheckCircle2 size={18}/> : <Clock size={18}/>} {efetivado ? "Já foi Paga" : "Agendar"}
-                       </button>
-                   </div>
-               </div>
-               <div><label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label><input type="text" value={desc} onChange={e=>setDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none" placeholder="Ex: Conta de Luz" /></div>
-               <div><label className="text-xs font-bold text-stone-400 ml-2">VALOR (R$)</label><input type="number" value={valor} onChange={e=>setValor(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none" placeholder="0.00" /></div>
-               <div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Calendar size={12} /> DATA</label>
+                  <input type="date" value={dataMovimentacao} onChange={e => setDataMovimentacao(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" />
+                </div>
+                <div className="flex items-end">
+                  <button onClick={() => setEfetivado(!efetivado)} className={`w-full p-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${efetivado ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-stone-400 border-stone-200'}`}>
+                    {efetivado ? <CheckCircle2 size={18} /> : <Clock size={18} />} {efetivado ? "Já foi Paga" : "Agendar"}
+                  </button>
+                </div>
+              </div>
+              <div><label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label><input type="text" value={desc} onChange={e => setDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none" placeholder="Ex: Conta de Luz" /></div>
+              <div><label className="text-xs font-bold text-stone-400 ml-2">VALOR (R$)</label><input type="number" value={valor} onChange={e => setValor(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none" placeholder="0.00" /></div>
+              <div>
                 <label className="text-xs font-bold text-stone-400 ml-2">CATEGORIA</label>
-                <select value={cat} onChange={e=>setCat(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none">
-                    <option value="">Selecione...</option><option value="Operacional">Operacional</option><option value="Administrativo">Administrativo</option><option value="Pessoal">Pessoal</option>
+                <select value={cat} onChange={e => setCat(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none">
+                  <option value="">Selecione...</option><option value="Operacional">Operacional</option><option value="Administrativo">Administrativo</option><option value="Pessoal">Pessoal</option>
                 </select>
-               </div>
+              </div>
             </div>
-            <button onClick={() => handleSalvarTransacao('expense')} disabled={saving} className="w-full bg-red-500 text-white font-bold py-4 rounded-2xl flex justify-center gap-2 hover:bg-red-600 transition">{saving ? <Loader2 className="animate-spin"/> : <Save />} Confirmar {efetivado ? "Saída" : "Agendamento"}</button>
+            <button onClick={() => handleSalvarTransacao('expense')} disabled={saving} className="w-full bg-red-500 text-white font-bold py-4 rounded-2xl flex justify-center gap-2 hover:bg-red-600 transition">{saving ? <Loader2 className="animate-spin" /> : <Save />} Confirmar {efetivado ? "Saída" : "Agendamento"}</button>
           </div>
         </div>
       )}
@@ -411,20 +391,20 @@ export default function Financeiro() {
       {modalReceitaAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
-             <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-green-600 flex items-center gap-2"><ArrowUpRight /> Nova Receita Extra</h2><button onClick={() => setModalReceitaAberto(false)}><X /></button></div>
-             <div className="space-y-4">
-               <div className="grid grid-cols-2 gap-4">
-                   <div><label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Calendar size={12}/> DATA</label><input type="date" value={dataMovimentacao} onChange={e=>setDataMovimentacao(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" /></div>
-                   <div className="flex items-end">
-                       <button onClick={() => setEfetivado(!efetivado)} className={`w-full p-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${efetivado ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-stone-400 border-stone-200'}`}>
-                           {efetivado ? <CheckCircle2 size={18}/> : <Clock size={18}/>} {efetivado ? "Recebido" : "A Receber"}
-                       </button>
-                   </div>
-               </div>
-               <div><label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label><input type="text" value={desc} onChange={e=>setDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none" placeholder="Ex: Venda de Sucata" /></div>
-               <div><label className="text-xs font-bold text-stone-400 ml-2">VALOR (R$)</label><input type="number" value={valor} onChange={e=>setValor(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none" placeholder="0.00" /></div>
+            <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-green-600 flex items-center gap-2"><ArrowUpRight /> Nova Receita Extra</h2><button onClick={() => setModalReceitaAberto(false)}><X /></button></div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Calendar size={12} /> DATA</label><input type="date" value={dataMovimentacao} onChange={e => setDataMovimentacao(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" /></div>
+                <div className="flex items-end">
+                  <button onClick={() => setEfetivado(!efetivado)} className={`w-full p-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${efetivado ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-stone-400 border-stone-200'}`}>
+                    {efetivado ? <CheckCircle2 size={18} /> : <Clock size={18} />} {efetivado ? "Recebido" : "A Receber"}
+                  </button>
+                </div>
+              </div>
+              <div><label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label><input type="text" value={desc} onChange={e => setDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none" placeholder="Ex: Venda de Sucata" /></div>
+              <div><label className="text-xs font-bold text-stone-400 ml-2">VALOR (R$)</label><input type="number" value={valor} onChange={e => setValor(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none" placeholder="0.00" /></div>
             </div>
-            <button onClick={() => handleSalvarTransacao('income')} disabled={saving} className="w-full bg-green-600 text-white font-bold py-4 rounded-2xl flex justify-center gap-2 hover:bg-green-700 transition">{saving ? <Loader2 className="animate-spin"/> : <Save />} Confirmar {efetivado ? "Entrada" : "Agendamento"}</button>
+            <button onClick={() => handleSalvarTransacao('income')} disabled={saving} className="w-full bg-green-600 text-white font-bold py-4 rounded-2xl flex justify-center gap-2 hover:bg-green-700 transition">{saving ? <Loader2 className="animate-spin" /> : <Save />} Confirmar {efetivado ? "Entrada" : "Agendamento"}</button>
           </div>
         </div>
       )}
@@ -434,26 +414,26 @@ export default function Financeiro() {
           <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
             <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-[#1A1A1A] flex items-center gap-2">Editar Lançamento</h2><button onClick={() => setModalEdicaoAberto(false)}><X /></button></div>
             <div className="space-y-4">
-               <div className="grid grid-cols-2 gap-4">
-                   <div><label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Calendar size={12}/> DATA</label><input type="date" value={editData} onChange={e=>setEditData(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" /></div>
-                   <div className="flex items-end">
-                       <button onClick={() => setEditEfetivado(!editEfetivado)} className={`w-full p-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${editEfetivado ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-stone-400 border-stone-200'}`}>
-                           {editEfetivado ? <CheckCircle2 size={18}/> : <Clock size={18}/>} {editEfetivado ? "Pago/Recebido" : "Pendente"}
-                       </button>
-                   </div>
-               </div>
-               <div><label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label><input type="text" value={editDesc} onChange={e=>setEditDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium" /></div>
-               <div><label className="text-xs font-bold text-stone-400 ml-2">VALOR (R$)</label><input type="number" value={editValor} onChange={e=>setEditValor(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none" /></div>
-               <div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Calendar size={12} /> DATA</label><input type="date" value={editData} onChange={e => setEditData(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" /></div>
+                <div className="flex items-end">
+                  <button onClick={() => setEditEfetivado(!editEfetivado)} className={`w-full p-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${editEfetivado ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-stone-400 border-stone-200'}`}>
+                    {editEfetivado ? <CheckCircle2 size={18} /> : <Clock size={18} />} {editEfetivado ? "Pago/Recebido" : "Pendente"}
+                  </button>
+                </div>
+              </div>
+              <div><label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label><input type="text" value={editDesc} onChange={e => setEditDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium" /></div>
+              <div><label className="text-xs font-bold text-stone-400 ml-2">VALOR (R$)</label><input type="number" value={editValor} onChange={e => setEditValor(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none" /></div>
+              <div>
                 <label className="text-xs font-bold text-stone-400 ml-2">CATEGORIA</label>
-                <select value={editCat} onChange={e=>setEditCat(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none">
-                    <option value="Geral">Geral</option><option value="Operacional">Operacional</option><option value="Administrativo">Administrativo</option><option value="Pessoal">Pessoal</option><option value="Outras Receitas">Outras Receitas</option>
+                <select value={editCat} onChange={e => setEditCat(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none">
+                  <option value="Geral">Geral</option><option value="Operacional">Operacional</option><option value="Administrativo">Administrativo</option><option value="Pessoal">Pessoal</option><option value="Outras Receitas">Outras Receitas</option>
                 </select>
-               </div>
+              </div>
             </div>
             <div className="flex gap-3 pt-2">
-               <button onClick={handleDeleteTransacao} disabled={deleting} className="p-4 bg-red-100 text-red-500 rounded-2xl hover:bg-red-200 transition disabled:opacity-50">{deleting ? <Loader2 className="animate-spin"/> : <Trash2 size={24} />}</button>
-               <button onClick={handleUpdateTransacao} disabled={saving} className="flex-1 bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl flex justify-center gap-2 hover:scale-105 transition">{saving ? <Loader2 className="animate-spin"/> : <Save />} Salvar Alterações</button>
+              <button onClick={handleDeleteTransacao} disabled={deleting} className="p-4 bg-red-100 text-red-500 rounded-2xl hover:bg-red-200 transition disabled:opacity-50">{deleting ? <Loader2 className="animate-spin" /> : <Trash2 size={24} />}</button>
+              <button onClick={handleUpdateTransacao} disabled={saving} className="flex-1 bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl flex justify-center gap-2 hover:scale-105 transition">{saving ? <Loader2 className="animate-spin" /> : <Save />} Salvar Alterações</button>
             </div>
           </div>
         </div>

@@ -4,7 +4,7 @@ import "@fontsource/plus-jakarta-sans/500.css";
 import "@fontsource/plus-jakarta-sans/600.css";
 import "@fontsource/plus-jakarta-sans/700.css";
 import "./globals.css";
-import { AuthProvider } from "@/src/contexts/AuthContext"; 
+import { AuthProvider } from "@/src/contexts/AuthContext";
 // Note que agora importamos da pasta que você acabou de criar
 import AiButton from "@/components/AiButton";
 
@@ -37,7 +37,7 @@ export default function RootLayout({
       <body className="font-[family-name:var(--font-jakarta)] antialiased">
         <AuthProvider>
           {children}
-          <AiButton />
+          {/* <AiButton /> */}
         </AuthProvider>
       </body>
     </html>
