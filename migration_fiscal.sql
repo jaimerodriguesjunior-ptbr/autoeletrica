@@ -1,0 +1,20 @@
+-- Add fiscal fields to company_settings table
+ALTER TABLE company_settings
+ADD COLUMN IF NOT EXISTS cpf_cnpj text,
+ADD COLUMN IF NOT EXISTS inscricao_estadual text,
+ADD COLUMN IF NOT EXISTS inscricao_municipal text,
+ADD COLUMN IF NOT EXISTS regime_tributario text DEFAULT '1',
+ADD COLUMN IF NOT EXISTS logradouro text,
+ADD COLUMN IF NOT EXISTS numero text,
+ADD COLUMN IF NOT EXISTS complemento text,
+ADD COLUMN IF NOT EXISTS bairro text,
+ADD COLUMN IF NOT EXISTS codigo_municipio_ibge text,
+ADD COLUMN IF NOT EXISTS cidade text,
+ADD COLUMN IF NOT EXISTS uf varchar(2),
+ADD COLUMN IF NOT EXISTS cep text,
+ADD COLUMN IF NOT EXISTS csc_token_production text,
+ADD COLUMN IF NOT EXISTS csc_id_production text,
+ADD COLUMN IF NOT EXISTS csc_token_homologation text,
+ADD COLUMN IF NOT EXISTS csc_id_homologation text,
+ADD COLUMN IF NOT EXISTS certificado_vencimento timestamp with time zone,
+ADD COLUMN IF NOT EXISTS certificado_thumbprint text;
