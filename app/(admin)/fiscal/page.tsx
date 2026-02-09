@@ -337,6 +337,17 @@ export default function FiscalDashboard() {
                                                         {inv.status === 'error' ? <AlertCircle size={16} /> : <RefreshCw size={16} />}
                                                     </button>
                                                 )}
+                                                {/* Botão de Ver Erro (Para mostrar ao contador) */}
+                                                {(inv.status === 'error' || inv.status === 'rejected') && (
+                                                    <button
+                                                        onClick={() => alert(`Detalhes do Erro:\n\n${inv.error_message || inv.motivo_rejeicao || "Sem detalhes disponíveis."}`)}
+                                                        className="p-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg transition"
+                                                        title="Ver Detalhes do Erro"
+                                                    >
+                                                        <AlertCircle size={16} />
+                                                    </button>
+                                                )}
+
                                                 {/* Botão de Correção para Erros */}
                                                 {inv.status === 'error' && (
                                                     <Link href={`/fiscal/corrigir/${inv.id}`}>
