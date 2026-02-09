@@ -481,6 +481,14 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
             console.error("[NuvemFiscal] Erro ao fazer parse da resposta:", responseText);
 
+            // AUTO-FIX: Atualizar status para erro
+            if (invoice && invoice.id) {
+                await supabase.from("fiscal_invoices").update({
+                    status: "error",
+                    error_message: `Resposta inválida da API (Status ${response.status}). Provável timeout.`
+                }).eq("id", invoice.id);
+            }
+
             return { success: false, error: `Erro na resposta da Nuvem Fiscal (Status ${response.status}). Verifique os logs.` };
 
         }
