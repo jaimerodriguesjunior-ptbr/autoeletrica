@@ -1,0 +1,45 @@
+{
+    "ambiente": "producao",
+    "infDPS": {
+        "dhEmi": "2026-01-24T15:00:00.000Z",
+        "dCompet": "2026-01-24",
+        "prest": {
+            "CNPJ": "35181069000143"
+        },
+        "toma": {
+            "CPF": "58212043134",
+            "xNome": "JAIME RODRIGUES JUNIOR",
+            "end": {
+                "xLgr": "AV. MATE LARANJEIRA",
+                "nro": "424",
+                "xBairro": "CENTRO",
+                "endNac": {
+                    "cMun": "4108809",
+                    "CEP": "85980000"
+                }
+            }
+        },
+        "serv": {
+            "cServ": {
+                "cTribNac": "140102",
+                "cTribMun": "4520007",
+                "CNAE": "4520007",
+                "cSitTrib": "0",
+                "xDescServ": "Manutenção e Reparação de Veículos Automotores (R$ 100.00)"
+            }
+        },
+        "valores": {
+            "vServPrest": {
+                "vServ": 100.00
+            },
+            "trib": {
+                "tribMun": {
+                    "tribISSQN": 1,
+                    "tpRetISSQN": 2,
+                    "pAliq": 2.01,
+                    "vISSQN": 2.01
+                }
+            }
+        }
+    }
+}

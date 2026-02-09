@@ -1,0 +1,58 @@
+Assunto: Erro 00060 - Validação IPM Guaíra/PR - Situação Tributária
+
+Prezados,
+
+Estou enfrentando um bloqueio impeditivo na emissão de NFS-e para o município de Guaíra/PR (IBGE: 4108809), que utiliza o sistema IPM Sistemas.
+
+PROBLEMA:
+Todas as tentativas de emissão resultam no erro da prefeitura:
+"00060: Código da situação tributária não está preenchido corretamente."
+
+TESTES REALIZADOS:
+Criei um script de debug isolado para testar sistematicamente diferentes valores do campo cSitTrib. Segue resumo dos resultados:
+
+1. Valores testados para cSitTrib:
+   - "0" (Tributada Integralmente - conforme Nota Técnica IPM 35/2021 v2.8) → Aceito pela Nuvem Fiscal, REJEITADO pela prefeitura com erro 00060
+   - "1" (Tributada com ISSRF) → Aceito pela Nuvem Fiscal, REJEITADO pela prefeitura com erro 00060
+   - "6" (Isenta) → Aceito pela Nuvem Fiscal, REJEITADO pela prefeitura com erro 00060
+   - null (campo omitido) → Aceito pela Nuvem Fiscal, REJEITADO pela prefeitura com erro 00060
+   - "00", "01" → REJEITADOS pela própria Nuvem Fiscal (validação regex)
+
+2. Também testei variações de:
+   - Regime tributário (Normal, Simples Nacional, MEI)
+   - Códigos de serviço (cTribNac, cTribMun)
+   - Combinações de tribISSQN
+
+TODOS os cenários resultaram no mesmo erro 00060.
+
+EVIDÊNCIAS:
+- Anexo: payload_exemplo.json (payload que está sendo enviado)
+- IDs de DPS que falharam: nfs_3a1f088880ad4456a1a6a1b9e384c44a (e vários outros)
+- CNPJ Prestador: 35.181.069/0001-43
+- Município: Guaíra/PR (4108809)
+- Provedor: IPM Sistemas
+
+DOCUMENTAÇÃO:
+A Nota Técnica IPM 35/2021 v2.8 (datada de 14/10/2024) especifica:
+- Campo <situacao_tributaria>: Numérico 4
+- Valor "0" = Tributada Integralmente (TI)
+
+Porém, a validação da Nuvem Fiscal (regex ^(0|[1-9]\\d{0,1})$) permite apenas 1 ou 2 dígitos para cSitTrib.
+
+SUSPEITA:
+Há uma possível incompatibilidade entre:
+1. O formato que a Nuvem Fiscal aceita no JSON (máx 2 dígitos)
+2. O formato que a IPM espera no XML (possivelmente 4 dígitos com zeros à esquerda, ex: "0000")
+
+Ou então a tag <situacao_tributaria> não está sendo gerada corretamente no XML enviado à prefeitura.
+
+TESTE DE INCONSISTÊNCIA:
+Para confirmar se o valor "0" estava sendo reconhecido, enviei cSitTrib="0" (Tributada) com dados de Isenção (tribISSQN=3). Esperava erro de inconsistência lógica (ex: 00062), mas recebi o mesmo erro 00060, sugerindo que o valor não está sendo processado.
+
+SOLICITAÇÃO:
+Peço análise urgente do mapeamento cSitTrib → <situacao_tributaria> para o provedor IPM, especificamente para Guaíra/PR. Posso fornecer logs completos, script de testes e qualquer informação adicional necessária.
+
+Atenciosamente,
+Jaime Rodrigues Junior
+CNPJ: 35.181.069/0001-43
+Telefone/WhatsApp: [seu telefone]

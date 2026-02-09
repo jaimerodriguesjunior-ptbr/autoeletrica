@@ -1,18 +1,19 @@
 "use client";
-import { useState, useEffect } from "react"; 
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation"; 
-import { 
-  LayoutDashboard, 
-  Wrench, 
-  Users, 
-  Package, 
-  LogOut, 
-  Menu, 
-  X, 
+import { usePathname, useRouter } from "next/navigation";
+import {
+  LayoutDashboard,
+  Wrench,
+  Users,
+  Package,
+  LogOut,
+  Menu,
+  X,
   Wallet,
   Sparkles,
-  Settings 
+  Settings,
+  FileText
 } from "lucide-react";
 import { useAuth } from "../../src/contexts/AuthContext";
 
@@ -23,7 +24,7 @@ export default function AdminLayout({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
-  const router = useRouter(); 
+  const router = useRouter();
   const { signOut, user, profile, loading } = useAuth();
 
   useEffect(() => {
@@ -36,13 +37,14 @@ export default function AdminLayout({
     { name: "Dashboard", icon: LayoutDashboard, path: "/dashboard", restricted: false },
     { name: "IA", icon: Sparkles, path: "/ia", restricted: true },
     { name: "OS", icon: Wrench, path: "/os", restricted: false },
+    { name: "Fiscal", icon: FileText, path: "/fiscal", restricted: true },
     { name: "Clientes", icon: Users, path: "/clientes", restricted: false },
     { name: "Estoque e Serviços", icon: Package, path: "/estoque", restricted: false },
     { name: "Caixa", icon: Wallet, path: "/financeiro", restricted: true },
   ];
 
   const isOwner = profile?.cargo === 'owner';
-  
+
   // Menu completo (para a Sidebar)
   const menuItems = allMenuItems.filter(item => {
     if (isOwner) return true;
@@ -50,7 +52,7 @@ export default function AdminLayout({
   });
 
   // Menu filtrado (apenas para a barra inferior mobile)
-  const bottomMenuItems = menuItems.filter(item => 
+  const bottomMenuItems = menuItems.filter(item =>
     ["/ia", "/os", "/clientes", "/estoque"].includes(item.path)
   );
 
@@ -59,14 +61,14 @@ export default function AdminLayout({
   return (
     <div className="min-h-screen bg-[#F8F7F2] flex">
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* SIDEBAR (Menu Completo) */}
-      <aside 
+      <aside
         className={`
           fixed lg:static inset-y-0 left-0 z-50
           w-72 bg-white border-r border-stone-200
@@ -75,11 +77,11 @@ export default function AdminLayout({
           flex flex-col
         `}
       >
-         <div className="p-8 flex items-start justify-between"> 
+        <div className="p-8 flex items-start justify-between">
           <div className="flex flex-col items-center w-full pr-6">
-            <div className="w-32 h-32 mb-2 relative"> 
-               {/* eslint-disable-next-line @next/next/no-img-element */}
-               <img src="/logo.svg" alt="NHT Logo" className="w-full h-full object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
+            <div className="w-32 h-32 mb-2 relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.svg" alt="NHT Logo" className="w-full h-full object-contain" onError={(e) => e.currentTarget.style.display = 'none'} />
             </div>
             <span className="text-xs font-bold text-stone-400 uppercase tracking-[0.2em] text-center">
               Centro Automotivo
@@ -94,15 +96,15 @@ export default function AdminLayout({
           {menuItems.map((item) => {
             const isActive = pathname === item.path || pathname.startsWith(item.path + "/");
             return (
-              <Link 
-                key={item.path} 
+              <Link
+                key={item.path}
                 href={item.path}
                 onClick={() => setSidebarOpen(false)}
               >
                 <div className={`
                   flex items-center gap-3 px-4 py-4 rounded-2xl transition-all duration-200
-                  ${isActive 
-                    ? "bg-[#1A1A1A] text-white shadow-lg shadow-stone-200 font-bold" 
+                  ${isActive
+                    ? "bg-[#1A1A1A] text-white shadow-lg shadow-stone-200 font-bold"
                     : "text-stone-500 hover:bg-stone-50 font-medium"}
                 `}>
                   <item.icon size={20} className={isActive ? "text-[#FACC15]" : ""} />
@@ -114,14 +116,14 @@ export default function AdminLayout({
         </nav>
 
         <div className="p-4 mt-auto border-t border-stone-100">
-          
+
           {/* BOTÃO CONFIGURAÇÕES */}
           {isOwner && (
             <Link href="/configuracoes" onClick={() => setSidebarOpen(false)}>
-               <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-2xl text-stone-500 hover:bg-stone-50 font-medium transition-colors cursor-pointer hover:text-[#1A1A1A]">
+              <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-2xl text-stone-500 hover:bg-stone-50 font-medium transition-colors cursor-pointer hover:text-[#1A1A1A]">
                 <Settings size={20} />
                 <span>Configurações</span>
-               </div>
+              </div>
             </Link>
           )}
 
@@ -135,12 +137,12 @@ export default function AdminLayout({
                 {profile?.nome || "Usuário"}
               </p>
               <p className="text-[10px] uppercase font-bold text-[#FACC15] tracking-wider">
-                 {profile?.cargo === 'owner' ? '👑 GERENTE' : '🔧 COLABORADOR'}
+                {profile?.cargo === 'owner' ? '👑 GERENTE' : '🔧 COLABORADOR'}
               </p>
             </div>
           </div>
 
-          <button 
+          <button
             onClick={signOut}
             className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 font-bold transition-colors"
           >
@@ -152,7 +154,7 @@ export default function AdminLayout({
 
       <main className="flex-1 min-w-0 h-screen overflow-y-auto">
         <header className="sticky top-0 z-30 bg-[#F8F7F2]/95 backdrop-blur-md px-6 py-4 lg:hidden flex justify-between items-center">
-          <button 
+          <button
             onClick={() => setSidebarOpen(true)}
             className="p-2 bg-white rounded-xl shadow-sm border border-stone-200 text-[#1A1A1A]"
           >
@@ -167,7 +169,7 @@ export default function AdminLayout({
       </main>
 
       {/* MENU INFERIOR (Mobile - Apenas 4 itens principais) */}
-      <nav 
+      <nav
         className={`
           fixed bottom-0 left-0 right-0 bg-white border-t border-stone-100 p-2 z-50 lg:hidden 
           justify-around items-center pb-safe shadow-[0_-4px_20px_rgba(0,0,0,0.05)]
@@ -177,8 +179,8 @@ export default function AdminLayout({
         {bottomMenuItems.map((item) => {
           const isActive = pathname === item.path || pathname.startsWith(item.path + "/");
           return (
-            <Link 
-              key={item.path} 
+            <Link
+              key={item.path}
               href={item.path}
               className="flex flex-col items-center gap-1 p-2 w-full"
             >

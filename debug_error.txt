@@ -1,0 +1,32 @@
+Error: Erro ao buscar cidades: 403 {
+    "error": {
+        "code": "InsufficientPermissions",
+        "message": "You do not have enough permissions to perform this action"
+    }
+}
+Stack: Error: Erro ao buscar cidades: 403 {
+    "error": {
+        "code": "InsufficientPermissions",
+        "message": "You do not have enough permissions to perform this action"
+    }
+}
+    at GET (webpack-internal:///(rsc)/./app/api/check-city/route.ts:18:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async G:\projetos\autoeletrica\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:55038
+    at async ek.execute (G:\projetos\autoeletrica\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:45808)
+    at async ek.handle (G:\projetos\autoeletrica\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:56292)
+    at async doRender (G:\projetos\autoeletrica\node_modules\next\dist\server\base-server.js:1357:42)
+    at async cacheEntry.responseCache.get.routeKind (G:\projetos\autoeletrica\node_modules\next\dist\server\base-server.js:1579:28)
+    at async DevServer.renderToResponseWithComponentsImpl (G:\projetos\autoeletrica\node_modules\next\dist\server\base-server.js:1487:28)
+    at async DevServer.renderPageComponent (G:\projetos\autoeletrica\node_modules\next\dist\server\base-server.js:1911:24)
+    at async DevServer.renderToResponseImpl (G:\projetos\autoeletrica\node_modules\next\dist\server\base-server.js:1949:32)
+    at async DevServer.pipeImpl (G:\projetos\autoeletrica\node_modules\next\dist\server\base-server.js:916:25)
+    at async NextNodeServer.handleCatchallRenderRequest (G:\projetos\autoeletrica\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (G:\projetos\autoeletrica\node_modules\next\dist\server\base-server.js:812:17)
+    at async G:\projetos\autoeletrica\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (G:\projetos\autoeletrica\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (G:\projetos\autoeletrica\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (G:\projetos\autoeletrica\node_modules\next\dist\server\lib\router-server.js:173:21)
+    at async handleRequest (G:\projetos\autoeletrica\node_modules\next\dist\server\lib\router-server.js:350:24)
+    at async requestHandlerImpl (G:\projetos\autoeletrica\node_modules\next\dist\server\lib\router-server.js:374:13)
+    at async Server.requestListener (G:\projetos\autoeletrica\node_modules\next\dist\server\lib\start-server.js:141:13)

@@ -5,9 +5,9 @@ import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
 import {
   Users, Plus, Ban, Save, X, Loader2, Key, Unlock,
-  Building2, MapPin, Phone, FileText, Hash, Landmark
+  Building2, MapPin, Phone, FileText, Hash
 } from "lucide-react";
-import { registerCompanyInNuvemFiscal } from "@/src/actions/fiscal";
+import { registerCompanyInNuvemFiscal, getCompanySettings } from "@/src/actions/fiscal";
 
 // Tipos
 type Profile = {
@@ -36,7 +36,14 @@ type CompanySettings = {
   cep: string;
   telefone: string;
   email_contato: string;
+  csc_token_production?: string;
+  csc_id_production?: string;
+  csc_token_homologation?: string;
+  csc_id_homologation?: string;
+  nfse_login?: string;
+  nfse_password?: string;
   endereco?: string; // Mantido para compatibilidade visual se necessário
+  created_at?: string;
 };
 
 export default function Configuracoes() {
@@ -69,9 +76,13 @@ export default function Configuracoes() {
     inscricao_estadual: "", inscricao_municipal: "", regime_tributario: "1",
     logradouro: "", numero: "", complemento: "", bairro: "",
     codigo_municipio_ibge: "", cidade: "", uf: "", cep: "",
-    telefone: "", email_contato: ""
+    telefone: "", email_contato: "",
+    csc_token_production: "", csc_id_production: "",
+    csc_token_homologation: "", csc_id_homologation: "",
+    nfse_login: "", nfse_password: ""
   });
   const [certFile, setCertFile] = useState<File | null>(null);
+  const [certPassword, setCertPassword] = useState("");
 
   // CARGA INICIAL
   useEffect(() => {
@@ -87,8 +98,10 @@ export default function Configuracoes() {
   };
 
   const fetchCompany = async () => {
-    const { data } = await supabase.from('company_settings').select('*').limit(1).single();
-    if (data) setCompany(data);
+    const data = await getCompanySettings();
+    if (data) {
+      setCompany(data);
+    }
   };
 
   // --- AÇÕES DE EQUIPE ---
@@ -155,7 +168,13 @@ export default function Configuracoes() {
         uf: company.uf,
         cep: company.cep,
         email_contato: company.email_contato,
-        telefone: company.telefone
+        telefone: company.telefone,
+        csc_token_production: company.csc_token_production,
+        csc_id_production: company.csc_id_production,
+        csc_token_homologation: company.csc_token_homologation,
+        csc_id_homologation: company.csc_id_homologation,
+        nfse_login: company.nfse_login,
+        nfse_password: company.nfse_password
       });
 
       if (!result.success) throw new Error(result.error);
@@ -171,12 +190,13 @@ export default function Configuracoes() {
   };
 
   const handleUploadCert = async () => {
-    if (!certFile || !company.cnpj) return alert("Selecione um arquivo e preencha o CNPJ.");
+    if (!certFile || !company.cnpj || !certPassword) return alert("Preencha CNPJ, selecione o arquivo e digite a senha.");
     setSaving(true);
     try {
       const formData = new FormData();
       formData.append("file", certFile);
       formData.append("cnpj", company.cnpj);
+      formData.append("password", certPassword);
 
       const res = await fetch("/api/fiscal/certificado", {
         method: "POST",
@@ -189,6 +209,7 @@ export default function Configuracoes() {
       }
       alert("Certificado enviado com sucesso!");
       setCertFile(null);
+      setCertPassword("");
     } catch (e: any) {
       alert("Erro: " + e.message);
     } finally {
@@ -291,6 +312,7 @@ export default function Configuracoes() {
       ================================================================================= */}
       {activeTab === 'company' && (
         <div className="bg-white p-8 rounded-[32px] border border-stone-100 shadow-sm animate-in fade-in slide-in-from-right-4 duration-300 max-w-3xl">
+
           <div className="flex flex-col gap-6">
             <div>
               <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">NOME FANTASIA</label>
@@ -363,17 +385,32 @@ export default function Configuracoes() {
               </div>
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">TELEFONE / WHATSAPP</label>
-              <div className="relative">
-                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
-                <input
-                  type="text"
-                  value={company.telefone || ''}
-                  onChange={e => setCompany({ ...company, telefone: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
-                  placeholder="(00) 99999-9999"
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">TELEFONE / WHATSAPP</label>
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                  <input
+                    type="text"
+                    value={company.telefone || ''}
+                    onChange={e => setCompany({ ...company, telefone: e.target.value })}
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                    placeholder="(00) 99999-9999"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">EMAIL DE CONTATO</label>
+                <div className="relative">
+                  <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                  <input
+                    type="email"
+                    value={company.email_contato || ''}
+                    onChange={e => setCompany({ ...company, email_contato: e.target.value })}
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                    placeholder="contato@empresa.com.br"
+                  />
+                </div>
               </div>
             </div>
 
@@ -471,6 +508,92 @@ export default function Configuracoes() {
               </div>
             </div>
 
+            <div className="pt-6 border-t border-stone-100">
+              <h3 className="text-sm font-bold text-[#1A1A1A] mb-4 flex items-center gap-2"><Key size={18} /> CREDENCIAIS DE EMISSÃO (CSC)</h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* PRODUÇÃO */}
+                <div className="space-y-4 p-4 bg-stone-50 rounded-2xl border border-stone-100">
+                  <p className="text-xs font-bold text-green-600 mb-2">AMBIENTE DE PRODUÇÃO</p>
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">ID DO CSC (Ex: 000001)</label>
+                    <input
+                      type="text"
+                      value={company.csc_id_production || ''}
+                      onChange={e => setCompany({ ...company, csc_id_production: e.target.value })}
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      placeholder="ID Produção"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">CÓDIGO CSC (TOKEN)</label>
+                    <input
+                      type="password"
+                      value={company.csc_token_production || ''}
+                      onChange={e => setCompany({ ...company, csc_token_production: e.target.value })}
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      placeholder="Token Produção"
+                    />
+                  </div>
+                </div>
+
+                {/* HOMOLOGAÇÃO */}
+                <div className="space-y-4 p-4 bg-stone-50 rounded-2xl border border-stone-100">
+                  <p className="text-xs font-bold text-yellow-600 mb-2">AMBIENTE DE HOMOLOGAÇÃO (TESTES)</p>
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">ID DO CSC (Ex: 000001)</label>
+                    <input
+                      type="text"
+                      value={company.csc_id_homologation || ''}
+                      onChange={e => setCompany({ ...company, csc_id_homologation: e.target.value })}
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      placeholder="ID Homologação"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">CÓDIGO CSC (TOKEN)</label>
+                    <input
+                      type="password"
+                      value={company.csc_token_homologation || ''}
+                      onChange={e => setCompany({ ...company, csc_token_homologation: e.target.value })}
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      placeholder="Token Homologação"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-6 border-t border-stone-100">
+              <h3 className="text-sm font-bold text-[#1A1A1A] mb-4 flex items-center gap-2"><FileText size={18} /> CREDENCIAIS DE SERVIÇO (NFS-e)</h3>
+
+              <div className="p-4 bg-stone-50 rounded-2xl border border-stone-100 space-y-4">
+                <p className="text-xs font-bold text-stone-500 mb-2">DADOS DA PREFEITURA</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">LOGIN / USUÁRIO</label>
+                    <input
+                      type="text"
+                      value={company.nfse_login || ''}
+                      onChange={e => setCompany({ ...company, nfse_login: e.target.value })}
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      placeholder="Login Prefeitura"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">SENHA</label>
+                    <input
+                      type="password"
+                      value={company.nfse_password || ''}
+                      onChange={e => setCompany({ ...company, nfse_password: e.target.value })}
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      placeholder="Senha Prefeitura"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div>
               <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">ENDEREÇO COMPLETO (Visualização Antiga)</label>
               <div className="relative">
@@ -497,21 +620,32 @@ export default function Configuracoes() {
 
             <div className="pt-6 border-t border-stone-100 mt-6">
               <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">CERTIFICADO DIGITAL (.pfx)</label>
-              <div className="flex gap-4 items-center">
-                <input
-                  type="file"
-                  accept=".pfx"
-                  onChange={e => setCertFile(e.target.files?.[0] || null)}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
-                />
-                <button
-                  onClick={handleUploadCert}
-                  disabled={saving || !certFile}
-                  className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg transition hover:scale-105 disabled:opacity-50 whitespace-nowrap"
-                >
-                  {saving ? <Loader2 className="animate-spin" /> : <Save size={18} />}
-                  Enviar Certificado
-                </button>
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-4 items-center">
+                  <input
+                    type="file"
+                    accept=".pfx"
+                    onChange={e => setCertFile(e.target.files?.[0] || null)}
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  />
+                </div>
+                <div className="flex gap-4 items-center">
+                  <input
+                    type="password"
+                    value={certPassword}
+                    onChange={e => setCertPassword(e.target.value)}
+                    placeholder="Senha do Certificado"
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  />
+                  <button
+                    onClick={handleUploadCert}
+                    disabled={saving || !certFile || !certPassword}
+                    className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg transition hover:scale-105 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {saving ? <Loader2 className="animate-spin" /> : <Save size={18} />}
+                    Enviar Certificado
+                  </button>
+                </div>
               </div>
               <p className="text-xs text-stone-400 mt-2">O certificado é necessário para emissão de notas. Envie após salvar os dados da empresa.</p>
             </div>

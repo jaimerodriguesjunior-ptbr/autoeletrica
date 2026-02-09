@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "ConfigNfseNotFound",
+    "message": "Configuração de NFS-e da empresa não encontrada. Utilize o endpoint 'PUT /empresas/{cpf_cnpj}/nfse' para informar as configurações."
+  }
+}

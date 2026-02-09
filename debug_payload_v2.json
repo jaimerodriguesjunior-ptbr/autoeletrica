@@ -1,0 +1,41 @@
+{
+  "ambiente": "homologacao",
+  "infDPS": {
+    "dhEmi": "2026-01-22T14:32:42.890Z",
+    "dCompet": "2026-01-22",
+    "prest": {
+      "CNPJ": "49566365000166"
+    },
+    "toma": {
+      "CNPJ": "49566365000166",
+      "xNome": "TOMADOR TESTE",
+      "end": {
+        "xLgr": "RUA TESTE",
+        "nro": "123",
+        "xBairro": "CENTRO",
+        "endNac": {
+          "cMun": "4108809",
+          "CEP": "85980000"
+        }
+      }
+    },
+    "serv": {
+      "cServ": {
+        "cTribNac": "1401",
+        "xDescServ": "Serviço de teste de emissão"
+      }
+    },
+    "valores": {
+      "vServPrest": {
+        "vServ": 10
+      },
+      "trib": {
+        "tribMun": {
+          "tpRetISSQN": 1,
+          "pAliq": 0,
+          "vISSQN": 0
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "error": {
+    "code": "ValidationFailed",
+    "message": "Validation failed",
+    "errors": [
+      {
+        "code": "ValidationError",
+        "message": "O campo 'infDPS.prest.CNPJ' deve ser um CNPJ válido"
+      },
+      {
+        "code": "ValidationError",
+        "message": "O campo 'infDPS.toma.CNPJ' deve ser um CNPJ válido"
+      },
+      {
+        "code": "ValueRequired",
+        "message": "O campo 'infDPS.valores.trib.tribMun.tribISSQN' é obrigatório"
+      }
+    ]
+  }
+}

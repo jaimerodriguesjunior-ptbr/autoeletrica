@@ -6,23 +6,29 @@ export async function POST(req: NextRequest) {
         const formData = await req.formData();
         const file = formData.get("file") as File;
         const cnpj = formData.get("cnpj") as string;
+        const password = formData.get("password") as string;
 
-        if (!file || !cnpj) {
-            return NextResponse.json({ error: "Arquivo ou CNPJ faltando." }, { status: 400 });
+        if (!file || !cnpj || !password) {
+            return NextResponse.json({ error: "Arquivo, CNPJ ou Senha faltando." }, { status: 400 });
         }
 
         const token = await getNuvemFiscalToken();
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
+        const base64Cert = buffer.toString("base64");
 
-        // Enviar binário do certificado
-        const response = await fetch(`${process.env.NUVEMFISCAL_URL}/empresas/${cnpj.replace(/\D/g, "")}/certificado`, {
+        // Enviar JSON com certificado em Base64 e senha
+        const baseUrl = process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br";
+        const response = await fetch(`${baseUrl}/empresas/${cnpj.replace(/\D/g, "")}/certificado`, {
             method: "PUT",
             headers: {
                 "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/x-pkcs12"
+                "Content-Type": "application/json"
             },
-            body: buffer
+            body: JSON.stringify({
+                certificado: base64Cert,
+                password: password
+            })
         });
 
         if (!response.ok) {
