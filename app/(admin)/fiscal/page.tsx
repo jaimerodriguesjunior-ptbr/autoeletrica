@@ -22,6 +22,7 @@ type Invoice = {
     error_message: string | null;
     work_order_id: number | null;
     chave_acesso: string | null;
+    motivo_rejeicao?: string | null;
 };
 
 export default function FiscalDashboard() {
