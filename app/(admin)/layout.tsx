@@ -36,7 +36,7 @@ export default function AdminLayout({
   const allMenuItems = [
     { name: "Dashboard", icon: LayoutDashboard, path: "/dashboard", restricted: false },
     { name: "IA", icon: Sparkles, path: "/ia", restricted: true },
-    { name: "OS", icon: Wrench, path: "/os", restricted: false },
+    { name: "Atendimento", icon: Wrench, path: "/atendimento", restricted: false },
     { name: "Fiscal", icon: FileText, path: "/fiscal", restricted: true },
     { name: "Clientes", icon: Users, path: "/clientes", restricted: false },
     { name: "Estoque e Serviços", icon: Package, path: "/estoque", restricted: false },
@@ -53,7 +53,7 @@ export default function AdminLayout({
 
   // Menu filtrado (apenas para a barra inferior mobile)
   const bottomMenuItems = menuItems.filter(item =>
-    ["/ia", "/os", "/clientes", "/estoque"].includes(item.path)
+    ["/ia", "/atendimento", "/clientes", "/estoque"].includes(item.path)
   );
 
   if (loading || !user) return <div className="min-h-screen bg-[#F8F7F2]"></div>;

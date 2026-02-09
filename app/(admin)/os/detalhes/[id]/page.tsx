@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { 
-  ArrowLeft, CheckCircle, Clock, Wrench, Package, 
+import {
+  ArrowLeft, CheckCircle, Clock, Wrench, Package,
   CheckSquare, MessageCircle, User, Car, Loader2, DollarSign,
   Plus, X, Calendar, CreditCard, Trash2, Printer, Camera
 } from "lucide-react";
@@ -33,6 +33,7 @@ type WorkOrderFull = {
   public_token: string;
   photos: string[] | null;
   clients: {
+    id: string;
     nome: string;
     whatsapp: string | null;
   } | null;
@@ -72,8 +73,8 @@ export default function DetalhesOS() {
   const [modalCheckoutAberto, setModalCheckoutAberto] = useState(false);
   const [formaPagamento, setFormaPagamento] = useState("pix");
   const [dataCheque, setDataCheque] = useState("");
-  const [valorFinal, setValorFinal] = useState(""); 
-  const [parcelas, setParcelas] = useState(1); 
+  const [valorFinal, setValorFinal] = useState("");
+  const [parcelas, setParcelas] = useState(1);
 
   // 1. Busca Dados da OS
   const fetchOS = useCallback(async () => {
@@ -82,7 +83,7 @@ export default function DetalhesOS() {
         .from('work_orders')
         .select(`
           *,
-          clients ( nome, whatsapp ),
+          clients ( id, nome, whatsapp ),
           vehicles ( modelo, placa, fabricante ),
           work_order_items ( id, name, unit_price, quantity, total_price, tipo, product_id )
         `)
@@ -91,12 +92,12 @@ export default function DetalhesOS() {
 
       if (error) throw error;
       setOs(data as unknown as WorkOrderFull);
-      
+
       if (data) {
         setValorFinal(data.total.toString());
         // Formata data para o input type="date" (YYYY-MM-DD)
         if (data.previsao_entrega) {
-            setPrevisao(new Date(data.previsao_entrega).toISOString().split('T')[0]);
+          setPrevisao(new Date(data.previsao_entrega).toISOString().split('T')[0]);
         }
       }
 
@@ -129,11 +130,11 @@ export default function DetalhesOS() {
     }
   }, [fetchOS, fetchCatalogo, id, profile]);
 
-// --- FUNÇÕES DE FOTO (CÓDIGO NOVO) ---
+  // --- FUNÇÕES DE FOTO (CÓDIGO NOVO) ---
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0 || !os) return;
     setUploading(true);
-    
+
     try {
       const file = e.target.files[0];
       const fileExt = file.name.split('.').pop();
@@ -178,8 +179,8 @@ export default function DetalhesOS() {
       const updatedPhotos = currentPhotos.filter((p) => p !== photoUrl);
 
       const { error } = await supabase.from('work_orders').update({ photos: updatedPhotos }).eq('id', os.id);
-      if(error) throw error;
-      
+      if (error) throw error;
+
       setOs({ ...os, photos: updatedPhotos });
     } catch (error: any) {
       alert("Erro ao remover foto: " + error.message);
@@ -208,27 +209,27 @@ export default function DetalhesOS() {
   const handleSalvarPrevisao = async (novaData: string) => {
     setPrevisao(novaData);
     if (!os) return;
-    
+
     try {
-        await supabase
-            .from('work_orders')
-            .update({ previsao_entrega: novaData || null })
-            .eq('id', os.id);
+      await supabase
+        .from('work_orders')
+        .update({ previsao_entrega: novaData || null })
+        .eq('id', os.id);
     } catch (error) {
-        console.error("Erro ao salvar previsão", error);
+      console.error("Erro ao salvar previsão", error);
     }
   };
 
   // REMOVER ITEM (COM ESTORNO)
   const handleRemoverItem = async (item: WorkOrderItem) => {
     if (!os) return;
-    
+
     if (os.status === 'cancelado' || os.status === 'entregue') {
-        return alert("Não é possível remover itens de uma OS finalizada ou cancelada.");
+      return alert("Não é possível remover itens de uma OS finalizada ou cancelada.");
     }
 
     if (!confirm(`Deseja remover "${item.name}" da OS? O estoque será devolvido.`)) return;
-    
+
     setUpdating(true);
     try {
       if (item.tipo === "peca" && item.product_id) {
@@ -237,7 +238,7 @@ export default function DetalhesOS() {
           .select('estoque_atual')
           .eq('id', item.product_id)
           .single();
-        
+
         if (prodData) {
           await supabase
             .from('products')
@@ -254,7 +255,7 @@ export default function DetalhesOS() {
         .update({ total: novoTotal })
         .eq('id', os.id);
 
-      fetchOS(); 
+      fetchOS();
       alert("Item removido e estoque atualizado.");
 
     } catch (error: any) {
@@ -277,7 +278,7 @@ export default function DetalhesOS() {
             .select('estoque_atual')
             .eq('id', item.product_id)
             .single();
-          
+
           if (prodData) {
             await supabase
               .from('products')
@@ -306,7 +307,7 @@ export default function DetalhesOS() {
 
   const handleCheckout = async () => {
     if (!os || !profile?.organization_id) return;
-    
+
     if (formaPagamento === "cheque_pre" && !dataCheque) {
       return alert("Para Cheque-pré, é obrigatório informar a data de depósito.");
     }
@@ -320,11 +321,11 @@ export default function DetalhesOS() {
 
       if (formaPagamento === 'cartao_credito') {
         const valorParcela = valorTotal / parcelas;
-        
+
         for (let i = 1; i <= parcelas; i++) {
           const dataVencimento = new Date(hoje);
           dataVencimento.setDate(hoje.getDate() + (i * 30));
-          
+
           transacoesParaInserir.push({
             organization_id: profile.organization_id,
             work_order_id: os.id,
@@ -332,7 +333,7 @@ export default function DetalhesOS() {
             amount: valorParcela,
             type: 'income',
             category: 'Serviços',
-            status: 'pending', 
+            status: 'pending',
             date: dataVencimento.toISOString().split('T')[0]
           });
         }
@@ -345,8 +346,8 @@ export default function DetalhesOS() {
           amount: valorTotal,
           type: 'income',
           category: 'Serviços',
-          status: 'pending', 
-          date: dataCheque 
+          status: 'pending',
+          date: dataCheque
         });
 
       } else {
@@ -357,16 +358,16 @@ export default function DetalhesOS() {
           amount: valorTotal,
           type: 'income',
           category: 'Serviços',
-          status: 'paid', 
+          status: 'paid',
           date: hoje.toISOString().split('T')[0]
         });
       }
 
       const { error: osError } = await supabase
         .from('work_orders')
-        .update({ 
+        .update({
           status: 'entregue',
-          total: valorTotal 
+          total: valorTotal
         })
         .eq('id', os.id);
 
@@ -420,7 +421,7 @@ export default function DetalhesOS() {
           .select('estoque_atual')
           .eq('id', item.id)
           .single();
-        
+
         if (prodData) {
           const novoEstoque = (prodData.estoque_atual || 0) - quantidade;
           await supabase
@@ -450,14 +451,14 @@ export default function DetalhesOS() {
   };
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-  
+
   const getStatusColor = (stepStatus: string) => {
     if (!os) return "";
     const currentStatus = os.status;
     const flow = ['orcamento', 'aprovado', 'aguardando_peca', 'em_servico', 'pronto', 'entregue'];
     const currentIndex = flow.indexOf(currentStatus);
     const stepIndex = flow.indexOf(stepStatus);
-    
+
     if (currentStatus === 'cancelado') return "bg-gray-100 text-gray-400 border-gray-200 grayscale";
 
     if (currentStatus === stepStatus) return "bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A] shadow-lg scale-105";
@@ -481,12 +482,12 @@ export default function DetalhesOS() {
     }
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={40}/></div>;
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={40} /></div>;
   if (!os) return null;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-32">
-      
+
       {/* 1. CABEÇALHO */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -503,34 +504,34 @@ export default function DetalhesOS() {
               </span>
             </div>
             <p className="text-stone-500 text-xs flex items-center gap-2 mt-1">
-              <Car size={12}/> {os.vehicles?.modelo} <span className="text-stone-300">|</span> <span className="font-mono">{os.vehicles?.placa}</span>
+              <Car size={12} /> {os.vehicles?.modelo} <span className="text-stone-300">|</span> <span className="font-mono">{os.vehicles?.placa}</span>
             </p>
           </div>
         </div>
-        
-        <div className="flex gap-2">
-            {/* BOTÃO DE IMPRESSÃO (NOVO) */}
-            <Link href={`/imprimir/os/${os.id}`} target="_blank">
-            
-                <button className="bg-white border border-stone-200 text-[#1A1A1A] px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-stone-50 transition">
-                    <Printer size={18} /> Imprimir
-                </button>
-            </Link>
 
-            <button 
-                onClick={handleWhatsapp}
-                className="bg-green-100 text-green-700 px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-green-200 transition"
-            >
-                <MessageCircle size={18} /> Falar com Cliente
+        <div className="flex gap-2">
+          {/* BOTÃO DE IMPRESSÃO (NOVO) */}
+          <Link href={`/imprimir/os/${os.id}`} target="_blank">
+
+            <button className="bg-white border border-stone-200 text-[#1A1A1A] px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-stone-50 transition">
+              <Printer size={18} /> Imprimir
             </button>
+          </Link>
+
+          <button
+            onClick={handleWhatsapp}
+            className="bg-green-100 text-green-700 px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-green-200 transition"
+          >
+            <MessageCircle size={18} /> Falar com Cliente
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
+
         {/* 2. CONTROLE DE FLUXO (ESQUERDA) */}
         <div className="md:col-span-2 space-y-6">
-          
+
           <div className="bg-white rounded-[32px] p-8 shadow-sm border border-stone-100">
             <h2 className="text-lg font-bold text-[#1A1A1A] mb-6 flex items-center gap-2">
               <Clock size={20} /> Linha do Tempo
@@ -542,12 +543,12 @@ export default function DetalhesOS() {
               {/* CARD: ORÇAMENTO */}
               <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('orcamento')}`}>
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><DollarSign size={20}/></div>
+                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><DollarSign size={20} /></div>
                   <div><p className="font-bold text-sm">Orçamento Criado</p><p className="text-xs opacity-80">Aguardando aprovação</p></div>
                 </div>
                 {os.status === 'orcamento' && (
                   <button onClick={() => handleStatusChange('aprovado')} disabled={updating} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-blue-700 transition flex items-center gap-2">
-                    {updating ? <Loader2 size={14} className="animate-spin"/> : <CheckCircle size={14} />} Aprovar
+                    {updating ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} Aprovar
                   </button>
                 )}
               </div>
@@ -555,7 +556,7 @@ export default function DetalhesOS() {
               {/* CARD: APROVADO / AGUARDANDO PEÇA */}
               <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('aguardando_peca')}`}>
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Package size={20}/></div>
+                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Package size={20} /></div>
                   <div><p className="font-bold text-sm">Peças / Insumos</p><p className="text-xs opacity-80">Verificando estoque</p></div>
                 </div>
                 {(os.status === 'aprovado' || os.status === 'aguardando_peca') && (
@@ -568,7 +569,7 @@ export default function DetalhesOS() {
               {/* CARD: EM SERVIÇO */}
               <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('em_servico')}`}>
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Wrench size={20}/></div>
+                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Wrench size={20} /></div>
                   <div><p className="font-bold text-sm">Em Execução</p><p className="text-xs opacity-80">Mecânico trabalhando</p></div>
                 </div>
                 {os.status === 'em_servico' && (
@@ -581,7 +582,7 @@ export default function DetalhesOS() {
               {/* CARD: PRONTO */}
               <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('pronto')}`}>
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><CheckCircle size={20}/></div>
+                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><CheckCircle size={20} /></div>
                   <div><p className="font-bold text-sm">Pronto p/ Entrega</p><p className="text-xs opacity-80">Veículo testado e liberado</p></div>
                 </div>
                 {os.status === 'pronto' && (
@@ -602,36 +603,36 @@ export default function DetalhesOS() {
               {os.description || "Nenhuma descrição informada."}
             </p>
           </div>
-  
 
-{/* === GALERIA DE FOTOS (NOVO) === */}
+
+          {/* === GALERIA DE FOTOS (NOVO) === */}
           <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 mt-6">
             <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-[#1A1A1A] text-sm flex items-center gap-2">
-                  <Camera size={16} /> Fotos do Veículo
-                </h3>
-                <span className="text-xs text-stone-400">{os.photos?.length || 0} fotos</span>
+              <h3 className="font-bold text-[#1A1A1A] text-sm flex items-center gap-2">
+                <Camera size={16} /> Fotos do Veículo
+              </h3>
+              <span className="text-xs text-stone-400">{os.photos?.length || 0} fotos</span>
             </div>
 
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {/* Botão Adicionar */}
-                <label className="aspect-square rounded-2xl border-2 border-dashed border-stone-200 flex flex-col items-center justify-center cursor-pointer hover:border-[#FACC15] hover:bg-yellow-50 transition gap-1 relative">
-                    {uploading ? <Loader2 className="animate-spin text-stone-400"/> : <Plus size={24} className="text-stone-300"/>}
-                    <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
-                </label>
+              {/* Botão Adicionar */}
+              <label className="aspect-square rounded-2xl border-2 border-dashed border-stone-200 flex flex-col items-center justify-center cursor-pointer hover:border-[#FACC15] hover:bg-yellow-50 transition gap-1 relative">
+                {uploading ? <Loader2 className="animate-spin text-stone-400" /> : <Plus size={24} className="text-stone-300" />}
+                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
+              </label>
 
-                {/* Lista de Fotos */}
-                {os.photos?.map((url, idx) => (
-                    <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-stone-100 group">
-                        <Image src={url} alt="Foto OS" fill className="object-cover" />
-                        <button 
-                          onClick={() => handleRemoveImage(url)}
-                          className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition shadow-sm z-10"
-                        >
-                          <X size={12} />
-                        </button>
-                    </div>
-                ))}
+              {/* Lista de Fotos */}
+              {os.photos?.map((url, idx) => (
+                <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-stone-100 group">
+                  <Image src={url} alt="Foto OS" fill className="object-cover" />
+                  <button
+                    onClick={() => handleRemoveImage(url)}
+                    className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition shadow-sm z-10"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -642,23 +643,30 @@ export default function DetalhesOS() {
         {/* 3. RESUMO (DIREITA) */}
         <div className="space-y-6">
           <div className="bg-[#F8F7F2] rounded-[32px] p-6 border border-stone-200 h-fit">
-            
+
             {/* CAMPO DE PREVISÃO (NOVO) */}
             <div className="mb-6 bg-white p-3 rounded-2xl border border-stone-100">
-                <label className="text-[10px] font-bold text-stone-400 flex items-center gap-1 mb-1">
-                    <Calendar size={12}/> PREVISÃO DE ENTREGA
-                </label>
-                <input 
-                    type="date" 
-                    value={previsao} 
-                    onChange={(e) => handleSalvarPrevisao(e.target.value)}
-                    className="w-full font-bold text-[#1A1A1A] outline-none bg-transparent"
-                />
+              <label className="text-[10px] font-bold text-stone-400 flex items-center gap-1 mb-1">
+                <Calendar size={12} /> PREVISÃO DE ENTREGA
+              </label>
+              <input
+                type="date"
+                value={previsao}
+                onChange={(e) => handleSalvarPrevisao(e.target.value)}
+                className="w-full font-bold text-[#1A1A1A] outline-none bg-transparent"
+              />
             </div>
 
-            <h3 className="font-bold text-[#1A1A1A] mb-4 flex items-center gap-2">
-              <User size={16} /> Cliente
-            </h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                <User size={16} /> Cliente
+              </h3>
+              {os.clients?.id && (
+                <Link href={`/clientes/${os.clients.id}`} className="text-xs font-bold text-stone-400 hover:text-[#1A1A1A] transition flex items-center gap-1">
+                  Editar
+                </Link>
+              )}
+            </div>
             <div className="mb-6">
               <p className="text-lg font-bold text-[#1A1A1A]">{os.clients?.nome}</p>
               <p className="text-sm text-stone-500">{os.clients?.whatsapp || "Sem telefone"}</p>
@@ -669,7 +677,7 @@ export default function DetalhesOS() {
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-[#1A1A1A]">Itens da OS</h3>
               {os.status !== 'cancelado' && (
-                <button 
+                <button
                   onClick={() => setModalAberto(true)}
                   className="bg-white hover:bg-stone-100 text-[#1A1A1A] p-2 rounded-full shadow-sm transition"
                 >
@@ -687,9 +695,9 @@ export default function DetalhesOS() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-bold text-[#1A1A1A]">{formatCurrency(item.total_price)}</span>
-                    
+
                     {/* BOTÃO SEM CONDICIONAL VISUAL (RESOLVIDO) */}
-                    <button 
+                    <button
                       onClick={() => handleRemoverItem(item)}
                       className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition"
                       title="Remover Item"
@@ -710,11 +718,11 @@ export default function DetalhesOS() {
               </div>
             </div>
           </div>
-          
+
           <div className="text-center">
             <p className="text-xs text-stone-400 mb-2">Criado em: {new Date(os.created_at).toLocaleDateString()}</p>
             {os.status !== 'cancelado' && os.status !== 'entregue' && (
-              <button 
+              <button
                 onClick={handleCancelarOS}
                 className="text-red-400 text-xs font-bold hover:underline"
               >
@@ -740,17 +748,15 @@ export default function DetalhesOS() {
             <div className="flex gap-2 bg-[#F8F7F2] p-1 rounded-xl">
               <button
                 onClick={() => setAbaItem("pecas")}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${
-                  abaItem === "pecas" ? "bg-white shadow text-[#1A1A1A]" : "text-stone-400"
-                }`}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${abaItem === "pecas" ? "bg-white shadow text-[#1A1A1A]" : "text-stone-400"
+                  }`}
               >
                 Peças
               </button>
               <button
                 onClick={() => setAbaItem("servicos")}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${
-                  abaItem === "servicos" ? "bg-white shadow text-[#1A1A1A]" : "text-stone-400"
-                }`}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${abaItem === "servicos" ? "bg-white shadow text-[#1A1A1A]" : "text-stone-400"
+                  }`}
               >
                 Serviços
               </button>
@@ -819,10 +825,10 @@ export default function DetalhesOS() {
               <p className="text-xs text-stone-500 uppercase font-bold">Total a Receber</p>
               <div className="flex items-center justify-center gap-1 mt-1">
                 <span className="text-stone-400 font-bold">R$</span>
-                <input 
-                  type="number" 
-                  value={valorFinal} 
-                  onChange={(e) => setValorFinal(e.target.value)} 
+                <input
+                  type="number"
+                  value={valorFinal}
+                  onChange={(e) => setValorFinal(e.target.value)}
                   className="bg-transparent text-3xl font-bold text-[#1A1A1A] w-32 text-center outline-none border-b border-stone-300 focus:border-[#FACC15] transition"
                 />
               </div>
@@ -832,9 +838,9 @@ export default function DetalhesOS() {
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-bold text-stone-400 ml-2">FORMA DE PAGAMENTO</label>
-                <select 
-                  value={formaPagamento} 
-                  onChange={(e) => setFormaPagamento(e.target.value)} 
+                <select
+                  value={formaPagamento}
+                  onChange={(e) => setFormaPagamento(e.target.value)}
                   className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A]"
                 >
                   <option value="pix">Pix</option>
@@ -848,15 +854,15 @@ export default function DetalhesOS() {
               {formaPagamento === "cartao_credito" && (
                 <div className="animate-in slide-in-from-top-2">
                   <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
-                    <CreditCard size={12}/> PARCELAS
+                    <CreditCard size={12} /> PARCELAS
                   </label>
-                  <select 
-                    value={parcelas} 
-                    onChange={(e) => setParcelas(Number(e.target.value))} 
+                  <select
+                    value={parcelas}
+                    onChange={(e) => setParcelas(Number(e.target.value))}
                     className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A]"
                   >
-                    {[1,2,3,4,5,6,10,12].map(n => (
-                      <option key={n} value={n}>{n}x de {formatCurrency(Number(valorFinal)/n)}</option>
+                    {[1, 2, 3, 4, 5, 6, 10, 12].map(n => (
+                      <option key={n} value={n}>{n}x de {formatCurrency(Number(valorFinal) / n)}</option>
                     ))}
                   </select>
                 </div>
@@ -865,10 +871,10 @@ export default function DetalhesOS() {
               {formaPagamento === "cheque_pre" && (
                 <div className="animate-in slide-in-from-top-2">
                   <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
-                    <Calendar size={12}/> DATA DE DEPÓSITO
+                    <Calendar size={12} /> DATA DE DEPÓSITO
                   </label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     value={dataCheque}
                     onChange={(e) => setDataCheque(e.target.value)}
                     className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A]"
@@ -877,12 +883,12 @@ export default function DetalhesOS() {
               )}
             </div>
 
-            <button 
-              onClick={handleCheckout} 
-              disabled={updating} 
+            <button
+              onClick={handleCheckout}
+              disabled={updating}
               className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 hover:scale-105 transition"
             >
-              {updating ? <Loader2 className="animate-spin" /> : <CheckCircle />} 
+              {updating ? <Loader2 className="animate-spin" /> : <CheckCircle />}
               Confirmar Recebimento
             </button>
           </div>
