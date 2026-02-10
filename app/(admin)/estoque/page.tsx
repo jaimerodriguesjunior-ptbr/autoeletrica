@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
-import { 
-  Search, Plus, Package, AlertTriangle, 
-  TrendingUp, Filter, RefreshCw, ArrowRight, Loader2, Wrench, Edit, Trash2, X, Save, AlertCircle
+import {
+  Search, Plus, Package, AlertTriangle,
+  TrendingUp, Filter, RefreshCw, ArrowRight, Loader2, Wrench, Edit, Trash2, X, Save, AlertCircle, FileJson
 } from "lucide-react";
 
 type Product = {
@@ -31,7 +31,7 @@ export default function EstoqueEServicos() {
 
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'products' | 'services'>('products');
-  
+
   // Filtros
   const [searchTerm, setSearchTerm] = useState("");
   const [productFilter, setProductFilter] = useState<'todos' | 'baixo' | 'preco'>('todos');
@@ -83,19 +83,19 @@ export default function EstoqueEServicos() {
   const filteredProducts = products.filter(p => {
     // 1. Filtro de Texto
     const matchesSearch = p.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (p.marca && p.marca.toLowerCase().includes(searchTerm.toLowerCase()));
-    
+      (p.marca && p.marca.toLowerCase().includes(searchTerm.toLowerCase()));
+
     if (!matchesSearch) return false;
 
     // 2. Filtro de Categoria (Botões)
     if (productFilter === 'baixo') return p.estoque_atual <= p.estoque_min;
     if (productFilter === 'preco') return p.custo_reposicao > p.custo_contabil;
-    
+
     return true;
   });
 
   // --- LÓGICA DE SERVIÇOS ---
-  const filteredServices = services.filter(s => 
+  const filteredServices = services.filter(s =>
     s.nome.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -158,23 +158,31 @@ export default function EstoqueEServicos() {
 
   return (
     <div className="space-y-6 pb-32">
-      
+
       {/* 1. CABEÇALHO */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-[#1A1A1A]">Estoque e Serviços</h1>
           <p className="text-stone-500 text-sm mt-1">Gerencie seu catálogo de peças e mão de obra</p>
         </div>
-        
+
         {view === 'products' ? (
-          <button 
-            onClick={() => window.location.href = "/estoque/novo"}
-            className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-6 py-3 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105"
-          >
-            <Plus size={20} /> Novo Produto
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => window.location.href = "/estoque/importar"}
+              className="bg-white hover:bg-stone-50 text-[#1A1A1A] px-6 py-3 rounded-full font-bold text-sm shadow-md flex items-center gap-2 border border-stone-200 transition"
+            >
+              <FileJson size={20} /> Importar XML
+            </button>
+            <button
+              onClick={() => window.location.href = "/estoque/novo"}
+              className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-6 py-3 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105"
+            >
+              <Plus size={20} /> Novo Produto
+            </button>
+          </div>
         ) : (
-          <button 
+          <button
             onClick={() => openServiceModal()}
             className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-6 py-3 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105"
           >
@@ -185,19 +193,17 @@ export default function EstoqueEServicos() {
 
       {/* 2. SELETOR DE ABAS PRINCIPAIS (MOVIDO PARA CIMA) */}
       <div className="flex p-1 bg-stone-200 rounded-[20px] w-fit">
-        <button 
+        <button
           onClick={() => setView('products')}
-          className={`px-6 py-3 rounded-[16px] text-sm font-bold transition-all ${
-            view === 'products' ? 'bg-white text-[#1A1A1A] shadow-md' : 'text-stone-500 hover:text-stone-700'
-          }`}
+          className={`px-6 py-3 rounded-[16px] text-sm font-bold transition-all ${view === 'products' ? 'bg-white text-[#1A1A1A] shadow-md' : 'text-stone-500 hover:text-stone-700'
+            }`}
         >
           Produtos / Peças
         </button>
-        <button 
+        <button
           onClick={() => setView('services')}
-          className={`px-6 py-3 rounded-[16px] text-sm font-bold transition-all ${
-            view === 'services' ? 'bg-white text-[#1A1A1A] shadow-md' : 'text-stone-500 hover:text-stone-700'
-          }`}
+          className={`px-6 py-3 rounded-[16px] text-sm font-bold transition-all ${view === 'services' ? 'bg-white text-[#1A1A1A] shadow-md' : 'text-stone-500 hover:text-stone-700'
+            }`}
         >
           Mão de Obra
         </button>
@@ -234,45 +240,42 @@ export default function EstoqueEServicos() {
 
       {/* 4. ÁREA DE LISTAGEM */}
       <div className="bg-white rounded-[32px] border border-stone-100 shadow-sm overflow-hidden min-h-[300px]">
-        
+
         {/* BARRA DE FERRAMENTAS */}
         <div className="p-4 border-b border-stone-50 space-y-4">
           {/* Busca Geral */}
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={20} />
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={view === 'products' ? "Buscar peça por nome, marca..." : "Buscar serviço..."} 
-              className="w-full bg-[#F8F7F2] pl-12 pr-4 py-3 rounded-2xl outline-none focus:ring-2 focus:ring-[#FACC15] text-sm font-bold text-[#1A1A1A]" 
+              placeholder={view === 'products' ? "Buscar peça por nome, marca..." : "Buscar serviço..."}
+              className="w-full bg-[#F8F7F2] pl-12 pr-4 py-3 rounded-2xl outline-none focus:ring-2 focus:ring-[#FACC15] text-sm font-bold text-[#1A1A1A]"
             />
           </div>
 
           {/* Filtros Específicos de Produto */}
           {view === 'products' && (
             <div className="flex gap-2 overflow-x-auto pb-1">
-              <button 
+              <button
                 onClick={() => setProductFilter('todos')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold border transition whitespace-nowrap ${
-                  productFilter === 'todos' ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]' : 'bg-white text-stone-500 border-stone-200 hover:bg-stone-50'
-                }`}
+                className={`px-4 py-2 rounded-xl text-xs font-bold border transition whitespace-nowrap ${productFilter === 'todos' ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]' : 'bg-white text-stone-500 border-stone-200 hover:bg-stone-50'
+                  }`}
               >
                 Todos
               </button>
-              <button 
+              <button
                 onClick={() => setProductFilter('baixo')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1 whitespace-nowrap ${
-                  productFilter === 'baixo' ? 'bg-red-500 text-white border-red-500' : 'bg-white text-stone-500 border-stone-200 hover:bg-red-50 hover:text-red-500'
-                }`}
+                className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1 whitespace-nowrap ${productFilter === 'baixo' ? 'bg-red-500 text-white border-red-500' : 'bg-white text-stone-500 border-stone-200 hover:bg-red-50 hover:text-red-500'
+                  }`}
               >
                 <AlertTriangle size={14} /> Estoque Baixo
               </button>
-              <button 
+              <button
                 onClick={() => setProductFilter('preco')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1 whitespace-nowrap ${
-                  productFilter === 'preco' ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-white text-stone-500 border-stone-200 hover:bg-yellow-50 hover:text-yellow-600'
-                }`}
+                className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1 whitespace-nowrap ${productFilter === 'preco' ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-white text-stone-500 border-stone-200 hover:bg-yellow-50 hover:text-yellow-600'
+                  }`}
               >
                 <TrendingUp size={14} /> Alerta de Preço
               </button>
@@ -282,10 +285,10 @@ export default function EstoqueEServicos() {
 
         <div className="overflow-x-auto">
           {loading ? (
-             <div className="flex flex-col items-center justify-center py-20 text-stone-400 gap-2">
-               <Loader2 className="animate-spin text-[#FACC15]" size={32} />
-               <p className="text-xs font-medium">Carregando catálogo...</p>
-             </div>
+            <div className="flex flex-col items-center justify-center py-20 text-stone-400 gap-2">
+              <Loader2 className="animate-spin text-[#FACC15]" size={32} />
+              <p className="text-xs font-medium">Carregando catálogo...</p>
+            </div>
           ) : (
             <table className="w-full text-left">
               <thead className="bg-[#F8F7F2] text-stone-500 text-[10px] uppercase font-bold tracking-wider">
@@ -298,7 +301,7 @@ export default function EstoqueEServicos() {
                 </tr>
               </thead>
               <tbody className="text-sm">
-                
+
                 {/* --- LISTA DE PRODUTOS --- */}
                 {view === 'products' && filteredProducts.map((p) => {
                   const status = getProductStatus(p);
@@ -309,7 +312,7 @@ export default function EstoqueEServicos() {
                         <p className="text-xs text-stone-400">{p.marca || "Marca não inf."}</p>
                         {status === 'atencao_preco' && (
                           <div className="mt-1 flex items-center gap-2 text-[10px] bg-yellow-50 text-yellow-700 px-2 py-1 rounded w-fit">
-                             <span>Pagou: R$ {p.custo_contabil.toFixed(2)}</span>
+                            <span>Pagou: R$ {p.custo_contabil.toFixed(2)}</span>
                             <ArrowRight size={10} />
                             <span className="font-bold">Hoje: R$ {p.custo_reposicao.toFixed(2)}</span>
                           </div>
@@ -330,7 +333,7 @@ export default function EstoqueEServicos() {
                         {status === 'ok' && <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">OK</span>}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button 
+                        <button
                           onClick={() => window.location.href = `/estoque/${p.id}`}
                           className="p-2 hover:bg-stone-200 rounded-full text-stone-400 hover:text-[#1A1A1A] transition"
                         >
@@ -360,7 +363,7 @@ export default function EstoqueEServicos() {
                     </td>
                   </tr>
                 ))}
-                
+
                 {!loading && ((view === 'products' && filteredProducts.length === 0) || (view === 'services' && filteredServices.length === 0)) && (
                   <tr>
                     <td colSpan={5} className="py-20 text-center text-stone-400">
@@ -389,35 +392,35 @@ export default function EstoqueEServicos() {
             </div>
 
             <div className="space-y-4">
-               <div>
+              <div>
                 <label className="text-xs font-bold text-stone-400 ml-2">NOME DO SERVIÇO</label>
-                <input 
-                  type="text" 
-                  value={serviceName} 
-                  onChange={e=>setServiceName(e.target.value)} 
-                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium" 
+                <input
+                  type="text"
+                  value={serviceName}
+                  onChange={e => setServiceName(e.target.value)}
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium"
                   placeholder="Ex: Instalação de Som"
                 />
-               </div>
-               
-               <div>
+              </div>
+
+              <div>
                 <label className="text-xs font-bold text-stone-400 ml-2">PREÇO BASE (R$)</label>
-                <input 
-                  type="number" 
-                  value={servicePrice} 
-                  onChange={e=>setServicePrice(e.target.value)} 
-                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none" 
-                  placeholder="0.00" 
+                <input
+                  type="number"
+                  value={servicePrice}
+                  onChange={e => setServicePrice(e.target.value)}
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none"
+                  placeholder="0.00"
                 />
-               </div>
+              </div>
             </div>
 
-            <button 
-              onClick={handleSaveService} 
-              disabled={serviceSaving} 
+            <button
+              onClick={handleSaveService}
+              disabled={serviceSaving}
               className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl flex justify-center gap-2 hover:scale-105 transition"
             >
-              {serviceSaving ? <Loader2 className="animate-spin"/> : <Save />} Salvar Serviço
+              {serviceSaving ? <Loader2 className="animate-spin" /> : <Save />} Salvar Serviço
             </button>
           </div>
         </div>

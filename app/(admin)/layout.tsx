@@ -56,10 +56,10 @@ export default function AdminLayout({
     ["/ia", "/atendimento", "/clientes", "/estoque"].includes(item.path)
   );
 
-  if (loading || !user) return <div className="min-h-screen bg-[#F8F7F2]"></div>;
+  if (loading || !user) return <div className="min-h-screen bg-[#E7E5E4]"></div>;
 
   return (
-    <div className="min-h-screen bg-[#F8F7F2] flex">
+    <div className="min-h-screen bg-[#E7E5E4] flex">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
