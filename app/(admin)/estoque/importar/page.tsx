@@ -23,6 +23,7 @@ type ImportedProduct = {
     matchedProduct?: DatabaseProduct | null; // Produto do Banco encontrado
     status: 'matched' | 'new' | 'manual'; // Estado da conciliação
     selectedAction: 'update' | 'create' | 'ignore'; // Ação escolhida
+    updateName: boolean; // Atualizar nome do produto com o da nota?
 };
 
 type DatabaseProduct = {
@@ -113,7 +114,8 @@ export default function ImportarXML() {
                 ncm: d.prod.NCM,
                 cfop: d.prod.CFOP,
                 status: 'new',
-                selectedAction: 'create'
+                selectedAction: 'create',
+                updateName: false
             }));
 
             // Buscar todos os produtos do banco p/ tentar match
@@ -134,7 +136,7 @@ export default function ImportarXML() {
                 }
 
                 if (match) {
-                    return { ...item, matchedProduct: match, status: 'matched', selectedAction: 'update' } as ImportedProduct;
+                    return { ...item, matchedProduct: match, status: 'matched', selectedAction: 'update', updateName: false } as ImportedProduct;
                 }
                 return item;
             });
@@ -210,7 +212,9 @@ export default function ImportarXML() {
                         estoque_atual: newStock,
                         custo_reposicao: item.vUnCom,
                         // Atualiza EAN se não tiver
-                        ...(!item.matchedProduct?.ean && item.cEAN ? { ean: item.cEAN } : {})
+                        ...(!item.matchedProduct?.ean && item.cEAN ? { ean: item.cEAN } : {}),
+                        // Atualiza nome se o usuário optou
+                        ...(item.updateName ? { nome: item.xProd } : {})
                     }).eq('id', prodId);
 
                     if (error) throw error;
@@ -333,20 +337,40 @@ export default function ImportarXML() {
                                     {/* LADO DIREITO: SISTEMA */}
                                     <div className="relative">
                                         {item.status === 'matched' || item.status === 'manual' ? (
-                                            <div className="flex items-center gap-3 bg-green-50 border border-green-200 p-3 rounded-xl">
-                                                <CheckCircle className="text-green-600 shrink-0" size={20} />
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="font-bold text-green-900 text-sm truncate">{item.matchedProduct?.nome}</p>
-                                                    <p className="text-xs text-green-700">
-                                                        Atualizar estoque: <span className="font-bold">{item.matchedProduct?.estoque_atual} ➝ {item.matchedProduct!.estoque_atual + item.qCom}</span>
-                                                    </p>
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-3 bg-green-50 border border-green-200 p-3 rounded-xl">
+                                                    <CheckCircle className="text-green-600 shrink-0" size={20} />
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-bold text-green-900 text-sm truncate">{item.matchedProduct?.nome}</p>
+                                                        <p className="text-xs text-green-700">
+                                                            Atualizar estoque: <span className="font-bold">{item.matchedProduct?.estoque_atual} ➝ {item.matchedProduct!.estoque_atual + item.qCom}</span>
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleProductSelect(idx, 'new')}
+                                                        className="text-xs text-stone-400 underline hover:text-stone-600"
+                                                    >
+                                                        Trocar
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleProductSelect(idx, 'new')}
-                                                    className="text-xs text-stone-400 underline hover:text-stone-600"
-                                                >
-                                                    Trocar
-                                                </button>
+                                                {/* Toggle: Atualizar Nome */}
+                                                {item.matchedProduct?.nome.toLowerCase() !== item.xProd.toLowerCase() && (
+                                                    <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 cursor-pointer hover:bg-amber-100 transition text-xs">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={item.updateName}
+                                                            onChange={() => {
+                                                                const newItems = [...items];
+                                                                newItems[idx].updateName = !newItems[idx].updateName;
+                                                                setItems(newItems);
+                                                            }}
+                                                            className="accent-amber-500 w-4 h-4 rounded"
+                                                        />
+                                                        <span className="text-amber-800">
+                                                            Atualizar nome para: <strong className="text-amber-900">{item.xProd}</strong>
+                                                        </span>
+                                                    </label>
+                                                )}
                                             </div>
                                         ) : (
                                             <div className="flex items-center gap-2">
