@@ -814,7 +814,11 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
                         cSitTrib: "0",
 
-                        xDescServ: payload.itens.map(i => `${i.descricao} (R$ ${i.valor_total.toFixed(2)})`).join("; ")
+                        xDescServ: payload.itens.map(i => {
+                            // Remove valor duplicado se já existir na descrição e limpa espaços extras
+                            const cleanDesc = i.descricao.replace(/(\s*\(R\$\s*[\d.,]+\))+\s*$/, "").trimEnd();
+                            return `${cleanDesc} (R$ ${i.valor_total.toFixed(2)})`;
+                        }).join("; ")
 
                     },
 

@@ -38,6 +38,17 @@ export default function FiscalDashboard() {
     const [searchTerm, setSearchTerm] = useState("");
     const [environment, setEnvironment] = useState<'production' | 'homologation'>('production');
 
+    // Filtros
+    const [statusFilter, setStatusFilter] = useState("all");
+    const [startDate, setStartDate] = useState(() => {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    });
+    const [endDate, setEndDate] = useState(() => {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    });
+
     // Ref para evitar loop infinito no polling
     const invoicesRef = useRef<Invoice[]>([]);
     invoicesRef.current = invoices;
@@ -198,10 +209,18 @@ export default function FiscalDashboard() {
         }
     };
 
-    const filteredInvoices = invoices.filter(inv =>
-        (inv.numero || "").includes(searchTerm) ||
-        (inv.status || "").includes(searchTerm)
-    );
+    const filteredInvoices = invoices.filter(inv => {
+        const matchesSearch = !searchTerm || (inv.numero || "").includes(searchTerm) || (inv.status || "").includes(searchTerm);
+        const matchesStatus = statusFilter === 'all' || inv.status === statusFilter;
+        let matchesDate = true;
+        if (startDate) {
+            matchesDate = new Date(inv.created_at) >= new Date(startDate + "T00:00:00");
+        }
+        if (endDate && matchesDate) {
+            matchesDate = new Date(inv.created_at) <= new Date(endDate + "T23:59:59");
+        }
+        return matchesSearch && matchesStatus && matchesDate;
+    });
 
     return (
         <div className="space-y-6 pb-32">
@@ -228,19 +247,8 @@ export default function FiscalDashboard() {
                 </div>
             </div>
 
-            {/* BÚSCA E AÇÕES */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div className="relative w-full md:w-96">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
-                    <input
-                        type="text"
-                        placeholder="Buscar por número ou status..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-white rounded-xl py-3 pl-12 pr-4 border border-stone-200 outline-none focus:ring-2 focus:ring-[#FACC15]"
-                    />
-                </div>
-
+            {/* AÇÕES */}
+            <div className="flex justify-end">
                 <Link href={`/fiscal/emitir?env=${environment}`}>
                     <button className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-6 py-3 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105">
                         <Plus size={20} /> Nova Nota
@@ -275,17 +283,53 @@ export default function FiscalDashboard() {
 
             {/* LISTA */}
             <div className="bg-white rounded-[32px] border border-stone-100 shadow-sm overflow-hidden min-h-[400px]">
-                <div className="p-6 border-b border-stone-50 flex flex-col md:flex-row justify-between gap-4">
-                    <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2"><FileText size={20} /> Histórico de Emissões</h3>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Buscar nota..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="bg-stone-50 rounded-xl pl-10 pr-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#FACC15]"
-                        />
+                <div className="p-6 border-b border-stone-100 flex flex-col gap-4">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2"><FileText size={20} /> Histórico de Emissões</h3>
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* Filtro Status */}
+                            <select
+                                value={statusFilter}
+                                onChange={e => setStatusFilter(e.target.value)}
+                                className="bg-white border border-stone-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] cursor-pointer shadow-sm text-stone-600 font-medium"
+                            >
+                                <option value="all">Status: Todos</option>
+                                <option value="authorized">Autorizadas</option>
+                                <option value="processing">Processando</option>
+                                <option value="error">Com Erro</option>
+                                <option value="cancelled">Canceladas</option>
+                            </select>
+
+                            {/* Filtro Data Inicial */}
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={e => setStartDate(e.target.value)}
+                                className="bg-white border border-stone-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] shadow-sm text-stone-600"
+                                title="Data Inicial"
+                            />
+                            <span className="text-stone-300 text-sm">até</span>
+                            {/* Filtro Data Final */}
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={e => setEndDate(e.target.value)}
+                                className="bg-white border border-stone-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] shadow-sm text-stone-600"
+                                title="Data Final"
+                            />
+
+                            {/* Busca */}
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar nota..."
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    className="bg-white border border-stone-200 rounded-xl pl-10 pr-4 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] shadow-sm"
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
 
