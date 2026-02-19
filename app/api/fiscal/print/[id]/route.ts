@@ -71,10 +71,14 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         const pdfArrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(pdfArrayBuffer);
 
+        // Check for download param
+        const download = request.nextUrl.searchParams.get("download") === "true";
+        const disposition = download ? `attachment; filename="nfse-${invoice.numero}.pdf"` : `inline; filename="nfse-${invoice.numero}.pdf"`;
+
         return new NextResponse(buffer, {
             headers: {
                 "Content-Type": "application/pdf",
-                "Content-Disposition": `inline; filename="nfse-${invoice.numero}.pdf"`,
+                "Content-Disposition": disposition,
             },
         });
 

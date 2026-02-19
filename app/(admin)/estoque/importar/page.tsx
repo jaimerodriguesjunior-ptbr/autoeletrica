@@ -32,6 +32,7 @@ type DatabaseProduct = {
     ean: string | null;
     estoque_atual: number;
     custo_reposicao: number;
+    data_ultima_compra?: string; // Adicionado
 };
 
 export default function ImportarXML() {
@@ -43,7 +44,8 @@ export default function ImportarXML() {
     const [loading, setLoading] = useState(false);
     const [items, setItems] = useState<ImportedProduct[]>([]);
     const [dbProducts, setDbProducts] = useState<DatabaseProduct[]>([]);
-    const [notaInfo, setNotaInfo] = useState<{ nNF: string, emitente: string, total: number } | null>(null);
+    const [notaInfo, setNotaInfo] = useState<{ nNF: string, emitente: string, emitenteCNPJ: string, total: number, chNFe: string, dhEmi: string } | null>(null);
+    const [rawXml, setRawXml] = useState<string>("");
     const [isDragging, setIsDragging] = useState(false);
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -94,10 +96,15 @@ export default function ImportarXML() {
             const ide = infNFe.ide;
             const total = infNFe.total?.ICMSTot?.vNF || 0;
 
+            setRawXml(text); // Guardar XML bruto
+
             setNotaInfo({
                 nNF: ide.nNF,
                 emitente: emit.xNome,
-                total: Number(total)
+                emitenteCNPJ: emit.CNPJ,
+                total: Number(total),
+                chNFe: infNFe.Id?.replace('NFe', '') || '',
+                dhEmi: ide.dhEmi || new Date().toISOString()
             });
 
             // Detalhes (Produtos)
@@ -121,7 +128,7 @@ export default function ImportarXML() {
             // Buscar todos os produtos do banco p/ tentar match
             // (Em cenários reais com muitos produtos, faríamos busca filtrada, mas aqui vamos trazer tudo para facilitar match em memória ou buscar por partes)
             // Vamos buscar apenas id, nome, ean
-            const { data: allProducts } = await supabase.from('products').select('id, nome, ean, estoque_atual, custo_reposicao');
+            const { data: allProducts } = await supabase.from('products').select('id, nome, ean, estoque_atual, custo_reposicao, data_ultima_compra');
 
             setDbProducts(allProducts || []);
 
@@ -195,7 +202,8 @@ export default function ImportarXML() {
                         preco_venda: item.vUnCom * 2, // Markup 100%
                         ean: item.cEAN || null,
                         ncm: item.ncm,
-                        cfop: item.cfop
+                        cfop: item.cfop,
+                        data_ultima_compra: new Date().toISOString() // Seta data atual na criação
                     }).select().single();
 
                     if (error) throw error;
@@ -214,7 +222,8 @@ export default function ImportarXML() {
                         // Atualiza EAN se não tiver
                         ...(!item.matchedProduct?.ean && item.cEAN ? { ean: item.cEAN } : {}),
                         // Atualiza nome se o usuário optou
-                        ...(item.updateName ? { nome: item.xProd } : {})
+                        ...(item.updateName ? { nome: item.xProd } : {}),
+                        data_ultima_compra: new Date().toISOString() // Atualiza data na compra
                     }).eq('id', prodId);
 
                     if (error) throw error;
@@ -222,7 +231,31 @@ export default function ImportarXML() {
                 }
             }
 
-            // LANÇAR DESPESA (OPCIONAL - PERGUNTAR PRO USARIO DEPOIS? OU JA LANÇAR?)
+            // 1. SALVAR NOTA FISCAL (TABELA NOVA)
+            if (notaInfo && rawXml) {
+                const { error: invoiceError } = await supabase.from('fiscal_invoices').insert({
+                    organization_id: profile.organization_id,
+                    chave_acesso: notaInfo.chNFe,
+                    xml_content: rawXml,
+                    numero: notaInfo.nNF,
+                    serie: '1', // Assumindo 1 se não tiver
+                    valores_total: notaInfo.total, // Ops, nome da coluna é valor_total? Verificar script. Script diz valor_total.
+                    valor_total: notaInfo.total,
+                    emitente_nome: notaInfo.emitente,
+                    emitente_cnpj: notaInfo.emitenteCNPJ,
+                    data_emissao: notaInfo.dhEmi,
+                    direction: 'entry',
+                    tipo_documento: 'NFe',
+                    status: 'authorized'
+                });
+
+                if (invoiceError) {
+                    console.error("Erro ao salvar nota fiscal:", invoiceError);
+                    // Não vamos travar a importação por isso, mas é bom logar
+                }
+            }
+
+            // 2. LANÇAR DESPESA (OPCIONAL - PERGUNTAR PRO USARIO DEPOIS? OU JA LANÇAR?)
             // Vamos lançar apenas se tiver info de NFe
             if (notaInfo) {
                 await supabase.from('transactions').insert({

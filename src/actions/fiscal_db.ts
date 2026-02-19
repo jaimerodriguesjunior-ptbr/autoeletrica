@@ -113,7 +113,7 @@ export async function getFiscalInvoices(organizationId: string) {
 
     const { data, error } = await supabase
         .from('fiscal_invoices')
-        .select('*')
+        .select('*, work_orders(clients(nome, whatsapp))')
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: false });
 

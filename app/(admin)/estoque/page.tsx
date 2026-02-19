@@ -5,7 +5,7 @@ import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
 import {
   Search, Plus, Package, AlertTriangle,
-  TrendingUp, Filter, RefreshCw, ArrowRight, Loader2, Wrench, Edit, Trash2, X, Save, AlertCircle, FileJson
+  TrendingUp, Filter, RefreshCw, ArrowRight, Loader2, Wrench, Edit, Trash2, X, Save, AlertCircle, FileJson, History
 } from "lucide-react";
 
 type Product = {
@@ -17,6 +17,7 @@ type Product = {
   custo_contabil: number;
   custo_reposicao: number;
   preco_venda: number;
+  data_ultima_compra?: string;
 };
 
 type Service = {
@@ -77,6 +78,13 @@ export default function EstoqueEServicos() {
   const getProductStatus = (p: Product) => {
     if (p.estoque_atual <= p.estoque_min) return 'baixo';
     if (p.custo_reposicao > p.custo_contabil) return 'atencao_preco';
+
+    // Alerta de Data (90 dias)
+    if (p.data_ultima_compra) {
+      const days = (new Date().getTime() - new Date(p.data_ultima_compra).getTime()) / (1000 * 60 * 60 * 24);
+      if (days > 90) return 'atencao_data';
+    }
+
     return 'ok';
   };
 
@@ -89,7 +97,10 @@ export default function EstoqueEServicos() {
 
     // 2. Filtro de Categoria (Botões)
     if (productFilter === 'baixo') return p.estoque_atual <= p.estoque_min;
-    if (productFilter === 'preco') return p.custo_reposicao > p.custo_contabil;
+    if (productFilter === 'preco') {
+      const status = getProductStatus(p);
+      return status === 'atencao_preco' || status === 'atencao_data';
+    }
 
     return true;
   });
@@ -154,7 +165,10 @@ export default function EstoqueEServicos() {
   // Totais para o Dashboard Rápido
   const totalItens = products.length;
   const totalBaixo = products.filter(p => p.estoque_atual <= p.estoque_min).length;
-  const totalDefasado = products.filter(p => p.custo_reposicao > p.custo_contabil).length;
+  const totalDefasado = products.filter(p => {
+    const s = getProductStatus(p);
+    return s === 'atencao_preco' || s === 'atencao_data';
+  }).length;
 
   return (
     <div className="space-y-6 pb-32">
@@ -317,6 +331,12 @@ export default function EstoqueEServicos() {
                             <span className="font-bold">Hoje: R$ {p.custo_reposicao.toFixed(2)}</span>
                           </div>
                         )}
+                        {status === 'atencao_data' && (
+                          <div className="mt-1 flex items-center gap-2 text-[10px] bg-blue-50 text-blue-700 px-2 py-1 rounded w-fit">
+                            <History size={10} />
+                            <span className="font-bold">Sem compra há {Math.floor((new Date().getTime() - new Date(p.data_ultima_compra!).getTime()) / (1000 * 3600 * 24))} dias</span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-center">
                         <span className={`font-bold ${p.estoque_atual <= p.estoque_min ? 'text-red-500' : 'text-[#1A1A1A]'}`}>
@@ -330,6 +350,7 @@ export default function EstoqueEServicos() {
                       <td className="px-6 py-4 text-center">
                         {status === 'baixo' && <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold">Baixo</span>}
                         {status === 'atencao_preco' && <span className="inline-flex items-center gap-1 bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-bold"><RefreshCw size={12} /> Defasado</span>}
+                        {status === 'atencao_data' && <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold"><History size={12} /> Revisar Custo</span>}
                         {status === 'ok' && <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">OK</span>}
                       </td>
                       <td className="px-6 py-4 text-right">

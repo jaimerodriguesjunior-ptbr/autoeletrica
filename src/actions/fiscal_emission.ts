@@ -218,19 +218,18 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                 },
 
-                dest: payload.cliente.cpf_cnpj ? {
+                dest: (() => {
+                    const cleanDoc = payload.cliente.cpf_cnpj ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : "";
+                    if (!cleanDoc) return undefined;
 
-                    CNPJ: payload.cliente.cpf_cnpj.length > 11 ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : undefined,
-
-                    CPF: payload.cliente.cpf_cnpj.length <= 11 ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : undefined,
-
-                    xNome: payload.cliente.nome,
-
-                    indIEDest: 9, // 9 = Não Contribuinte
-
-                    email: payload.cliente.email
-
-                } : undefined, // Consumidor não identificado se não tiver CPF
+                    return {
+                        CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
+                        CPF: cleanDoc.length <= 11 ? cleanDoc : undefined,
+                        xNome: payload.cliente.nome,
+                        indIEDest: 9, // 9 = Não Contribuinte
+                        email: payload.cliente.email
+                    };
+                })(),
 
                 det: payload.itens.map((item, index) => ({
 
@@ -770,33 +769,24 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
                 },
 
-                toma: {
+                toma: (() => {
+                    const cleanDoc = payload.cliente.cpf_cnpj ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : "";
 
-                    CNPJ: payload.cliente.cpf_cnpj?.length > 11 ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : undefined,
-
-                    CPF: payload.cliente.cpf_cnpj?.length <= 11 ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : undefined,
-
-                    xNome: payload.cliente.nome,
-
-                    end: payload.cliente.endereco ? {
-
-                        xLgr: payload.cliente.endereco.logradouro,
-
-                        nro: payload.cliente.endereco.numero,
-
-                        xBairro: payload.cliente.endereco.bairro,
-
-                        endNac: {
-
-                            cMun: payload.cliente.endereco.codigo_municipio?.replace(/\D/g, "") || "4108809",
-
-                            CEP: payload.cliente.endereco.cep?.replace(/\D/g, "")
-
-                        }
-
-                    } : undefined
-
-                },
+                    return {
+                        CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
+                        CPF: cleanDoc.length <= 11 ? cleanDoc : undefined,
+                        xNome: payload.cliente.nome,
+                        end: payload.cliente.endereco ? {
+                            xLgr: payload.cliente.endereco.logradouro,
+                            nro: payload.cliente.endereco.numero,
+                            xBairro: payload.cliente.endereco.bairro,
+                            endNac: {
+                                cMun: payload.cliente.endereco.codigo_municipio?.replace(/\D/g, "") || "4108809",
+                                CEP: payload.cliente.endereco.cep?.replace(/\D/g, "")
+                            }
+                        } : undefined
+                    };
+                })(),
 
                 serv: {
 
@@ -962,48 +952,104 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
             console.error("[NuvemFiscal] Erro detalhado:", errorDetails);
 
+            // AUTO-RETRY LOGIC PARA ERRO 00229 (Endereço já cadastrado)
+            // "00229: O Tomador do serviço possui cadastro econômico no município. Não é possível inserir um novo endereço.."
+            // OBS: Verificando "229", "cadastr" e "endere" (sem sufixo) para evitar problemas de encoding (ex: endereÃ§o)
+            const fullErrorString = JSON.stringify(result);
+            if (
+                fullErrorString.includes("229") ||
+                (fullErrorString.includes("cadastr") && (fullErrorString.includes("endere") || fullErrorString.includes("endereco")))
+            ) {
+                console.log("[NuvemFiscal] Detectado erro 00229. Tentando reenvio sem endereço do tomador...");
 
+                // Remove o endereço do payload original
+                if (dpsPayload.infDPS.toma && dpsPayload.infDPS.toma.end) {
+                    delete dpsPayload.infDPS.toma.end;
 
-            await supabase
+                    console.log("[NuvemFiscal] Reenviando payload modificado (sem endereço)...");
 
-                .from("fiscal_invoices")
+                    // Tenta enviar novamente
+                    const retryResponse = await fetch(`${baseUrl}/nfse/dps`, {
+                        method: "POST",
+                        headers: {
+                            "Authorization": `Bearer ${token}`,
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(dpsPayload)
+                    });
 
-                .update({
+                    const retryResponseText = await retryResponse.text();
+                    console.log("[NuvemFiscal] Retry Response Status:", retryResponse.status);
 
-                    status: "error",
+                    let retryResult;
+                    try {
+                        retryResult = retryResponseText ? JSON.parse(retryResponseText) : {};
+                    } catch (e) {
+                        retryResult = {};
+                    }
 
-                    error_message: errorDetails
+                    if (retryResponse.ok) {
+                        // SUCESSO NO RETRY!
+                        result = retryResult;
+                        // Continua o fluxo normal de sucesso abaixo...
+                    } else {
+                        // Falhou de novo, retorna o erro original (ou o novo)
+                        // Falhou de novo, retorna o erro original (ou o novo)
+                        const retryErrorString = JSON.stringify(retryResult);
+                        await supabase
+                            .from("fiscal_invoices")
+                            .update({
+                                status: "error",
+                                error_message: `Tentativa 1: ${fullErrorString} | Tentativa 2: ${retryErrorString}`
+                            })
+                            .eq("id", invoice.id);
 
-                })
+                        return { success: false, error: `Erro NuvemFiscal (Retry falhou): ${retryErrorString}` };
+                    }
 
-                .eq("id", invoice.id);
+                } else {
+                    // Log para debug se não achou endereço
+                    console.log("[NuvemFiscal] Erro 00229 detectado mas não havia endereço para remover.");
 
+                    // Se não tinha endereço para tirar, falha normal
+                    await supabase
+                        .from("fiscal_invoices")
+                        .update({
+                            status: "error",
+                            error_message: fullErrorString // Salva JSON completo
+                        })
+                        .eq("id", invoice.id);
 
+                    return { success: false, error: `Erro NuvemFiscal: ${errorDetails}` };
+                }
+            } else {
+                // Erro normal (não é o 00229)
+                await supabase
+                    .from("fiscal_invoices")
+                    .update({
+                        status: "error",
+                        error_message: fullErrorString // Salva JSON completo para debug
+                    })
+                    .eq("id", invoice.id);
 
-            return { success: false, error: `Erro NuvemFiscal: ${errorDetails}` };
+                return { success: false, error: `Erro NuvemFiscal: ${errorDetails}` };
+            }
 
         }
 
-
+        // Se response.ok era true OU se recuperamos no retry:
 
         // 6. Sucesso
-
         await supabase
-
             .from("fiscal_invoices")
-
             .update({
-
                 status: "processing", // NFS-e é assíncrono, fica processando até consultar depois
-
                 nuvemfiscal_uuid: result.id,
-
                 numero: result.numero,
-
-                serie: result.serie
-
+                serie: result.serie,
+                // Atualiza o payload no banco para refletir o que funcionou (sem endereço se foi retry)
+                payload_json: dpsPayload
             })
-
             .eq("id", invoice.id);
 
 
@@ -1112,7 +1158,7 @@ export async function consultarNFSe(invoiceId: string) {
 
 
 
-        const result = await response.json();
+        let result = await response.json();
 
         console.log("[Consultar NFS-e] Resultado:", JSON.stringify(result, null, 2));
 
@@ -1142,10 +1188,96 @@ export async function consultarNFSe(invoiceId: string) {
 
             novoStatus = 'error';
 
-            errorMessage = result.motivo_status || "Erro na autorização";
+            // Tenta extrair mensagem detalhada
+            if (result.mensagens && Array.isArray(result.mensagens) && result.mensagens.length > 0) {
+                errorMessage = result.mensagens.map((m: any) => `${m.codigo}: ${m.descricao}`).join(' | ');
+            } else if (result.error) {
+                errorMessage = result.error.message || JSON.stringify(result.error);
+            } else {
+                errorMessage = result.motivo_status || JSON.stringify(result);
+            }
 
+            // Log completo para debug
+            console.log("[Consultar Check] Error message set to:", errorMessage);
+
+            // AUTO-RETRY LOGIC (ASYNC)
+            // Se detectarmos o erro 00229, tentamos reenviar sem o endereço.
+            if (errorMessage && (errorMessage.includes("00229") || (errorMessage.includes("cadastro") && errorMessage.includes("endereço") && errorMessage.includes("Tomador")))) {
+                console.log("[Consultar Check] Detectado erro 00229. Tentando AUTO-RETRY sem endereço...");
+
+                // 1. Pegar payload original
+                let originalPayload = invoice.payload_json;
+                // Parse se for string
+                if (typeof originalPayload === 'string') {
+                    try {
+                        originalPayload = JSON.parse(originalPayload);
+                    } catch (e) {
+                        console.error("[AutoRequest] Erro ao parsear payload_json", e);
+                        originalPayload = null;
+                    }
+                }
+
+                if (originalPayload && originalPayload.infDPS && originalPayload.infDPS.toma && originalPayload.infDPS.toma.end) {
+                    // 2. Remover endereço
+                    delete originalPayload.infDPS.toma.end;
+                    console.log("[Consultar Check] Endereço removido. Reenviando...");
+
+                    // 3. Reenviar (POST /nfse/dps)
+                    // Reusando token e baseUrl já definidos acima
+                    try {
+                        const retryResponse = await fetch(`${baseUrl}/nfse/dps`, {
+                            method: "POST",
+                            headers: {
+                                "Authorization": `Bearer ${token}`,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify(originalPayload)
+                        });
+
+                        const retryResult = await retryResponse.json();
+                        console.log("[AutoRetry] Resultado:", JSON.stringify(retryResult, null, 2));
+
+                        if (retryResponse.ok) {
+                            // SUCESSO! 
+                            // Se retornou 'autorizado', ótimo. Se 'processando', também.
+                            // Vamos confiar no status retornado.
+                            if (retryResult.status === 'autorizado' || retryResult.status === 'autorizada') {
+                                novoStatus = 'authorized';
+                            } else if (retryResult.status === 'processando') {
+                                novoStatus = 'processing';
+                            }
+
+                            // Atualiza os dados do resultado (XML, PDF, Number, etc) no objeto 'result' atual para salvar no banco
+                            // Nota: O ID da NuvemFiscal mudou! Precisamos atualizar isso no banco também?
+                            // Sim, mas a função 'update' lá embaixo usa 'invoiceId'.
+                            // O ideal é atualizar o nuvemfiscal_uuid também, mas a função abaixo não está atualizando ele.
+                            // Vamos ter que fazer um update extra ou adicionar o campo no update principal.
+
+                            // Hack: Atualiza o 'result' local para que o update lá embaixo use os dados novos
+                            result = retryResult;
+
+                            // Importante: Atualizar o nuvemfiscal_uuid no banco pois mudou
+                            if (retryResult.id) {
+                                await supabase.from("fiscal_invoices").update({ nuvemfiscal_uuid: retryResult.id }).eq("id", invoiceId);
+                            }
+
+                            // Limpar mensagem de erro
+                            errorMessage = null;
+
+                        } else {
+                            // Retry falhou também
+                            const retryErr = retryResult.error?.message || JSON.stringify(retryResult);
+                            errorMessage = `Erro Original: ${errorMessage} | Retry Falhou: ${retryErr}`;
+                        }
+                    } catch (retryEx: any) {
+                        console.error("[AutoRetry] Exception:", retryEx);
+                        errorMessage = `Erro Original: ${errorMessage} | Retry Exception: ${retryEx.message}`;
+                    }
+                } else {
+                    console.log("[Consultar Check] Payload inválido ou sem endereço para remover. Abortando retry.");
+                }
+            }
         }
-
         else if (result.status === 'cancelado') novoStatus = 'cancelled';
 
 

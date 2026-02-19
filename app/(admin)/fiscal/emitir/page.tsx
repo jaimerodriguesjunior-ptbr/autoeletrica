@@ -99,31 +99,11 @@ export default function EmitirNotaPage() {
     // Formulário de Emissão
 
     // HARDCODED TEST DATA FOR EASIER TESTING
-    const [clienteNome, setClienteNome] = useState("Jaime Rodrigues Junior");
-    const [clienteDoc, setClienteDoc] = useState("58212043134");
-    const [clienteEndereco, setClienteEndereco] = useState<any>({
-        cep: "85980046",
-        logradouro: "Av. Mate Laranjeira",
-        numero: "424",
-        bairro: "Centro",
-        cidade: "Guaira",
-        uf: "PR",
-        codigo_municipio: "4108809"
-    });
+    const [clienteNome, setClienteNome] = useState("");
+    const [clienteDoc, setClienteDoc] = useState("");
+    const [clienteEndereco, setClienteEndereco] = useState<any>({});
 
-    const [itens, setItens] = useState<InvoiceItem[]>([
-        {
-            codigo: "001",
-            descricao: "LAMPADA TORPEDO",
-            ncm: "85392910",
-            cfop: "5102",
-            unidade: "UN",
-            quantidade: 1,
-            valor_unitario: 10,
-            valor_total: 10,
-            tipo_origem: 'avulso' as const
-        }
-    ]);
+    const [itens, setItens] = useState<InvoiceItem[]>([]);
     const [itensServico, setItensServico] = useState<any[]>([]);
 
     const [emitting, setEmitting] = useState(false);

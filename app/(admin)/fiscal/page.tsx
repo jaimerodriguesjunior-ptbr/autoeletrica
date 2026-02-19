@@ -6,7 +6,7 @@ import { getFiscalInvoices } from "@/src/actions/fiscal_db";
 import { consultarNFSe, cancelarNota } from "@/src/actions/fiscal_emission";
 import {
     FileText, Plus, Search, Loader2, AlertCircle,
-    CheckCircle, XCircle, Clock, Download, RefreshCw, Edit, Ban, Printer
+    CheckCircle, XCircle, Clock, Download, RefreshCw, Edit, Ban, Printer, MessageCircle
 } from "lucide-react";
 import Link from "next/link";
 
@@ -23,6 +23,12 @@ type Invoice = {
     work_order_id: number | null;
     chave_acesso: string | null;
     motivo_rejeicao?: string | null;
+    work_orders?: {
+        clients: {
+            nome: string;
+            whatsapp: string;
+        } | null
+    } | null;
 };
 
 export default function FiscalDashboard() {
@@ -96,11 +102,37 @@ export default function FiscalDashboard() {
         }
     };
 
-    const handlePrint = async (invoice: Invoice) => {
-        // Agora usamos nossa rota Proxy que busca o binário na NuvemFiscal
-        // Isso resolve o problema de links externos pedindo senha
-        const proxyUrl = `/api/fiscal/print/${invoice.id}`;
-        window.open(proxyUrl, '_blank');
+    const handlePrint = (invoiceId: string) => {
+        // Tenta imprimir direto usando um iframe invisível para abrir o dialog de impressão do browser
+        const url = `/api/fiscal/print/${invoiceId}`;
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = url;
+        document.body.appendChild(iframe);
+
+        iframe.onload = () => {
+            try {
+                iframe.contentWindow?.print();
+            } catch (e) {
+                console.error("Erro ao abrir dialog de impressão", e);
+                window.open(url, '_blank'); // Fallback
+            }
+            // Remove o iframe após um tempo (assumindo que o usuario imprimiu ou cancelou)
+            setTimeout(() => document.body.removeChild(iframe), 60000);
+        };
+    };
+
+    const handleWhatsApp = (invoice: Invoice) => {
+        const phone = invoice.work_orders?.clients?.whatsapp?.replace(/\D/g, "");
+        const link = invoice.pdf_url || ""; // Link oficial (pode exigir login se for IPM, mas é o que temos)
+        const text = `Olá, segue o link da sua Nota Fiscal: ${link}`;
+
+        // Se tiver telefone, abre direto. Se não, abre o WA para escolher contato.
+        let url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+        if (phone && phone.length >= 10) {
+            url = `https://wa.me/55${phone}?text=${encodeURIComponent(text)}`;
+        }
+        window.open(url, '_blank');
     };
 
     const handleRefreshStatus = async (invoiceId: string) => {
@@ -300,22 +332,39 @@ export default function FiscalDashboard() {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex justify-end gap-2">
-                                                {/* Botão Imprimir / Gerar PDF (Sempre visível para autorizadas) */}
-                                                {inv.status === 'authorized' && (
+                                                {/* Botão de Impressão */}
+                                                {(inv.status === 'authorized' || inv.status === 'canceled') && (
                                                     <button
-                                                        onClick={() => handlePrint(inv)}
-                                                        className={`p-2 rounded-lg transition ${inv.pdf_url ? 'bg-stone-100 hover:bg-[#1A1A1A] hover:text-[#FACC15]' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
-                                                        title={inv.pdf_url ? "Imprimir" : "Gerar PDF / Atualizar"}
+                                                        onClick={() => handlePrint(inv.id)}
+                                                        className="p-2 bg-stone-50 hover:bg-stone-100 rounded-lg transition text-stone-600"
+                                                        title="Imprimir Nota Direto"
                                                     >
                                                         <Printer size={16} />
                                                     </button>
                                                 )}
 
                                                 {/* Botão Download (Apenas se tiver PDF) */}
-                                                {inv.pdf_url && (
-                                                    <a href={inv.pdf_url} target="_blank" className="p-2 bg-stone-100 hover:bg-[#1A1A1A] hover:text-[#FACC15] rounded-lg transition" title="Baixar PDF">
+                                                {(inv.status === 'authorized' || inv.status === 'canceled') && (
+                                                    <a
+                                                        href={`/api/fiscal/print/${inv.id}?download=true`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="p-2 bg-stone-50 hover:bg-stone-100 rounded-lg transition text-stone-600"
+                                                        title="Baixar XML/PDF"
+                                                    >
                                                         <Download size={16} />
                                                     </a>
+                                                )}
+
+                                                {/* Botão WhatsApp */}
+                                                {(inv.status === 'authorized') && (
+                                                    <button
+                                                        onClick={() => handleWhatsApp(inv)}
+                                                        className="p-2 bg-green-50 hover:bg-green-100 text-green-600 rounded-lg transition"
+                                                        title={inv.work_orders?.clients?.whatsapp ? `Enviar para ${inv.work_orders.clients.whatsapp}` : "Compartilhar no WhatsApp"}
+                                                    >
+                                                        <MessageCircle size={16} />
+                                                    </button>
                                                 )}
 
                                                 {/* Botão de Cancelar (Apenas Autorizadas) */}
