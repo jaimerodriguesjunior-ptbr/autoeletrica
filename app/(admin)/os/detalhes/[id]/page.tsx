@@ -102,6 +102,7 @@ export default function DetalhesOS() {
   const [dtcsSalvos, setDtcsSalvos] = useState<{ id: string; code: string; description_pt: string; notes: string | null }[]>([]);
   const [buscandoDtc, setBuscandoDtc] = useState(false);
   const [salvandoDtc, setSalvandoDtc] = useState(false);
+  const dtcTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [checklistAberto, setChecklistAberto] = useState(false);
 
   // 1. Busca Dados da OS
@@ -174,11 +175,8 @@ export default function DetalhesOS() {
     }
   }, [id, supabase]);
 
-  // Buscar código OBD-II na tabela (com fallback para IA)
-  const handleBuscarDtc = async (termo: string) => {
-    setDtcBusca(termo);
-    const code = termo.trim().toUpperCase();
-    if (code.length < 2) { setDtcResultado(null); return; }
+  // Buscar código OBD-II (com debounce + fallback IA)
+  const executarBuscaDtc = async (code: string) => {
     setBuscandoDtc(true);
     try {
       // 1. Busca no banco local
@@ -186,7 +184,7 @@ export default function DetalhesOS() {
         .from('obd2_codes')
         .select('code, description_pt')
         .eq('code', code)
-        .single();
+        .maybeSingle();
 
       if (data) {
         setDtcResultado({ ...data, source: 'db' });
@@ -215,6 +213,19 @@ export default function DetalhesOS() {
     } finally {
       setBuscandoDtc(false);
     }
+  };
+
+  const handleBuscarDtc = (termo: string) => {
+    setDtcBusca(termo);
+    setDtcResultado(null);
+    const code = termo.trim().toUpperCase();
+    if (code.length < 2) return;
+
+    // Debounce: espera 600ms após última tecla
+    if (dtcTimerRef.current) clearTimeout(dtcTimerRef.current);
+    dtcTimerRef.current = setTimeout(() => {
+      executarBuscaDtc(code);
+    }, 600);
   };
 
   // Adicionar código DTC à OS
