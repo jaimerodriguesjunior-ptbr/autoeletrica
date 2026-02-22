@@ -39,32 +39,67 @@ Qual é a descrição técnica do código "${codeClean}" em português-BR?
 Responda APENAS com um JSON: {"description":"descrição aqui"}
 Se realmente não souber, responda: {"description":"Código ${codeClean} – Consulte o manual do fabricante"}`;
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        // Coletar todas as chaves disponíveis no .env.local
+        const availableKeys = [
+            apiKey, // Tenta primeiro a principal, se existir
+            process.env.GEMINI_SECRET_KEY_1,
+            process.env.GEMINI_SECRET_KEY_2,
+            process.env.GEMINI_SECRET_KEY_3,
+            process.env.GEMINI_SECRET_KEY_4,
+            process.env.GEMINI_SECRET_KEY_5,
+            process.env.GEMINI_SECRET_KEY_6
+        ].filter(Boolean) as string[]; // Remove chaves vazias ou undefined
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: 0.3,
-                    maxOutputTokens: 256,
-                }
-            })
-        });
-
-        if (!response.ok) {
-            console.error("❌ [OBD2 IA] Erro na API:", await response.text());
-            return NextResponse.json({ error: 'Erro ao consultar IA.' }, { status: 500 });
+        if (availableKeys.length === 0) {
+            return NextResponse.json({ error: 'Nenhuma chave da IA configurada.' }, { status: 500 });
         }
 
-        const data = await response.json();
-        const textResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        console.log(`🔍 [OBD2 IA] Código: ${codeClean} | Resposta bruta:`, textResponse);
+        let textResponse: string | undefined;
+        let lastError: any;
+        let usedKeyIndex = 0;
+
+        // Tentar cada chave até conseguir uma resposta com sucesso
+        for (let i = 0; i < availableKeys.length; i++) {
+            const currentKey = availableKeys[i];
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${currentKey}`;
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }],
+                        generationConfig: {
+                            temperature: 0.3,
+                            maxOutputTokens: 256,
+                        }
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    textResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (textResponse) {
+                        usedKeyIndex = i + 1; // Para log (1-based index)
+                        break; // Sucesso! Sai do loop
+                    }
+                } else {
+                    const errText = await response.text();
+                    lastError = `Status ${response.status}: ${errText}`;
+                    console.warn(`⚠️ [OBD2 IA] Falha com chave ${i + 1}/${availableKeys.length}: ${response.status}`);
+                }
+            } catch (err) {
+                lastError = err;
+                console.warn(`⚠️ [OBD2 IA] Erro de rede com chave ${i + 1}/${availableKeys.length}`);
+            }
+        }
 
         if (!textResponse) {
-            return NextResponse.json({ error: 'IA não retornou resposta.' }, { status: 500 });
+            console.error("❌ [OBD2 IA] Todas as chaves falharam. Último erro:", lastError);
+            return NextResponse.json({ error: 'Falha ao consultar IA (Rate Limit ou Erro).' }, { status: 500 });
         }
+
+        console.log(`🔍 [OBD2 IA] Código: ${codeClean} | Chave usada: ${usedKeyIndex} | Resposta:`, textResponse);
 
         // Extrair JSON da resposta
         const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
