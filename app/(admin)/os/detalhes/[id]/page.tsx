@@ -177,19 +177,24 @@ export default function DetalhesOS() {
 
   // Buscar código OBD-II (com debounce + fallback IA)
   const executarBuscaDtc = async (code: string) => {
+    console.log('[DTC] Iniciando busca para:', code);
     setBuscandoDtc(true);
     try {
       // 1. Busca no banco local
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('obd2_codes')
         .select('code, description_pt')
         .eq('code', code)
         .maybeSingle();
 
+      console.log('[DTC] Resultado banco:', { data, error });
+
       if (data) {
+        console.log('[DTC] Encontrado no banco!');
         setDtcResultado({ ...data, source: 'db' });
       } else if (code.length >= 5) {
         // 2. Fallback: Busca via IA (apenas se código completo)
+        console.log('[DTC] Não encontrado no banco, chamando IA...');
         try {
           const res = await fetch('/api/obd2-ia', {
             method: 'POST',
@@ -197,18 +202,21 @@ export default function DetalhesOS() {
             body: JSON.stringify({ code }),
           });
           const iaData = await res.json();
+          console.log('[DTC] Resposta IA:', iaData);
           if (iaData.description_pt) {
             setDtcResultado({ code: iaData.code, description_pt: iaData.description_pt, source: 'ia' });
           } else {
             setDtcResultado(null);
           }
-        } catch {
+        } catch (iaErr) {
+          console.error('[DTC] Erro na chamada IA:', iaErr);
           setDtcResultado(null);
         }
       } else {
         setDtcResultado(null);
       }
-    } catch {
+    } catch (err) {
+      console.error('[DTC] Erro geral:', err);
       setDtcResultado(null);
     } finally {
       setBuscandoDtc(false);

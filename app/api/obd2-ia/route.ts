@@ -18,11 +18,26 @@ export async function POST(req: Request) {
 
         const codeClean = code.trim().toUpperCase();
 
-        const prompt = `Você é um especialista em diagnóstico automotivo OBD-II.
-Qual é a descrição do código de falha "${codeClean}"?
-Responda APENAS com um JSON no formato: {"description":"descrição em português-BR usando termos técnicos de oficina mecânica"}
-Se o código não existir ou for inválido, responda: {"description":""}
-Não inclua markdown, apenas o JSON.`;
+        const prefix = codeClean.charAt(0);
+        const categoryHint = prefix === 'P' ? 'Powertrain (motor e transmissão)'
+            : prefix === 'C' ? 'Chassis (freios, suspensão, direção)'
+                : prefix === 'B' ? 'Body (carroceria, airbag, ar condicionado, iluminação)'
+                    : prefix === 'U' ? 'Network/Communication (rede CAN, comunicação entre módulos)'
+                        : 'automotivo';
+
+        const prompt = `Você é um engenheiro automotivo especialista em diagnóstico OBD-II/EOBD.
+
+O código "${codeClean}" pertence à categoria ${categoryHint}.
+
+Códigos OBD-II seguem o padrão SAE J2012. Exemplos:
+- P0420 = Eficiência do catalisador abaixo do limite (banco 1)
+- C0035 = Circuito do sensor de velocidade da roda dianteira esquerda
+- B1000 = Avaria no circuito do módulo de controle ECM/PCM
+- U0100 = Perda de comunicação com o módulo de controle do motor (ECM/PCM)
+
+Qual é a descrição técnica do código "${codeClean}" em português-BR?
+Responda APENAS com um JSON: {"description":"descrição aqui"}
+Se realmente não souber, responda: {"description":"Código ${codeClean} – Consulte o manual do fabricante"}`;
 
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
@@ -32,7 +47,7 @@ Não inclua markdown, apenas o JSON.`;
             body: JSON.stringify({
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
-                    temperature: 0.1,
+                    temperature: 0.3,
                     maxOutputTokens: 256,
                 }
             })
@@ -45,6 +60,7 @@ Não inclua markdown, apenas o JSON.`;
 
         const data = await response.json();
         const textResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        console.log(`🔍 [OBD2 IA] Código: ${codeClean} | Resposta bruta:`, textResponse);
 
         if (!textResponse) {
             return NextResponse.json({ error: 'IA não retornou resposta.' }, { status: 500 });
@@ -65,8 +81,9 @@ Não inclua markdown, apenas o JSON.`;
             }
         }
 
+        // Se ainda não tem descrição, usa fallback genérico
         if (!description) {
-            return NextResponse.json({ code: codeClean, description_pt: null, source: 'ia' });
+            description = `Código ${codeClean} – Consulte o manual do fabricante`;
         }
 
         // Salvar no banco como cache para futuras buscas
