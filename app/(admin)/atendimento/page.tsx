@@ -19,21 +19,21 @@ export default function AtendimentoPage() {
             </div>
 
             {/* TABS */}
-            <div className="bg-stone-100 p-1.5 rounded-2xl flex gap-2 w-full md:w-fit">
+            <div className="bg-stone-200 p-1.5 rounded-2xl flex gap-2 w-full md:w-fit border-2 border-stone-300 shadow-sm">
                 <button
                     onClick={() => setActiveTab("os")}
-                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === "os"
-                            ? "bg-white text-[#1A1A1A] shadow-sm"
-                            : "text-stone-500 hover:text-stone-700"
+                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 border-2 ${activeTab === "os"
+                        ? "bg-white text-[#1A1A1A] shadow-md border-stone-300"
+                        : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
                         }`}
                 >
                     <Wrench size={18} /> Ordem de Serviço
                 </button>
                 <button
                     onClick={() => setActiveTab("vendas")}
-                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === "vendas"
-                            ? "bg-white text-[#1A1A1A] shadow-sm"
-                            : "text-stone-500 hover:text-stone-700"
+                    className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all duration-300 border-2 ${activeTab === "vendas"
+                        ? "bg-white text-[#1A1A1A] shadow-md border-stone-300"
+                        : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
                         }`}
                 >
                     <ShoppingBag size={18} /> Venda de Peças

@@ -26,18 +26,16 @@ type CompanyData = {
     csc_id_homologation?: string;
     nfse_login?: string;
     nfse_password?: string;
+    usa_fiscal?: boolean;
+    usa_caixa?: boolean;
+    logo_url?: string;
 };
 
 export async function registerCompanyInNuvemFiscal(data: CompanyData) {
     const supabase = createClient();
 
     try {
-        // 1. Validar dados básicos
-        if (!data.cpf_cnpj || !data.razao_social || !data.logradouro || !data.codigo_municipio_ibge) {
-            throw new Error("Dados obrigatórios faltando (CNPJ, Razão Social, Endereço, IBGE).");
-        }
-
-        // 2. Atualizar no Supabase
+        // 1. Validar login e organzação
         const { data: { user }, error: authError } = await supabase.auth.getUser();
         if (authError || !user) throw new Error("Usuário não autenticado.");
 
@@ -99,7 +97,9 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
             csc_id_production: data.csc_id_production,
             csc_id_homologation: data.csc_id_homologation,
             nfse_login: data.nfse_login,
-            endereco: `${data.logradouro}, ${data.numero} - ${data.bairro}, ${data.cidade}/${data.uf}`
+            usa_fiscal: data.usa_fiscal !== undefined ? data.usa_fiscal : true,
+            usa_caixa: data.usa_caixa !== undefined ? data.usa_caixa : true,
+            logo_url: data.logo_url
         };
 
         if (!isPlaceholder(data.csc_token_production)) upsertData.csc_token_production = data.csc_token_production;
@@ -221,13 +221,16 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
             }
         };
 
-        // 3. Executar configurações em paralelo
-        await Promise.all([
-            configureEnvironment('production'),
-            configureEnvironment('homologation')
-        ]);
+        // 3. Executar configurações na Nuvem Fiscal APENAS se tiver CNPJ
+        if (data.cpf_cnpj) {
+            await Promise.all([
+                configureEnvironment('production'),
+                configureEnvironment('homologation')
+            ]);
+            return { success: true, message: "Empresa salva e configurada na Nuvem Fiscal!" };
+        }
 
-        return { success: true, message: "Empresa registrada e configurada (Produção e Homologação)!" };
+        return { success: true, message: "Dados da oficina salvos com sucesso (Módulo Fiscal desativado)!" };
 
     } catch (error: any) {
         console.error("Erro em registerCompanyInNuvemFiscal:", error);
@@ -270,4 +273,36 @@ export async function getCompanySettings() {
     }
 
     return company;
+}
+
+export async function toggleCompanyModule(module: 'usa_fiscal' | 'usa_caixa', value: boolean) {
+    const supabase = createClient();
+
+    // Validar autenticação
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: "Usuário não autenticado." };
+
+    const { data: profile } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("id", user.id)
+        .single();
+
+    if (!profile?.organization_id) return { success: false, error: "Organização não encontrada." };
+
+    const { createAdminClient } = await import('@/src/utils/supabase/admin');
+    const supabaseAdmin = createAdminClient();
+
+    // Atualiza usando permissão de admin (ignora RLS)
+    const { error: updateError } = await supabaseAdmin
+        .from("company_settings")
+        .update({ [module]: value })
+        .eq('organization_id', profile.organization_id);
+
+    if (updateError) {
+        console.error("Erro no toggle (Admin):", updateError);
+        return { success: false, error: updateError.message };
+    }
+
+    return { success: true };
 }

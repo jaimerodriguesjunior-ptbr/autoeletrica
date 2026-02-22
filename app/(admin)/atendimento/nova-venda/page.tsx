@@ -257,7 +257,7 @@ export default function NovaVenda() {
             <div className="space-y-6 animate-in slide-in-from-right duration-300">
 
                 {/* Cliente (Opcional) */}
-                <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
+                <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
                     <h3 className="font-bold text-[#1A1A1A] mb-3 flex items-center gap-2">
                         <User size={18} className="text-[#FACC15]" /> Cliente (Opcional)
                     </h3>
@@ -268,7 +268,7 @@ export default function NovaVenda() {
                             placeholder="Consumidor Final"
                             value={clienteSelecionado ? clienteSelecionado.nome : ""}
                             onClick={() => setModalClienteAberto(true)}
-                            className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none cursor-pointer border border-transparent hover:border-[#FACC15] transition font-medium placeholder:text-stone-400"
+                            className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none cursor-pointer border-2 border-stone-300 hover:border-[#FACC15] transition font-medium placeholder:text-stone-400"
                         />
                         {clienteSelecionado && (
                             <button
@@ -289,7 +289,7 @@ export default function NovaVenda() {
                 </div>
 
                 {/* CARD ITENS */}
-                <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 space-y-4">
+                <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm space-y-4">
                     <div className="flex justify-between items-center">
                         <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
                             <ShoppingBag size={18} className="text-[#FACC15]" /> Itens da Venda
@@ -378,7 +378,7 @@ export default function NovaVenda() {
                             placeholder="Nome..."
                             value={termoBuscaCliente}
                             onChange={(e) => setTermoBuscaCliente(e.target.value)}
-                            className="w-full bg-[#F8F7F2] p-3 rounded-xl"
+                            className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
                         />
                         <div className="max-h-60 overflow-auto space-y-2">
                             {listaClientes
@@ -416,7 +416,7 @@ export default function NovaVenda() {
                             placeholder="Buscar peça..."
                             value={termoBuscaItem}
                             onChange={(e) => setTermoBuscaItem(e.target.value)}
-                            className="w-full bg-[#F8F7F2] p-3 rounded-xl"
+                            className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
                         />
 
                         <div className="flex-1 overflow-auto space-y-2">

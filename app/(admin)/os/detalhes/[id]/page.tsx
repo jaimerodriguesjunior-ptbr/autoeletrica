@@ -532,7 +532,7 @@ export default function DetalhesOS() {
         {/* 2. CONTROLE DE FLUXO (ESQUERDA) */}
         <div className="md:col-span-2 space-y-6">
 
-          <div className="bg-white rounded-[32px] p-8 shadow-sm border border-stone-100">
+          <div className="bg-white rounded-[32px] p-8 border-2 border-stone-300 shadow-sm">
             <h2 className="text-lg font-bold text-[#1A1A1A] mb-6 flex items-center gap-2">
               <Clock size={20} /> Linha do Tempo
             </h2>
@@ -595,7 +595,7 @@ export default function DetalhesOS() {
             </div>
           </div>
 
-          <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
+          <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
             <h3 className="font-bold text-[#1A1A1A] mb-2 text-sm flex items-center gap-2">
               <MessageCircle size={16} /> Relato / Defeito
             </h3>
@@ -606,7 +606,7 @@ export default function DetalhesOS() {
 
 
           {/* === GALERIA DE FOTOS (NOVO) === */}
-          <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 mt-6">
+          <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm mt-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-[#1A1A1A] text-sm flex items-center gap-2">
                 <Camera size={16} /> Fotos do Veículo
@@ -642,7 +642,7 @@ export default function DetalhesOS() {
 
         {/* 3. RESUMO (DIREITA) */}
         <div className="space-y-6">
-          <div className="bg-[#F8F7F2] rounded-[32px] p-6 border border-stone-200 h-fit">
+          <div className="bg-stone-50 rounded-[32px] p-6 border-2 border-stone-300 shadow-sm h-fit">
 
             {/* CAMPO DE PREVISÃO (NOVO) */}
             <div className="mb-6 bg-white p-3 rounded-2xl border border-stone-100">
@@ -745,17 +745,17 @@ export default function DetalhesOS() {
                 <X />
               </button>
             </div>
-            <div className="flex gap-2 bg-[#F8F7F2] p-1 rounded-xl">
+            <div className="flex bg-stone-200 p-1.5 rounded-2xl border-2 border-stone-300 shadow-inner gap-1">
               <button
                 onClick={() => setAbaItem("pecas")}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${abaItem === "pecas" ? "bg-white shadow text-[#1A1A1A]" : "text-stone-400"
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition border-2 ${abaItem === "pecas" ? "bg-white shadow-md text-[#1A1A1A] border-stone-300" : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
                   }`}
               >
                 Peças
               </button>
               <button
                 onClick={() => setAbaItem("servicos")}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${abaItem === "servicos" ? "bg-white shadow text-[#1A1A1A]" : "text-stone-400"
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition border-2 ${abaItem === "servicos" ? "bg-white shadow-md text-[#1A1A1A] border-stone-300" : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
                   }`}
               >
                 Serviços
@@ -766,7 +766,7 @@ export default function DetalhesOS() {
               placeholder="Buscar..."
               value={termoBusca}
               onChange={(e) => setTermoBusca(e.target.value)}
-              className="w-full bg-[#F8F7F2] p-3 rounded-xl"
+              className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
             />
             <div className="flex-1 overflow-auto space-y-2">
               {adicionandoItem && (
@@ -841,7 +841,7 @@ export default function DetalhesOS() {
                 <select
                   value={formaPagamento}
                   onChange={(e) => setFormaPagamento(e.target.value)}
-                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
                 >
                   <option value="pix">Pix</option>
                   <option value="dinheiro">Dinheiro</option>
@@ -859,7 +859,7 @@ export default function DetalhesOS() {
                   <select
                     value={parcelas}
                     onChange={(e) => setParcelas(Number(e.target.value))}
-                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A]"
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
                   >
                     {[1, 2, 3, 4, 5, 6, 10, 12].map(n => (
                       <option key={n} value={n}>{n}x de {formatCurrency(Number(valorFinal) / n)}</option>
@@ -877,7 +877,7 @@ export default function DetalhesOS() {
                     type="date"
                     value={dataCheque}
                     onChange={(e) => setDataCheque(e.target.value)}
-                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A]"
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
                   />
                 </div>
               )}

@@ -171,17 +171,17 @@ export default function EditarProduto() {
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-400 ml-2">NOME DA PEÇA</label>
-                <input type="text" value={nome} onChange={e => setNome(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-bold text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15]" />
+                <input type="text" value={nome} onChange={e => setNome(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-bold text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-stone-400 ml-2">MARCA</label>
-                  <input type="text" value={marca} onChange={e => setMarca(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15]" />
+                  <input type="text" value={marca} onChange={e => setMarca(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-stone-400 ml-2">CÓDIGO (REF)</label>
-                  <input type="text" value={codigoRef} onChange={e => setCodigoRef(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15]" />
+                  <input type="text" value={codigoRef} onChange={e => setCodigoRef(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
                 </div>
               </div>
             </div>
@@ -195,15 +195,15 @@ export default function EditarProduto() {
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-400 ml-2">QTD ATUAL</label>
-                <input type="number" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-bold text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15]" />
+                <input type="number" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-bold text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-400 ml-2">MÍNIMO</label>
-                <input type="number" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15]" />
+                <input type="number" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-400 ml-2">LOCAL</label>
-                <input type="text" value={localizacao} onChange={e => setLocalizacao(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15]" />
+                <input type="text" value={localizacao} onChange={e => setLocalizacao(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
               </div>
             </div>
           </div>

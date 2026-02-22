@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
 import {
   Users, Plus, Ban, Save, X, Loader2, Key, Unlock,
-  Building2, MapPin, Phone, FileText, Hash
+  Building2, MapPin, Phone, FileText, Hash, Settings
 } from "lucide-react";
-import { registerCompanyInNuvemFiscal, getCompanySettings } from "@/src/actions/fiscal";
+import { registerCompanyInNuvemFiscal, getCompanySettings, toggleCompanyModule } from "@/src/actions/fiscal";
 
 // Tipos
 type Profile = {
@@ -44,14 +45,18 @@ type CompanySettings = {
   nfse_password?: string;
   endereco?: string; // Mantido para compatibilidade visual se necessário
   created_at?: string;
+  usa_fiscal?: boolean;
+  usa_caixa?: boolean;
+  logo_url?: string;
 };
 
 export default function Configuracoes() {
   const supabase = createClient();
-  const { profile } = useAuth();
+  const { profile, updateProfile } = useAuth();
+  const router = useRouter();
 
   // Controle de Abas
-  const [activeTab, setActiveTab] = useState<'team' | 'company'>('team');
+  const [activeTab, setActiveTab] = useState<'company' | 'modules' | 'team'>('company');
 
   // Estados Gerais
   const [loading, setLoading] = useState(true);
@@ -79,7 +84,8 @@ export default function Configuracoes() {
     telefone: "", email_contato: "",
     csc_token_production: "", csc_id_production: "",
     csc_token_homologation: "", csc_id_homologation: "",
-    nfse_login: "", nfse_password: ""
+    nfse_login: "", nfse_password: "", usa_fiscal: true, usa_caixa: true,
+    logo_url: ""
   });
   const [certFile, setCertFile] = useState<File | null>(null);
   const [certPassword, setCertPassword] = useState("");
@@ -147,6 +153,23 @@ export default function Configuracoes() {
     fetchUsers();
   };
 
+  const handleToggleModule = async (module: 'usa_fiscal' | 'usa_caixa', value: boolean) => {
+    setCompany(prev => ({ ...prev, [module]: value }));
+    updateProfile({ [module]: value }); // Atualiza o Profile global p/ o Sidebar reagir na hora
+    if (!profile?.organization_id) return;
+    try {
+      const res = await toggleCompanyModule(module, value);
+      if (!res.success) throw new Error(res.error);
+      // Atualiza os server components (como o layout e menus) em plano de fundo sem fechar a aba atual
+      router.refresh();
+    } catch (err: any) {
+      alert("Erro ao salvar configuração: " + err.message);
+      // Reverter alteração otimista
+      setCompany(prev => ({ ...prev, [module]: !value }));
+      updateProfile({ [module]: !value });
+    }
+  };
+
   // --- AÇÕES DE EMPRESA ---
   const handleSaveCompany = async () => {
     setSaving(true);
@@ -174,13 +197,17 @@ export default function Configuracoes() {
         csc_token_homologation: company.csc_token_homologation,
         csc_id_homologation: company.csc_id_homologation,
         nfse_login: company.nfse_login,
-        nfse_password: company.nfse_password
+        nfse_password: company.nfse_password,
+        usa_fiscal: company.usa_fiscal !== undefined ? company.usa_fiscal : true,
+        usa_caixa: company.usa_caixa !== undefined ? company.usa_caixa : true,
+        logo_url: company.logo_url
       });
 
       if (!result.success) throw new Error(result.error);
 
       alert(result.message);
       fetchCompany(); // Recarregar dados
+      updateProfile({ logo_url: company.logo_url }); // Atualiza sidebar
     } catch (error: any) {
       console.error(error);
       alert("Erro ao salvar: " + error.message);
@@ -223,18 +250,24 @@ export default function Configuracoes() {
       <h1 className="text-3xl font-bold text-[#1A1A1A]">Configurações</h1>
 
       {/* --- NAVEGAÇÃO DE ABAS --- */}
-      <div className="flex gap-4 border-b border-stone-200">
-        <button
-          onClick={() => setActiveTab('team')}
-          className={`pb-3 px-4 font-bold text-sm flex items-center gap-2 transition ${activeTab === 'team' ? 'text-[#FACC15] border-b-2 border-[#FACC15]' : 'text-stone-400 hover:text-stone-600'}`}
-        >
-          <Users size={18} /> Gestão de Equipe
-        </button>
+      <div className="flex bg-stone-200 p-1.5 rounded-2xl border-2 border-stone-300 shadow-inner gap-1">
         <button
           onClick={() => setActiveTab('company')}
-          className={`pb-3 px-4 font-bold text-sm flex items-center gap-2 transition ${activeTab === 'company' ? 'text-[#FACC15] border-b-2 border-[#FACC15]' : 'text-stone-400 hover:text-stone-600'}`}
+          className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${activeTab === 'company' ? 'bg-white text-[#1A1A1A] shadow-md border-stone-300' : 'text-stone-500 hover:text-[#1A1A1A] border-transparent'}`}
         >
           <Building2 size={18} /> Dados da Oficina
+        </button>
+        <button
+          onClick={() => setActiveTab('modules')}
+          className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${activeTab === 'modules' ? 'bg-white text-[#1A1A1A] shadow-md border-stone-300' : 'text-stone-500 hover:text-[#1A1A1A] border-transparent'}`}
+        >
+          <Settings size={18} /> Opções de Uso
+        </button>
+        <button
+          onClick={() => setActiveTab('team')}
+          className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${activeTab === 'team' ? 'bg-white text-[#1A1A1A] shadow-md border-stone-300' : 'text-stone-500 hover:text-[#1A1A1A] border-transparent'}`}
+        >
+          <Users size={18} /> Gestão de Equipe
         </button>
       </div>
 
@@ -249,7 +282,7 @@ export default function Configuracoes() {
             </button>
           </div>
 
-          <div className="bg-white rounded-[32px] border border-stone-100 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-[32px] border-2 border-stone-300 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               {loading ? (
                 <div className="flex justify-center py-10"><Loader2 className="animate-spin text-[#FACC15]" /></div>
@@ -314,6 +347,7 @@ export default function Configuracoes() {
         <div className="bg-white p-8 rounded-[32px] border border-stone-100 shadow-sm animate-in fade-in slide-in-from-right-4 duration-300 max-w-3xl">
 
           <div className="flex flex-col gap-6">
+
             <div>
               <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">NOME FANTASIA</label>
               <div className="relative">
@@ -322,8 +356,22 @@ export default function Configuracoes() {
                   type="text"
                   value={company.nome_fantasia || ''}
                   onChange={e => setCompany({ ...company, nome_fantasia: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="Ex: Auto Center Silva"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">URL DA LOGOMARCA</label>
+              <div className="relative">
+                <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                <input
+                  type="text"
+                  value={company.logo_url || ''}
+                  onChange={e => setCompany({ ...company, logo_url: e.target.value })}
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                  placeholder="Ex: /logos/logorally.png"
                 />
               </div>
             </div>
@@ -336,7 +384,7 @@ export default function Configuracoes() {
                   type="text"
                   value={company.razao_social || ''}
                   onChange={e => setCompany({ ...company, razao_social: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="Razão Social Ltda"
                 />
               </div>
@@ -350,7 +398,7 @@ export default function Configuracoes() {
                   type="text"
                   value={company.cnpj || ''}
                   onChange={e => setCompany({ ...company, cnpj: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="00.000.000/0001-00"
                 />
               </div>
@@ -365,7 +413,7 @@ export default function Configuracoes() {
                     type="text"
                     value={company.inscricao_estadual || ''}
                     onChange={e => setCompany({ ...company, inscricao_estadual: e.target.value })}
-                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                     placeholder="IE (Sem pontos)"
                   />
                 </div>
@@ -378,7 +426,7 @@ export default function Configuracoes() {
                     type="text"
                     value={company.inscricao_municipal || ''}
                     onChange={e => setCompany({ ...company, inscricao_municipal: e.target.value })}
-                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                     placeholder="IM (Sem pontos)"
                   />
                 </div>
@@ -394,7 +442,7 @@ export default function Configuracoes() {
                     type="text"
                     value={company.telefone || ''}
                     onChange={e => setCompany({ ...company, telefone: e.target.value })}
-                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                     placeholder="(00) 99999-9999"
                   />
                 </div>
@@ -407,7 +455,7 @@ export default function Configuracoes() {
                     type="email"
                     value={company.email_contato || ''}
                     onChange={e => setCompany({ ...company, email_contato: e.target.value })}
-                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                     placeholder="contato@empresa.com.br"
                   />
                 </div>
@@ -422,7 +470,7 @@ export default function Configuracoes() {
                   type="text"
                   value={company.cep || ''}
                   onChange={e => setCompany({ ...company, cep: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="00000-000"
                 />
               </div>
@@ -435,7 +483,7 @@ export default function Configuracoes() {
                   type="text"
                   value={company.logradouro || ''}
                   onChange={e => setCompany({ ...company, logradouro: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="Rua, Av..."
                 />
               </div>
@@ -445,7 +493,7 @@ export default function Configuracoes() {
                   type="text"
                   value={company.numero || ''}
                   onChange={e => setCompany({ ...company, numero: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="123"
                 />
               </div>
@@ -458,7 +506,7 @@ export default function Configuracoes() {
                   type="text"
                   value={company.bairro || ''}
                   onChange={e => setCompany({ ...company, bairro: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="Bairro"
                 />
               </div>
@@ -468,7 +516,7 @@ export default function Configuracoes() {
                   type="text"
                   value={company.complemento || ''}
                   onChange={e => setCompany({ ...company, complemento: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="Apto, Bloco..."
                 />
               </div>
@@ -481,7 +529,7 @@ export default function Configuracoes() {
                   type="text"
                   value={company.cidade || ''}
                   onChange={e => setCompany({ ...company, cidade: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="Cidade"
                 />
               </div>
@@ -491,7 +539,7 @@ export default function Configuracoes() {
                   type="text"
                   value={company.uf || ''}
                   onChange={e => setCompany({ ...company, uf: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="SP"
                   maxLength={2}
                 />
@@ -502,7 +550,7 @@ export default function Configuracoes() {
                   type="text"
                   value={company.codigo_municipio_ibge || ''}
                   onChange={e => setCompany({ ...company, codigo_municipio_ibge: e.target.value })}
-                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="3550308"
                 />
               </div>
@@ -521,7 +569,7 @@ export default function Configuracoes() {
                       type="text"
                       value={company.csc_id_production || ''}
                       onChange={e => setCompany({ ...company, csc_id_production: e.target.value })}
-                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border-2 border-stone-300 focus:border-[#FACC15]"
                       placeholder="ID Produção"
                     />
                   </div>
@@ -531,7 +579,7 @@ export default function Configuracoes() {
                       type="password"
                       value={company.csc_token_production || ''}
                       onChange={e => setCompany({ ...company, csc_token_production: e.target.value })}
-                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border-2 border-stone-300 focus:border-[#FACC15]"
                       placeholder="Token Produção"
                     />
                   </div>
@@ -546,7 +594,7 @@ export default function Configuracoes() {
                       type="text"
                       value={company.csc_id_homologation || ''}
                       onChange={e => setCompany({ ...company, csc_id_homologation: e.target.value })}
-                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border-2 border-stone-300 focus:border-[#FACC15]"
                       placeholder="ID Homologação"
                     />
                   </div>
@@ -556,7 +604,7 @@ export default function Configuracoes() {
                       type="password"
                       value={company.csc_token_homologation || ''}
                       onChange={e => setCompany({ ...company, csc_token_homologation: e.target.value })}
-                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border-2 border-stone-300 focus:border-[#FACC15]"
                       placeholder="Token Homologação"
                     />
                   </div>
@@ -576,7 +624,7 @@ export default function Configuracoes() {
                       type="text"
                       value={company.nfse_login || ''}
                       onChange={e => setCompany({ ...company, nfse_login: e.target.value })}
-                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border-2 border-stone-300 focus:border-[#FACC15]"
                       placeholder="Login Prefeitura"
                     />
                   </div>
@@ -586,7 +634,7 @@ export default function Configuracoes() {
                       type="password"
                       value={company.nfse_password || ''}
                       onChange={e => setCompany({ ...company, nfse_password: e.target.value })}
-                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border border-stone-200"
+                      className="w-full bg-white rounded-xl py-2 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15] border-2 border-stone-300 focus:border-[#FACC15]"
                       placeholder="Senha Prefeitura"
                     />
                   </div>
@@ -626,7 +674,7 @@ export default function Configuracoes() {
                     type="file"
                     accept=".pfx"
                     onChange={e => setCertFile(e.target.files?.[0] || null)}
-                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   />
                 </div>
                 <div className="flex gap-4 items-center">
@@ -635,7 +683,7 @@ export default function Configuracoes() {
                     value={certPassword}
                     onChange={e => setCertPassword(e.target.value)}
                     placeholder="Senha do Certificado"
-                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none focus:ring-2 focus:ring-[#FACC15]"
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 px-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   />
                   <button
                     onClick={handleUploadCert}
@@ -653,15 +701,65 @@ export default function Configuracoes() {
         </div>
       )}
 
+      {/* =================================================================================
+          CONTEÚDO DA ABA: OPÇÕES DE USO
+      ================================================================================= */}
+      {activeTab === 'modules' && (
+        <div className="bg-white p-8 rounded-[32px] border border-stone-100 shadow-sm animate-in fade-in slide-in-from-right-4 duration-300 max-w-3xl">
+          <div className="mb-6">
+            <h2 className="text-xl font-bold text-[#1A1A1A] mb-1">Módulos Opcionais</h2>
+            <p className="text-sm text-stone-500">Habilite ou desabilite recursos do sistema. Isso altera os menus e ferramentas para os colaboradores.</p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+
+            {/* Toggle Uso Fiscal */}
+            <label className="flex items-center justify-between p-5 bg-stone-50 border border-stone-200 rounded-3xl cursor-pointer hover:bg-stone-100 transition shadow-sm group">
+              <div>
+                <p className="font-bold text-[#1A1A1A]">Módulo Fiscal</p>
+                <p className="text-sm text-stone-500">Libera emissão de Notas Fiscais, configurações de RPS e Painel Fiscal.</p>
+              </div>
+              <div className={`w-14 h-8 rounded-full p-1 transition-colors duration-200 ease-in-out shrink-0 ${(company.usa_fiscal ?? true) ? 'bg-green-500' : 'bg-stone-300 group-hover:bg-stone-400'}`}>
+                <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${(company.usa_fiscal ?? true) ? 'translate-x-6' : 'translate-x-0'}`} />
+              </div>
+              <input
+                type="checkbox"
+                className="hidden"
+                checked={company.usa_fiscal ?? true}
+                onChange={(e) => handleToggleModule('usa_fiscal', e.target.checked)}
+              />
+            </label>
+
+            {/* Toggle Uso do Caixa */}
+            <label className="flex items-center justify-between p-5 bg-stone-50 border border-stone-200 rounded-3xl cursor-pointer hover:bg-stone-100 transition shadow-sm group">
+              <div>
+                <p className="font-bold text-[#1A1A1A]">Módulo de Caixa</p>
+                <p className="text-sm text-stone-500">Traz o controle de PDV, painel financeiro, fluxo de recebimentos e métricas de faturamento para os gerentes.</p>
+              </div>
+              <div className={`w-14 h-8 rounded-full p-1 transition-colors duration-200 ease-in-out shrink-0 ${(company.usa_caixa ?? true) ? 'bg-green-500' : 'bg-stone-300 group-hover:bg-stone-400'}`}>
+                <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${(company.usa_caixa ?? true) ? 'translate-x-6' : 'translate-x-0'}`} />
+              </div>
+              <input
+                type="checkbox"
+                className="hidden"
+                checked={company.usa_caixa ?? true}
+                onChange={(e) => handleToggleModule('usa_caixa', e.target.checked)}
+              />
+            </label>
+
+          </div>
+        </div>
+      )}
+
       {/* --- MODAIS --- */}
       {modalNovoOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center"><h2 className="text-xl font-bold">Novo Funcionário</h2><button onClick={() => setModalNovoOpen(false)}><X /></button></div>
-            <input value={newNome} onChange={e => setNewNome(e.target.value)} placeholder="Nome" className="w-full bg-gray-100 p-3 rounded-xl" />
-            <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="Email" className="w-full bg-gray-100 p-3 rounded-xl" />
-            <input value={newPass} onChange={e => setNewPass(e.target.value)} placeholder="Senha" type="password" className="w-full bg-gray-100 p-3 rounded-xl" />
-            <select value={newCargo} onChange={e => setNewCargo(e.target.value)} className="w-full bg-gray-100 p-3 rounded-xl"><option value="employee">Colaborador</option><option value="owner">Gerente</option></select>
+            <input value={newNome} onChange={e => setNewNome(e.target.value)} placeholder="Nome" className="w-full bg-gray-100 p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none" />
+            <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="Email" className="w-full bg-gray-100 p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none" />
+            <input value={newPass} onChange={e => setNewPass(e.target.value)} placeholder="Senha" type="password" className="w-full bg-gray-100 p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none" />
+            <select value={newCargo} onChange={e => setNewCargo(e.target.value)} className="w-full bg-gray-100 p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"><option value="employee">Colaborador</option><option value="owner">Gerente</option></select>
             <button onClick={handleCreateUser} disabled={saving} className="w-full bg-black text-yellow-400 p-3 rounded-xl font-bold">{saving ? "Salvando..." : "Criar"}</button>
           </div>
         </div>
@@ -672,7 +770,7 @@ export default function Configuracoes() {
           <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center"><h2 className="text-xl font-bold">Nova Senha</h2><button onClick={() => setModalSenhaOpen(false)}><X /></button></div>
             <p className="text-sm text-gray-500">Alterando senha de <strong>{selectedUser?.nome}</strong></p>
-            <input value={resetPass} onChange={e => setResetPass(e.target.value)} placeholder="Nova Senha" className="w-full bg-gray-100 p-3 rounded-xl" />
+            <input value={resetPass} onChange={e => setResetPass(e.target.value)} placeholder="Nova Senha" className="w-full bg-gray-100 p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none" />
             <button onClick={handleChangePassword} disabled={saving || !resetPass} className="w-full bg-black text-yellow-400 p-3 rounded-xl font-bold">Salvar</button>
           </div>
         </div>

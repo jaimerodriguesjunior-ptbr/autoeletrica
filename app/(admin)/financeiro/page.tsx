@@ -221,16 +221,16 @@ export default function Financeiro() {
           type="month"
           value={filtroMes}
           onChange={(e) => setFiltroMes(e.target.value)}
-          className="bg-[#F8F7F2] px-4 py-2 rounded-xl text-sm font-bold text-[#1A1A1A] outline-none border border-transparent focus:border-[#FACC15]"
+          className="bg-white px-4 py-2 rounded-xl text-sm font-bold text-[#1A1A1A] outline-none border-2 border-stone-300 shadow-sm focus:border-[#1A1A1A] focus:ring-4 focus:ring-[#FACC15]/30"
         />
 
         {/* Filtro Status */}
-        <div className="flex bg-[#F8F7F2] p-1 rounded-xl">
+        <div className="flex bg-stone-200 p-1 rounded-xl border-2 border-stone-300 shadow-inner gap-1">
           {['todos', 'paid', 'pending'].map((s) => (
             <button
               key={s}
               onClick={() => setFiltroStatus(s as any)}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition ${filtroStatus === s ? 'bg-white shadow text-[#1A1A1A]' : 'text-stone-400'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border-2 ${filtroStatus === s ? 'bg-white shadow-md text-[#1A1A1A] border-stone-300' : 'text-stone-500 hover:text-[#1A1A1A] border-transparent'}`}
             >
               {s === 'todos' ? 'Tudo' : s === 'paid' ? 'Realizado' : 'Pendente'}
             </button>
@@ -238,12 +238,12 @@ export default function Financeiro() {
         </div>
 
         {/* Filtro Tipo */}
-        <div className="flex bg-[#F8F7F2] p-1 rounded-xl">
+        <div className="flex bg-stone-200 p-1 rounded-xl border-2 border-stone-300 shadow-inner gap-1">
           {['todos', 'entrada', 'saida'].map((t) => (
             <button
               key={t}
               onClick={() => setFiltroTipo(t as any)}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition ${filtroTipo === t ? 'bg-white shadow text-[#1A1A1A]' : 'text-stone-400'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border-2 ${filtroTipo === t ? 'bg-white shadow-md text-[#1A1A1A] border-stone-300' : 'text-stone-500 hover:text-[#1A1A1A] border-transparent'}`}
             >
               {t === 'todos' ? 'Tudo' : t === 'entrada' ? 'Entradas' : 'Saídas'}
             </button>
@@ -253,7 +253,7 @@ export default function Financeiro() {
 
       {/* BENTO GRID (Resumo Dinâmico) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-[32px] border border-stone-100 shadow-sm relative overflow-hidden group">
+        <div className="bg-white p-6 rounded-[32px] border-2 border-stone-300 shadow-sm relative overflow-hidden group">
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
@@ -266,7 +266,7 @@ export default function Financeiro() {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-[32px] border border-stone-100 shadow-sm relative overflow-hidden group">
+        <div className="bg-white p-6 rounded-[32px] border-2 border-stone-300 shadow-sm relative overflow-hidden group">
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
@@ -292,7 +292,7 @@ export default function Financeiro() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-[32px] p-8 border border-stone-100 shadow-sm">
+        <div className="lg:col-span-2 bg-white rounded-[32px] p-8 border-2 border-stone-300 shadow-sm">
           <div className="flex justify-between items-center mb-6">
             <h3 className="font-bold text-lg text-[#1A1A1A]">Extrato Detalhado</h3>
             <span className="text-xs text-stone-400 italic">
@@ -312,7 +312,7 @@ export default function Financeiro() {
                 <button
                   key={item.id}
                   onClick={() => abrirModalEdicao(item)}
-                  className={`w-full flex items-center justify-between p-4 rounded-2xl transition text-left group border ${item.status === 'pending' ? 'bg-yellow-50 border-yellow-100 hover:bg-yellow-100' : 'bg-[#F8F7F2] border-transparent hover:bg-stone-200'}`}
+                  className={`w-full flex items-center justify-between p-4 rounded-2xl transition text-left group border-2 ${item.status === 'pending' ? 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100' : 'bg-white border-stone-300 hover:bg-stone-100'}`}
                 >
                   <div className="flex items-center gap-4">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${item.status === 'pending' ? 'bg-yellow-200 text-yellow-700' : (item.tipo === 'entrada' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600')}`}>

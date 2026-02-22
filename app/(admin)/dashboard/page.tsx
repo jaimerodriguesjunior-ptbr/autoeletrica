@@ -147,6 +147,8 @@ export default function Dashboard() {
 
   const role = profile?.cargo || "employee";
   const userName = profile?.nome || "Colaborador";
+  const usa_caixa = profile?.usa_caixa !== false;
+  const showFinancials = isOwner && usa_caixa;
 
   const formatMoney = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
@@ -175,7 +177,7 @@ export default function Dashboard() {
             Olá, <span className="text-stone-400">{userName.split(' ')[0]}</span>
           </h1>
           <p className="text-stone-500 text-sm mt-1">
-            {isOwner ? 'Resumo financeiro e operacional.' : 'Bom trabalho hoje!'}
+            {showFinancials ? 'Resumo financeiro e operacional.' : 'Bom trabalho hoje!'}
           </p>
         </div>
 
@@ -192,9 +194,9 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
         {/* BLOCO A (CAMALEÃO) */}
-        <div className="md:col-span-2 bg-white rounded-[32px] p-8 shadow-sm border border-stone-100 relative overflow-hidden">
+        <div className="md:col-span-2 bg-white rounded-[32px] p-8 shadow-sm border-2 border-stone-300 relative overflow-hidden">
 
-          {isOwner ? (
+          {showFinancials ? (
             // === VISÃO DO DONO (DINHEIRO) ===
             <>
               <div className="flex justify-between items-start relative z-10">
@@ -287,7 +289,7 @@ export default function Dashboard() {
             <p className="text-stone-400 text-sm">Em aberto</p>
           </div>
 
-          <div className="bg-white rounded-[32px] p-6 border border-stone-100 shadow-sm flex items-center justify-between">
+          <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-stone-500 text-xs font-bold uppercase tracking-wider">Aguardando Peça</p>
               <p className="text-2xl font-bold text-red-500 mt-1">{loadingData ? "..." : kpis.prioridade}</p>
@@ -300,7 +302,7 @@ export default function Dashboard() {
         </div>
 
         {/* BLOCO C: Agenda (ATUALIZADO E FUNCIONAL) */}
-        <div className="bg-white rounded-[32px] p-8 border border-stone-100 shadow-sm flex flex-col h-full max-h-[350px]">
+        <div className="bg-white rounded-[32px] p-8 border-2 border-stone-300 shadow-sm flex flex-col h-full max-h-[350px]">
           <div className="flex justify-between items-center mb-4 shrink-0">
             <h3 className="font-bold text-lg text-[#1A1A1A]">Entregas Hoje</h3>
             <Calendar size={18} className="text-stone-400" />
@@ -320,7 +322,7 @@ export default function Dashboard() {
 
                 return (
                   <Link href={`/os/detalhes/${item.id}`} key={item.id} className="block group">
-                    <div className="flex items-center justify-between p-3 bg-[#F8F7F2] rounded-2xl hover:bg-stone-200 transition border border-stone-50 hover:border-stone-200">
+                    <div className="flex items-center justify-between p-3 bg-white rounded-2xl hover:bg-stone-100 transition border-2 border-stone-200 hover:border-stone-300 shadow-sm">
                       <div>
                         <p className="font-bold text-[#1A1A1A] text-sm">{item.vehicles?.modelo}</p>
                         <p className="text-[10px] text-stone-500">{item.clients?.nome}</p>
@@ -337,7 +339,7 @@ export default function Dashboard() {
         </div>
 
         {/* BLOCO D: Lista Recente */}
-        <div className="md:col-span-2 bg-white rounded-[32px] p-8 border border-stone-100 shadow-sm">
+        <div className="md:col-span-2 bg-white rounded-[32px] p-8 border-2 border-stone-300 shadow-sm">
           <div className="flex justify-between items-center mb-6">
             <h3 className="font-bold text-lg text-[#1A1A1A]">Últimas Ordens de Serviço</h3>
             <Link href="/os" className="text-sm font-bold text-[#FACC15] hover:text-yellow-600">Ver todas</Link>
@@ -345,7 +347,7 @@ export default function Dashboard() {
 
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="text-stone-400 text-xs border-b border-stone-100">
+              <tr className="bg-stone-200 text-[#1A1A1A] text-[10px] uppercase font-black tracking-wider border-b-2 border-stone-300">
                 <th className="py-3 font-medium">Veículo</th>
                 <th className="py-3 font-medium">Cliente</th>
                 <th className="py-3 font-medium">Status</th>
@@ -359,7 +361,7 @@ export default function Dashboard() {
                 <tr><td colSpan={4} className="py-4 text-center text-stone-400">Nenhuma OS encontrada.</td></tr>
               ) : (
                 recentOS.map((os) => (
-                  <tr key={os.id} className="border-b border-stone-50 last:border-0 hover:bg-[#F8F7F2] transition cursor-default">
+                  <tr key={os.id} className="border-b border-stone-300 last:border-0 hover:bg-stone-100 transition cursor-default">
                     <td className="py-4 font-bold text-[#1A1A1A]">{os.vehicles?.modelo || "Veículo não identificado"}</td>
                     <td className="py-4 text-stone-500">{os.clients?.nome || "Consumidor"}</td>
                     <td className="py-4">

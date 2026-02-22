@@ -1,25 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "../src/lib/supabase";
 import { useAuth } from "../src/contexts/AuthContext";
-import { Lock, User, Loader2, AlertCircle, Ban, Mail, ArrowRight, X, CheckCircle, Info } from "lucide-react";
+import { Lock, User, Loader2, AlertCircle, Ban, Mail, ArrowRight, X, CheckCircle, Info, Eye, EyeOff } from "lucide-react";
 
 export default function Login() {
   const supabase = createClient();
   const { user } = useAuth();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("admin@rallyautocenter.com.br");
+  const [password, setPassword] = useState("Rally@2026");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Estados do Modal "Esqueci a Senha"
+  // Estado do Modal "Esqueci a Senha"
   const [forgotOpen, setForgotOpen] = useState(false);
   const [recoverEmail, setRecoverEmail] = useState("");
   const [recoverStatus, setRecoverStatus] = useState<{ type: 'success' | 'info' | 'error' | null, msg: string }>({ type: null, msg: '' });
   const [loadingRecover, setLoadingRecover] = useState(false);
+
+  // Estado do vídeo da logo
+  const [videoEnded, setVideoEnded] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Estado para mostrar/ocultar senha
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -109,17 +116,32 @@ export default function Login() {
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-[32px] p-8 shadow-2xl animate-in fade-in zoom-in duration-500">
 
           <div className="text-center mb-8 flex flex-col items-center">
-            {/* Logo da Oficina */}
+            {/* Logo Animada: Vídeo primeiro, depois imagem estática */}
             <div className="w-32 h-32 relative mb-2">
-              <img src="/logonor.png" alt="Logo" className="w-full h-full object-contain" />
+              {!videoEnded && (
+                <video
+                  ref={videoRef}
+                  src="/login.mp4"
+                  autoPlay
+                  muted
+                  playsInline
+                  onEnded={() => setVideoEnded(true)}
+                  className="w-full h-full object-contain rounded-full transition-opacity duration-500"
+                />
+              )}
+              {videoEnded && (
+                <img
+                  src="/login.jpg"
+                  alt="Logo"
+                  className="w-full h-full object-contain rounded-full animate-in fade-in duration-700"
+                />
+              )}
             </div>
 
             {/* Texto Centro Automotivo */}
             <span className="text-xs font-bold text-stone-400 uppercase tracking-[0.2em] leading-relaxed mb-4">
               Centro<br />Automotivo
             </span>
-
-            <p className="text-stone-500 text-xs">Acesso restrito a colaboradores.</p>
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
@@ -138,6 +160,11 @@ export default function Login() {
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-[#0d1117]/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-stone-600 focus:outline-none focus:border-[#FACC15] transition"
                   placeholder="Seu e-mail corporativo"
+                  id="username"
+                  name="username"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
                   required
                 />
               </div>
@@ -147,13 +174,23 @@ export default function Login() {
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={20} />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#0d1117]/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-stone-600 focus:outline-none focus:border-[#FACC15] transition"
+                  className="w-full bg-[#0d1117]/50 border border-white/10 rounded-2xl py-4 pl-12 pr-12 text-white placeholder:text-stone-600 focus:outline-none focus:border-[#FACC15] transition"
                   placeholder="Sua senha"
+                  id="password"
+                  name="password"
+                  autoComplete="current-password"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white transition"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
               </div>
             </div>
 

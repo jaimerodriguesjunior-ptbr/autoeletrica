@@ -206,17 +206,17 @@ export default function EstoqueEServicos() {
       </div>
 
       {/* 2. SELETOR DE ABAS PRINCIPAIS (MOVIDO PARA CIMA) */}
-      <div className="flex p-1 bg-stone-200 rounded-[20px] w-fit">
+      <div className="flex p-1.5 bg-stone-200 rounded-[24px] w-fit border-2 border-stone-300 shadow-sm gap-1">
         <button
           onClick={() => setView('products')}
-          className={`px-6 py-3 rounded-[16px] text-sm font-bold transition-all ${view === 'products' ? 'bg-white text-[#1A1A1A] shadow-md' : 'text-stone-500 hover:text-stone-700'
+          className={`px-6 py-3 rounded-[18px] text-sm font-bold transition-all border-2 ${view === 'products' ? 'bg-white text-[#1A1A1A] shadow-md border-stone-300' : 'text-stone-500 hover:text-[#1A1A1A] border-transparent'
             }`}
         >
           Produtos / Peças
         </button>
         <button
           onClick={() => setView('services')}
-          className={`px-6 py-3 rounded-[16px] text-sm font-bold transition-all ${view === 'services' ? 'bg-white text-[#1A1A1A] shadow-md' : 'text-stone-500 hover:text-stone-700'
+          className={`px-6 py-3 rounded-[18px] text-sm font-bold transition-all border-2 ${view === 'services' ? 'bg-white text-[#1A1A1A] shadow-md border-stone-300' : 'text-stone-500 hover:text-[#1A1A1A] border-transparent'
             }`}
         >
           Mão de Obra
@@ -226,7 +226,7 @@ export default function EstoqueEServicos() {
       {/* 3. ALERTAS RÁPIDOS (MOVIDO PARA BAIXO - Visíveis apenas na aba Produtos) */}
       {view === 'products' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-stone-100 flex items-center gap-4">
+          <div className="bg-white p-5 rounded-[24px] shadow-sm border-2 border-stone-300 flex items-center gap-4">
             <div className="bg-blue-100 p-3 rounded-xl text-blue-600"><Package size={24} /></div>
             <div>
               <p className="text-xs font-bold text-stone-400 uppercase">Total Itens</p>
@@ -234,7 +234,7 @@ export default function EstoqueEServicos() {
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-stone-100 flex items-center gap-4">
+          <div className="bg-white p-5 rounded-[24px] shadow-sm border-2 border-stone-300 flex items-center gap-4">
             <div className="bg-red-100 p-3 rounded-xl text-red-600"><AlertTriangle size={24} /></div>
             <div>
               <p className="text-xs font-bold text-stone-400 uppercase">Reposição Urgente</p>
@@ -242,7 +242,7 @@ export default function EstoqueEServicos() {
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-[24px] shadow-sm border border-stone-100 flex items-center gap-4">
+          <div className="bg-white p-5 rounded-[24px] shadow-sm border-2 border-stone-300 flex items-center gap-4">
             <div className="bg-yellow-100 p-3 rounded-xl text-yellow-600"><TrendingUp size={24} /></div>
             <div>
               <p className="text-xs font-bold text-stone-400 uppercase">Preço Defasado</p>
@@ -253,7 +253,7 @@ export default function EstoqueEServicos() {
       )}
 
       {/* 4. ÁREA DE LISTAGEM */}
-      <div className="bg-white rounded-[32px] border border-stone-100 shadow-sm overflow-hidden min-h-[300px]">
+      <div className="bg-white rounded-[32px] border-2 border-stone-300 shadow-sm overflow-hidden min-h-[300px]">
 
         {/* BARRA DE FERRAMENTAS */}
         <div className="p-4 border-b border-stone-50 space-y-4">
@@ -265,30 +265,30 @@ export default function EstoqueEServicos() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={view === 'products' ? "Buscar peça por nome, marca..." : "Buscar serviço..."}
-              className="w-full bg-[#F8F7F2] pl-12 pr-4 py-3 rounded-2xl outline-none focus:ring-2 focus:ring-[#FACC15] text-sm font-bold text-[#1A1A1A]"
+              className="w-full bg-white border-2 border-[#1A1A1A] pl-12 pr-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-[#FACC15]/30 text-sm font-bold text-[#1A1A1A] shadow-sm"
             />
           </div>
 
           {/* Filtros Específicos de Produto */}
           {view === 'products' && (
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="flex gap-2 overflow-x-auto pb-2">
               <button
                 onClick={() => setProductFilter('todos')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold border transition whitespace-nowrap ${productFilter === 'todos' ? 'bg-[#1A1A1A] text-white border-[#1A1A1A]' : 'bg-white text-stone-500 border-stone-200 hover:bg-stone-50'
+                className={`px-4 py-2 rounded-xl text-xs font-bold border-2 transition whitespace-nowrap shadow-sm ${productFilter === 'todos' ? 'bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A]' : 'bg-white text-stone-500 border-stone-300 hover:border-stone-400 hover:text-[#1A1A1A]'
                   }`}
               >
                 Todos
               </button>
               <button
                 onClick={() => setProductFilter('baixo')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1 whitespace-nowrap ${productFilter === 'baixo' ? 'bg-red-500 text-white border-red-500' : 'bg-white text-stone-500 border-stone-200 hover:bg-red-50 hover:text-red-500'
+                className={`px-4 py-2 rounded-xl text-xs font-bold border-2 transition flex items-center gap-1 whitespace-nowrap shadow-sm ${productFilter === 'baixo' ? 'bg-red-500 text-white border-red-500' : 'bg-white text-stone-500 border-stone-300 hover:border-red-400 hover:text-red-600'
                   }`}
               >
                 <AlertTriangle size={14} /> Estoque Baixo
               </button>
               <button
                 onClick={() => setProductFilter('preco')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1 whitespace-nowrap ${productFilter === 'preco' ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-white text-stone-500 border-stone-200 hover:bg-yellow-50 hover:text-yellow-600'
+                className={`px-4 py-2 rounded-xl text-xs font-bold border-2 transition flex items-center gap-1 whitespace-nowrap shadow-sm ${productFilter === 'preco' ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-white text-stone-500 border-stone-300 hover:border-yellow-400 hover:text-yellow-600'
                   }`}
               >
                 <TrendingUp size={14} /> Alerta de Preço
@@ -305,7 +305,7 @@ export default function EstoqueEServicos() {
             </div>
           ) : (
             <table className="w-full text-left">
-              <thead className="bg-[#F8F7F2] text-stone-500 text-[10px] uppercase font-bold tracking-wider">
+              <thead className="bg-stone-200 text-[#1A1A1A] text-[10px] uppercase font-black tracking-wider border-b-2 border-stone-300">
                 <tr>
                   <th className="px-6 py-4">Nome</th>
                   {view === 'products' && <th className="px-6 py-4 text-center">Qtd</th>}
@@ -320,7 +320,7 @@ export default function EstoqueEServicos() {
                 {view === 'products' && filteredProducts.map((p) => {
                   const status = getProductStatus(p);
                   return (
-                    <tr key={p.id} className="border-b border-stone-50 hover:bg-[#F9F8F4] transition group">
+                    <tr key={p.id} className="border-b border-stone-300 hover:bg-stone-100 transition group">
                       <td className="px-6 py-4">
                         <p className="font-bold text-[#1A1A1A]">{p.nome}</p>
                         <p className="text-xs text-stone-400">{p.marca || "Marca não inf."}</p>
@@ -367,7 +367,7 @@ export default function EstoqueEServicos() {
 
                 {/* --- LISTA DE SERVIÇOS --- */}
                 {view === 'services' && filteredServices.map((s) => (
-                  <tr key={s.id} className="border-b border-stone-50 hover:bg-[#F9F8F4] transition group">
+                  <tr key={s.id} className="border-b border-stone-300 hover:bg-stone-100 transition group">
                     <td className="px-6 py-4">
                       <p className="font-bold text-[#1A1A1A]">{s.nome}</p>
                     </td>

@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
-import { 
-  ArrowLeft, MapPin, 
+import {
+  ArrowLeft, MapPin,
   Car, Save, Phone, FileText, Trash2, Loader2, Edit, X, Plus
 } from "lucide-react";
 
@@ -25,7 +25,7 @@ export default function EditarCliente() {
   const [cpfCnpj, setCpfCnpj] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
-  
+
   // Endereço
   const [cep, setCep] = useState("");
   const [rua, setRua] = useState("");
@@ -50,7 +50,7 @@ export default function EditarCliente() {
     if (id) {
       fetchCliente();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchCliente = async () => {
@@ -69,7 +69,7 @@ export default function EditarCliente() {
         setCpfCnpj(cliente.cpf_cnpj || "");
         setWhatsapp(cliente.whatsapp || "");
         setEmail(cliente.email || "");
-        
+
         if (cliente.endereco) {
           const end = cliente.endereco;
           setCep(end.cep || "");
@@ -91,11 +91,11 @@ export default function EditarCliente() {
 
   const fetchVeiculos = async () => {
     const { data: cars } = await supabase
-        .from('vehicles')
-        .select('*')
-        .eq('client_id', id)
-        .order('created_at', { ascending: false });
-      
+      .from('vehicles')
+      .select('*')
+      .eq('client_id', id)
+      .order('created_at', { ascending: false });
+
     setVeiculos(cars || []);
   }
 
@@ -124,23 +124,23 @@ export default function EditarCliente() {
 
   const handleExcluirCliente = async () => {
     if (!confirm("ATENÇÃO: Excluir este cliente apagará também o histórico de veículos dele. Continuar?")) return;
-    
+
     setDeleting(true);
     try {
-        await supabase.from('vehicles').delete().eq('client_id', id);
-        const { error } = await supabase.from('clients').delete().eq('id', id);
-        if (error) throw error;
+      await supabase.from('vehicles').delete().eq('client_id', id);
+      const { error } = await supabase.from('clients').delete().eq('id', id);
+      if (error) throw error;
 
-        router.push('/clientes');
+      router.push('/clientes');
     } catch (error: any) {
-        alert("Erro ao excluir: " + error.message);
+      alert("Erro ao excluir: " + error.message);
     } finally {
-        setDeleting(false);
+      setDeleting(false);
     }
   };
 
   // --- FUNÇÕES DE VEÍCULO (Criação e Edição) ---
-  
+
   const abrirModalNovo = () => {
     setEditingVehicleId(null); // Modo Criação
     setVPlaca("");
@@ -166,63 +166,63 @@ export default function EditarCliente() {
   const handleSalvarVeiculo = async () => {
     setSavingVeiculo(true);
     try {
-        const dadosVeiculo = {
-            placa: vPlaca.toUpperCase(),
-            modelo: vModelo,
-            fabricante: vFabricante,
-            cor: vCor,
-            ano: vAno,
-            obs: vObs,
-            organization_id: profile?.organization_id, // Necessário para insert
-            client_id: id // Vincula ao cliente atual
-        };
+      const dadosVeiculo = {
+        placa: vPlaca.toUpperCase(),
+        modelo: vModelo,
+        fabricante: vFabricante,
+        cor: vCor,
+        ano: vAno,
+        obs: vObs,
+        organization_id: profile?.organization_id, // Necessário para insert
+        client_id: id // Vincula ao cliente atual
+      };
 
-        if (editingVehicleId) {
-            // ATUALIZAR
-            const { error } = await supabase
-                .from('vehicles')
-                .update(dadosVeiculo)
-                .eq('id', editingVehicleId);
-            if (error) throw error;
-        } else {
-            // CRIAR NOVO
-            const { error } = await supabase
-                .from('vehicles')
-                .insert(dadosVeiculo);
-            if (error) throw error;
-        }
-        
-        await fetchVeiculos();
-        setModalVeiculoOpen(false);
-        alert(editingVehicleId ? "Veículo atualizado!" : "Veículo adicionado!");
+      if (editingVehicleId) {
+        // ATUALIZAR
+        const { error } = await supabase
+          .from('vehicles')
+          .update(dadosVeiculo)
+          .eq('id', editingVehicleId);
+        if (error) throw error;
+      } else {
+        // CRIAR NOVO
+        const { error } = await supabase
+          .from('vehicles')
+          .insert(dadosVeiculo);
+        if (error) throw error;
+      }
+
+      await fetchVeiculos();
+      setModalVeiculoOpen(false);
+      alert(editingVehicleId ? "Veículo atualizado!" : "Veículo adicionado!");
 
     } catch (error: any) {
-        alert("Erro ao salvar veículo: " + error.message);
+      alert("Erro ao salvar veículo: " + error.message);
     } finally {
-        setSavingVeiculo(false);
+      setSavingVeiculo(false);
     }
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={40}/></div>;
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={40} /></div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-32">
-      
+
       {/* 1. CABEÇALHO */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-             <Link href="/clientes">
+          <Link href="/clientes">
             <button className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-[#1A1A1A] shadow-sm hover:bg-stone-50 transition">
-                <ArrowLeft size={20} />
+              <ArrowLeft size={20} />
             </button>
-             </Link>
-            <div>
+          </Link>
+          <div>
             <h1 className="text-2xl font-bold text-[#1A1A1A]">Editar Cliente</h1>
             <p className="text-stone-500 text-xs">Gerencie dados e veículos</p>
-            </div>
-         </div>
+          </div>
+        </div>
         <button onClick={handleExcluirCliente} disabled={deleting} className="text-red-400 hover:text-red-600 font-bold text-sm flex items-center gap-2">
-            {deleting ? <Loader2 className="animate-spin" size={16}/> : <Trash2 size={18}/>} Excluir
+          {deleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={18} />} Excluir
         </button>
       </div>
 
@@ -233,46 +233,46 @@ export default function EditarCliente() {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-           <div className="space-y-1">
+          <div className="space-y-1">
             <label className="text-xs font-bold text-stone-400 ml-2">NOME COMPLETO</label>
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={nome}
               onChange={e => setNome(e.target.value)}
-              className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15] transition" 
+              className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition"
             />
           </div>
-          
+
           <div className="space-y-1">
             <label className="text-xs font-bold text-stone-400 ml-2">CPF / CNPJ</label>
-            <input 
-               type="text" 
+            <input
+              type="text"
               value={cpfCnpj}
               onChange={e => setCpfCnpj(e.target.value)}
-              className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15] transition" 
-             />
+              className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition"
+            />
           </div>
 
           <div className="space-y-1">
             <label className="text-xs font-bold text-stone-400 ml-2">WHATSAPP</label>
             <div className="relative">
-               <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
-              <input 
-                type="tel" 
+              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+              <input
+                type="tel"
                 value={whatsapp}
                 onChange={e => setWhatsapp(e.target.value)}
-                className="w-full bg-[#F8F7F2] rounded-2xl p-4 pl-12 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15] transition" 
+                className="w-full bg-[#F8F7F2] rounded-2xl p-4 pl-12 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition"
               />
             </div>
-           </div>
+          </div>
 
           <div className="space-y-1">
             <label className="text-xs font-bold text-stone-400 ml-2">E-MAIL</label>
-            <input 
-              type="email" 
-               value={email}
+            <input
+              type="email"
+              value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15] transition" 
+              className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition"
             />
           </div>
         </div>
@@ -281,167 +281,167 @@ export default function EditarCliente() {
       {/* 3. ENDEREÇO */}
       <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 space-y-4">
         <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
-           <MapPin size={18} /> Endereço
+          <MapPin size={18} /> Endereço
         </h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
             <label className="text-xs font-bold text-stone-400 ml-2">CEP</label>
-             <input type="text" value={cep} onChange={e => setCep(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15] transition" />
+            <input type="text" value={cep} onChange={e => setCep(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition" />
           </div>
           <div className="md:col-span-2 space-y-1">
             <label className="text-xs font-bold text-stone-400 ml-2">RUA</label>
-             <input type="text" value={rua} onChange={e => setRua(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15] transition" />
+            <input type="text" value={rua} onChange={e => setRua(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition" />
           </div>
           <div className="space-y-1">
             <label className="text-xs font-bold text-stone-400 ml-2">NÚMERO</label>
-             <input type="text" value={numero} onChange={e => setNumero(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15] transition" />
+            <input type="text" value={numero} onChange={e => setNumero(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition" />
           </div>
           <div className="md:col-span-2 space-y-1">
             <label className="text-xs font-bold text-stone-400 ml-2">BAIRRO</label>
-             <input type="text" value={bairro} onChange={e => setBairro(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15] transition" />
+            <input type="text" value={bairro} onChange={e => setBairro(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition" />
           </div>
         </div>
       </div>
 
       {/* 4. VEÍCULOS JÁ CADASTRADOS */}
-       <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
+      <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
         <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
-                <Car size={18} /> Veículos Cadastrados
-            </h3>
-            <button 
-                onClick={abrirModalNovo}
-                className="text-xs font-bold bg-[#F8F7F2] text-[#1A1A1A] px-3 py-2 rounded-full flex items-center gap-1 hover:bg-[#FACC15] transition shadow-sm"
-            >
-                <Plus size={14} /> Incluir
-            </button>
+          <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+            <Car size={18} /> Veículos Cadastrados
+          </h3>
+          <button
+            onClick={abrirModalNovo}
+            className="text-xs font-bold bg-[#F8F7F2] text-[#1A1A1A] px-3 py-2 rounded-full flex items-center gap-1 hover:bg-[#FACC15] transition shadow-sm"
+          >
+            <Plus size={14} /> Incluir
+          </button>
         </div>
-        
+
         {veiculos.length === 0 ? (
-            <p className="text-stone-400 text-sm italic text-center py-4">Nenhum veículo vinculado.</p>
+          <p className="text-stone-400 text-sm italic text-center py-4">Nenhum veículo vinculado.</p>
         ) : (
-            <div className="space-y-3">
-                {veiculos.map(v => (
-                     <div key={v.id} className="bg-[#F8F7F2] p-4 rounded-2xl flex justify-between items-center group">
-                        <div>
-                             <p className="font-bold text-[#1A1A1A]">{v.modelo}</p>
-                            <p className="text-xs text-stone-500 font-mono">{v.placa}</p>
-                        </div>
-                         <div className="flex items-center gap-3">
-                            <span className="text-[10px] bg-white border border-stone-200 px-2 py-1 rounded font-bold text-stone-400">
-                                 {v.fabricante}
-                            </span>
-                             <button 
-                                onClick={() => abrirModalEdicao(v)}
-                                 className="w-8 h-8 flex items-center justify-center bg-white rounded-full text-stone-400 hover:text-[#1A1A1A] shadow-sm transition"
-                            >
-                                 <Edit size={14} />
-                            </button>
-                         </div>
-                    </div>
-                ))}
-             </div>
+          <div className="space-y-3">
+            {veiculos.map(v => (
+              <div key={v.id} className="bg-[#F8F7F2] p-4 rounded-2xl flex justify-between items-center group">
+                <div>
+                  <p className="font-bold text-[#1A1A1A]">{v.modelo}</p>
+                  <p className="text-xs text-stone-500 font-mono">{v.placa}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] bg-white border border-stone-200 px-2 py-1 rounded font-bold text-stone-400">
+                    {v.fabricante}
+                  </span>
+                  <button
+                    onClick={() => abrirModalEdicao(v)}
+                    className="w-8 h-8 flex items-center justify-center bg-white rounded-full text-stone-400 hover:text-[#1A1A1A] shadow-sm transition"
+                  >
+                    <Edit size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
       {/* 5. AÇÃO FLUTUANTE (SALVAR CLIENTE) */}
       <div className="fixed bottom-24 md:bottom-6 right-6 left-6 md:left-auto md:w-96 z-40">
-        <button 
+        <button
           onClick={handleSalvarCliente}
           disabled={saving}
           className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-full shadow-lg flex justify-center items-center gap-2 hover:scale-105 transition active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
         >
-          {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />} 
-           {saving ? "Salvando..." : "Salvar Alterações"}
+          {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+          {saving ? "Salvando..." : "Salvar Alterações"}
         </button>
       </div>
 
       {/* --- MODAL DE EDIÇÃO DE VEÍCULO --- */}
       {modalVeiculoOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-           <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-bold text-[#1A1A1A] flex items-center gap-2">
-                 <Car size={24} /> {editingVehicleId ? "Editar Veículo" : "Novo Veículo"}
+                <Car size={24} /> {editingVehicleId ? "Editar Veículo" : "Novo Veículo"}
               </h2>
               <button onClick={() => setModalVeiculoOpen(false)}><X /></button>
             </div>
 
             <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                   <div>
-                        <label className="text-xs font-bold text-stone-400 ml-2">PLACA</label>
-                         <input 
-                            type="text" 
-                             value={vPlaca} 
-                            onChange={e=>setVPlaca(e.target.value.toUpperCase())} 
-                             className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-bold text-[#1A1A1A] uppercase outline-none" 
-                        />
-                   </div>
-                    <div>
-                        <label className="text-xs font-bold text-stone-400 ml-2">FABRICANTE</label>
-                        <input 
-                             type="text" 
-                            value={vFabricante} 
-                             onChange={e=>setVFabricante(e.target.value)} 
-                            className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none" 
-                         />
-                   </div>
-               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-400 ml-2">PLACA</label>
+                  <input
+                    type="text"
+                    value={vPlaca}
+                    onChange={e => setVPlaca(e.target.value.toUpperCase())}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-bold text-[#1A1A1A] uppercase outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-400 ml-2">FABRICANTE</label>
+                  <input
+                    type="text"
+                    value={vFabricante}
+                    onChange={e => setVFabricante(e.target.value)}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
+                  />
+                </div>
+              </div>
 
-               <div>
-                     <label className="text-xs font-bold text-stone-400 ml-2">MODELO</label>
-                    <input 
-                         type="text" 
-                        value={vModelo} 
-                        onChange={e=>setVModelo(e.target.value)} 
-                         className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none" 
-                    />
-               </div>
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-2">MODELO</label>
+                <input
+                  type="text"
+                  value={vModelo}
+                  onChange={e => setVModelo(e.target.value)}
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
+                />
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                   <div>
-                        <label className="text-xs font-bold text-stone-400 ml-2">COR</label>
-                         <input 
-                            type="text" 
-                             value={vCor} 
-                            onChange={e=>setVCor(e.target.value)} 
-                             className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none" 
-                        />
-                   </div>
-                   <div>
-                        <label className="text-xs font-bold text-stone-400 ml-2">ANO</label>
-                        <input 
-                             type="text" 
-                            value={vAno} 
-                             onChange={e=>setVAno(e.target.value)} 
-                            className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none" 
-                         />
-                   </div>
-               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-400 ml-2">COR</label>
+                  <input
+                    type="text"
+                    value={vCor}
+                    onChange={e => setVCor(e.target.value)}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-400 ml-2">ANO</label>
+                  <input
+                    type="text"
+                    value={vAno}
+                    onChange={e => setVAno(e.target.value)}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
+                  />
+                </div>
+              </div>
 
-               <div>
-                     <label className="text-xs font-bold text-stone-400 ml-2">OBSERVAÇÕES</label>
-                    <input 
-                        type="text" 
-                         value={vObs} 
-                        onChange={e=>setVObs(e.target.value)} 
-                         className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none" 
-                    />
-               </div>
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-2">OBSERVAÇÕES</label>
+                <input
+                  type="text"
+                  value={vObs}
+                  onChange={e => setVObs(e.target.value)}
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
+                />
+              </div>
             </div>
 
-             <button 
-              onClick={handleSalvarVeiculo} 
-              disabled={savingVeiculo} 
+            <button
+              onClick={handleSalvarVeiculo}
+              disabled={savingVeiculo}
               className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl flex justify-center gap-2 hover:scale-105 transition"
-             >
-              {savingVeiculo ? <Loader2 className="animate-spin"/> : <Save />} Salvar Veículo
+            >
+              {savingVeiculo ? <Loader2 className="animate-spin" /> : <Save />} Salvar Veículo
             </button>
           </div>
         </div>
-       )}
+      )}
 
     </div>
   );

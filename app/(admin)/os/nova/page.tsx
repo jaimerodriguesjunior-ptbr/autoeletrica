@@ -17,11 +17,24 @@ import {
   ArrowRight,
   Minus,
   Calendar,
+  Mic,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
+
+// Speech Recognition type for TypeScript
+interface ISpeechRecognition extends EventTarget {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start(): void;
+  stop(): void;
+  onresult: ((event: any) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: any) => void) | null;
+}
 
 // --- TIPOS ---
 type Client = { id: string; nome: string; whatsapp: string | null };
@@ -53,6 +66,10 @@ export default function NovaOS() {
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const evidenceInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<ISpeechRecognition | null>(null);
+
+  // Speech-to-text
+  const [isListening, setIsListening] = useState(false);
 
   // --- CONTROLE DE ETAPAS ---
   const [step, setStep] = useState<1 | 2>(1);
@@ -354,23 +371,23 @@ export default function NovaOS() {
     const itemExistente = itens.find(i => i.db_id === item.id && i.tipo === tipo);
 
     if (itemExistente) {
-      setItens(prev => prev.map(i => 
+      setItens(prev => prev.map(i =>
         i.id === itemExistente.id ? { ...i, qtd: i.qtd + 1 } : i
       ));
     } else {
       const semEstoque = tipo === "peca" && (item.estoque_atual || 0) <= 0;
       const valorUnitario = item.price || item.preco_venda || 0;
-      
+
       setItens([
         ...itens,
-        { 
-          id: Math.random(), 
-          db_id: item.id, 
-          nome: item.nome, 
-          valor: valorUnitario, 
-          tipo, 
-          qtd: 1, 
-          semEstoque 
+        {
+          id: Math.random(),
+          db_id: item.id,
+          nome: item.nome,
+          valor: valorUnitario,
+          tipo,
+          qtd: 1,
+          semEstoque
         },
       ]);
     }
@@ -388,9 +405,9 @@ export default function NovaOS() {
   };
 
   const removerItem = (id: string | number) => setItens(itens.filter((item) => item.id !== id));
-  
+
   const total = itens.reduce((acc, item) => acc + item.valor * item.qtd, 0);
-  
+
   const selecionarCliente = (c: Client) => {
     setClienteSelecionado(c);
     setModalClienteAberto(false);
@@ -448,8 +465,8 @@ export default function NovaOS() {
                     setPlacaInput(e.target.value.toUpperCase());
                     setVeiculoNaoEncontrado(false);
                   }}
-                  placeholder="ABC1234" 
-                  className="w-full text-center text-3xl font-bold uppercase tracking-widest bg-[#F8F7F2] rounded-2xl py-6 outline-none focus:ring-2 focus:ring-[#FACC15] placeholder:text-stone-300 pr-16"
+                  placeholder="ABC1234"
+                  className="w-full text-center text-3xl font-bold uppercase tracking-widest bg-[#F8F7F2] rounded-2xl py-6 outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] placeholder:text-stone-300 pr-16"
                   maxLength={8}
                 />
                 <button
@@ -589,16 +606,15 @@ export default function NovaOS() {
                   setModalClienteAberto(true);
                   setModalClienteView("buscar");
                 }}
-                className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none cursor-pointer border border-transparent hover:border-[#FACC15] transition font-medium"
+                className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none cursor-pointer border-2 border-stone-300 hover:border-[#FACC15] transition font-medium"
               />
               <button
                 onClick={() => {
                   setModalClienteAberto(true);
                   setModalClienteView("buscar");
                 }}
-                className={`w-14 rounded-2xl flex items-center justify-center transition shrink-0 ${
-                  clienteSelecionado ? "bg-green-100 text-green-700" : "bg-[#1A1A1A] text-white"
-                }`}
+                className={`w-14 rounded-2xl flex items-center justify-center transition shrink-0 ${clienteSelecionado ? "bg-green-100 text-green-700" : "bg-[#1A1A1A] text-white"
+                  }`}
               >
                 {clienteSelecionado ? <CheckCircle size={24} /> : <Search size={20} />}
               </button>
@@ -637,15 +653,64 @@ export default function NovaOS() {
 
           {/* CARD 1: RELATO (Defeito) */}
           <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
-            <h3 className="font-bold text-[#1A1A1A] mb-2 flex items-center gap-2">
-              <ArrowRight size={18} className="text-[#FACC15]" /> Reclamação do cliente/Problema
-            </h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                <ArrowRight size={18} className="text-[#FACC15]" /> Reclamação do cliente/Problema
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isListening) {
+                    recognitionRef.current?.stop();
+                    return;
+                  }
+                  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                  if (!SpeechRecognition) {
+                    alert("Seu navegador não suporta reconhecimento de voz. Use o Google Chrome.");
+                    return;
+                  }
+                  const recognition: ISpeechRecognition = new SpeechRecognition();
+                  recognition.lang = "pt-BR";
+                  recognition.interimResults = false;
+                  recognition.continuous = true;
+                  recognitionRef.current = recognition;
+                  recognition.onresult = (event: any) => {
+                    let transcript = "";
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                      if (event.results[i].isFinal) {
+                        transcript += event.results[i][0].transcript;
+                      }
+                    }
+                    if (transcript) {
+                      setDefeito((prev) => prev ? prev + " " + transcript : transcript);
+                    }
+                  };
+                  recognition.onend = () => setIsListening(false);
+                  recognition.onerror = () => setIsListening(false);
+                  recognition.start();
+                  setIsListening(true);
+                }}
+                className={`p-2.5 rounded-full transition-all duration-200 ${isListening
+                    ? "bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse"
+                    : "bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]"
+                  }`}
+                title={isListening ? "Parar gravação" : "Falar o problema"}
+              >
+                <Mic size={18} />
+              </button>
+            </div>
+            {isListening && (
+              <div className="flex items-center gap-2 mb-2 animate-pulse">
+                <span className="w-2 h-2 bg-red-500 rounded-full" />
+                <span className="text-xs font-bold text-red-500">Estou ouvindo... fale o problema do veículo</span>
+              </div>
+            )}
             <textarea
               rows={3}
               value={defeito}
               onChange={(e) => setDefeito(e.target.value)}
               placeholder="Descreva o defeito ou serviço..."
-              className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none resize-none focus:ring-2 focus:ring-[#FACC15]"
+              className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none resize-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
             ></textarea>
           </div>
 
@@ -672,18 +737,18 @@ export default function NovaOS() {
                       {item.tipo}
                     </p>
                   </div>
-                  
+
                   {/* CONTROLE DE QUANTIDADE */}
                   <div className="flex items-center gap-3">
                     <div className="flex items-center bg-white rounded-lg px-1">
-                      <button 
+                      <button
                         onClick={() => alterarQuantidade(item.id, -1)}
                         className="p-1 hover:text-red-500"
                       >
                         <Minus size={14} />
                       </button>
                       <span className="text-xs font-bold w-6 text-center">{item.qtd}</span>
-                      <button 
+                      <button
                         onClick={() => alterarQuantidade(item.id, 1)}
                         className="p-1 hover:text-green-500"
                       >
@@ -716,15 +781,15 @@ export default function NovaOS() {
 
           {/* CARD 3: PREVISÃO (Último passo, separado) */}
           <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
-             <label className="text-xs font-bold text-stone-400 mb-2 flex items-center gap-1">
-                <Calendar size={14} /> Previsão de Entrega (Opcional)
-             </label>
-             <input 
-                type="date"
-                value={previsaoEntrega}
-                onChange={(e) => setPrevisaoEntrega(e.target.value)}
-                className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none focus:ring-2 focus:ring-[#FACC15]"
-             />
+            <label className="text-xs font-bold text-stone-400 mb-2 flex items-center gap-1">
+              <Calendar size={14} /> Previsão de Entrega (Opcional)
+            </label>
+            <input
+              type="date"
+              value={previsaoEntrega}
+              onChange={(e) => setPrevisaoEntrega(e.target.value)}
+              className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+            />
           </div>
 
           {/* Botão Final */}
@@ -758,7 +823,7 @@ export default function NovaOS() {
                   placeholder="Nome..."
                   value={termoBuscaCliente}
                   onChange={(e) => setTermoBuscaCliente(e.target.value)}
-                  className="w-full bg-[#F8F7F2] p-3 rounded-xl"
+                  className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
                 />
                 <div className="max-h-60 overflow-auto space-y-2">
                   {listaClientes
@@ -792,13 +857,13 @@ export default function NovaOS() {
                   placeholder="Nome"
                   value={novoNomeCliente}
                   onChange={(e) => setNovoNomeCliente(e.target.value)}
-                  className="w-full bg-[#F8F7F2] p-3 rounded-xl"
+                  className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
                 />
                 <input
                   placeholder="WhatsApp"
                   value={novoZapCliente}
                   onChange={(e) => setNovoZapCliente(e.target.value)}
-                  className="w-full bg-[#F8F7F2] p-3 rounded-xl"
+                  className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
                 />
                 <button
                   onClick={handleSalvarNovoCliente}
@@ -823,20 +888,18 @@ export default function NovaOS() {
                 <X />
               </button>
             </div>
-            <div className="flex gap-2 bg-[#F8F7F2] p-1 rounded-xl">
+            <div className="flex bg-stone-200 p-1.5 rounded-2xl border-2 border-stone-300 shadow-inner gap-1">
               <button
                 onClick={() => setAbaItem("pecas")}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${
-                  abaItem === "pecas" ? "bg-white shadow text-[#1A1A1A]" : "text-stone-400"
-                }`}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition border-2 ${abaItem === "pecas" ? "bg-white shadow-md text-[#1A1A1A] border-stone-300" : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
+                  }`}
               >
                 Peças
               </button>
               <button
                 onClick={() => setAbaItem("servicos")}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${
-                  abaItem === "servicos" ? "bg-white shadow text-[#1A1A1A]" : "text-stone-400"
-                }`}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition border-2 ${abaItem === "servicos" ? "bg-white shadow-md text-[#1A1A1A] border-stone-300" : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
+                  }`}
               >
                 Serviços
               </button>
@@ -846,7 +909,7 @@ export default function NovaOS() {
               placeholder="Buscar..."
               value={termoBuscaItem}
               onChange={(e) => setTermoBuscaItem(e.target.value)}
-              className="w-full bg-[#F8F7F2] p-3 rounded-xl"
+              className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
             />
             <div className="flex-1 overflow-auto space-y-2">
               {abaItem === "pecas" &&

@@ -97,7 +97,7 @@ export default function SalesList() {
                 </Link>
             </div>
 
-            <div className="bg-white p-2 rounded-[24px] shadow-sm border border-stone-100 flex flex-col md:flex-row gap-2">
+            <div className="bg-white p-2 rounded-[24px] shadow-sm border-2 border-stone-300 flex flex-col md:flex-row gap-2">
                 <div className="relative flex-1">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={20} />
                     <input
@@ -105,12 +105,12 @@ export default function SalesList() {
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         placeholder="Buscar por cliente ou código..."
-                        className="w-full pl-12 pr-4 py-3 bg-stone-50 rounded-2xl outline-none focus:ring-2 focus:ring-[#FACC15]/50 transition text-sm font-medium text-[#1A1A1A]"
+                        className="w-full pl-12 pr-4 py-3 bg-stone-50 rounded-2xl outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/50 transition text-sm font-medium text-[#1A1A1A]"
                     />
                 </div>
             </div>
 
-            <div className="bg-white rounded-[32px] border border-stone-100 shadow-sm flex-1 overflow-hidden flex flex-col min-h-[400px]">
+            <div className="bg-white rounded-[32px] border-2 border-stone-300 shadow-sm flex-1 overflow-hidden flex flex-col min-h-[400px]">
                 <div className="overflow-auto p-4 space-y-2 h-full">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-20 text-stone-400 gap-2">
@@ -121,7 +121,7 @@ export default function SalesList() {
                         filteredOrders.length > 0 ? (
                             filteredOrders.map((os) => (
                                 <Link key={os.id} href={`/os/detalhes/${os.id}`} className="block">
-                                    <div className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-3xl hover:bg-[#F9F8F4] transition cursor-pointer border border-transparent hover:border-stone-100">
+                                    <div className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-3xl bg-white hover:bg-stone-50 transition cursor-pointer border-2 border-stone-200 hover:border-stone-300 shadow-sm mb-2">
                                         <div className="flex items-center gap-4 w-full md:w-auto">
                                             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm bg-orange-50 text-orange-400 group-hover:bg-white transition`}>
                                                 <ShoppingBag size={24} />

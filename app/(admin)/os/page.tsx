@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { 
-  Plus, Search, Car, User, 
+import {
+  Plus, Search, Car, User,
   ChevronRight, Clock, Loader2, AlertCircle
 } from "lucide-react";
 import Link from "next/link";
@@ -98,7 +98,7 @@ export default function ServicosOS() {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' }).format(date);
+    return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
   };
 
   // --- Lógica de Filtro (CORRIGIDA) ---
@@ -106,9 +106,9 @@ export default function ServicosOS() {
   const filteredOrders = orders.filter(os => {
     // 1. Filtro de Texto (Busca)
     const searchLower = searchTerm.toLowerCase();
-    
+
     // Proteção: Converte valores para String antes de comparar e trata nulos
-    const matchSearch = 
+    const matchSearch =
       (os.clients?.nome || "").toLowerCase().includes(searchLower) ||
       (os.vehicles?.placa || "").toLowerCase().includes(searchLower) ||
       (os.vehicles?.modelo || "").toLowerCase().includes(searchLower) ||
@@ -118,13 +118,13 @@ export default function ServicosOS() {
 
     // 2. Filtro de Abas
     if (filtroAtivo === "todos") return true;
-    
+
     if (filtroAtivo === "orçamentos") return os.status === "orcamento";
-    
+
     if (filtroAtivo === "em andamento") {
       return ["aprovado", "em_servico", "aguardando_peca"].includes(os.status);
     }
-    
+
     if (filtroAtivo === "finalizados") {
       return ["pronto", "entregue", "cancelado"].includes(os.status);
     }
@@ -134,14 +134,14 @@ export default function ServicosOS() {
 
   return (
     <div className="space-y-6 h-full flex flex-col pb-24">
-      
+
       {/* 1. CABEÇALHO */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-[#1A1A1A]">Ordens de Serviço</h1>
           <p className="text-stone-500 text-sm mt-1">Gerencie os veículos na oficina</p>
         </div>
-        
+
         <Link href="/os/nova">
           <button className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-6 py-3 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105">
             <Plus size={20} /> Nova OS
@@ -150,23 +150,23 @@ export default function ServicosOS() {
       </div>
 
       {/* 2. FILTROS */}
-      <div className="bg-white p-2 rounded-[24px] shadow-sm border border-stone-100 flex flex-col md:flex-row gap-2">
+      <div className="bg-white p-2 rounded-[24px] shadow-sm border-2 border-stone-300 flex flex-col md:flex-row gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={20} />
-          <input 
-            type="text" 
+          <input
+            type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por placa, cliente ou código..." 
-            className="w-full pl-12 pr-4 py-3 bg-stone-50 rounded-2xl outline-none focus:ring-2 focus:ring-[#FACC15]/50 transition text-sm font-medium text-[#1A1A1A]"
+            placeholder="Buscar por placa, cliente ou código..."
+            className="w-full pl-12 pr-4 py-3 bg-stone-50 rounded-2xl outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/50 transition text-sm font-medium text-[#1A1A1A]"
           />
         </div>
-        <div className="flex bg-stone-50 p-1 rounded-2xl overflow-x-auto scrollbar-hide">
+        <div className="flex bg-stone-200 p-1.5 rounded-2xl overflow-x-auto scrollbar-hide border-2 border-stone-300 shadow-inner gap-1">
           {["todos", "em andamento", "orçamentos", "finalizados"].map((tab) => (
-            <button 
-              key={tab} 
-              onClick={() => setFiltroAtivo(tab)} 
-              className={`px-4 py-2 rounded-xl text-sm font-bold capitalize whitespace-nowrap transition ${filtroAtivo === tab ? "bg-white text-[#1A1A1A] shadow-sm" : "text-stone-400 hover:text-stone-600"}`}
+            <button
+              key={tab}
+              onClick={() => setFiltroAtivo(tab)}
+              className={`px-4 py-2 rounded-xl text-sm font-bold capitalize whitespace-nowrap transition border-2 ${filtroAtivo === tab ? "bg-white text-[#1A1A1A] shadow-md border-stone-300" : "text-stone-500 hover:text-[#1A1A1A] border-transparent"}`}
             >
               {tab}
             </button>
@@ -175,8 +175,8 @@ export default function ServicosOS() {
       </div>
 
       {/* 3. LISTA */}
-      <div className="bg-white rounded-[32px] border border-stone-100 shadow-sm flex-1 overflow-hidden flex flex-col min-h-[400px]">
-        <div className="px-8 py-6 border-b border-stone-50 flex justify-between items-center">
+      <div className="bg-white rounded-[32px] border-2 border-stone-300 shadow-sm flex-1 overflow-hidden flex flex-col min-h-[400px]">
+        <div className="px-8 py-6 border-b-2 border-stone-300 bg-stone-100 flex justify-between items-center">
           <h3 className="font-bold text-[#1A1A1A]">Lista de Veículos</h3>
           <span className="bg-stone-100 text-stone-500 px-3 py-1 rounded-full text-xs font-bold">
             {loading ? "..." : `${filteredOrders.length} encontrados`}
@@ -184,7 +184,7 @@ export default function ServicosOS() {
         </div>
 
         <div className="overflow-auto p-4 space-y-2 h-full">
-          
+
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 text-stone-400 gap-2">
               <Loader2 className="animate-spin text-[#FACC15]" size={32} />
@@ -194,30 +194,30 @@ export default function ServicosOS() {
             filteredOrders.length > 0 ? (
               filteredOrders.map((os) => (
                 <Link key={os.id} href={`/os/detalhes/${os.id}`} className="block">
-                  <div className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-3xl hover:bg-[#F9F8F4] transition cursor-pointer border border-transparent hover:border-stone-100">
-                    
+                  <div className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-3xl bg-white hover:bg-stone-50 transition cursor-pointer border-2 border-stone-200 hover:border-stone-300 shadow-sm mb-2">
+
                     {/* Lado Esquerdo */}
                     <div className="flex items-center gap-4 w-full md:w-auto">
                       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm bg-stone-50 text-stone-400 group-hover:bg-white transition`}>
-                         <Car size={24} />
+                        <Car size={24} />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-[#1A1A1A] text-lg">
-                             {os.vehicles?.modelo || "Veículo não identificado"}
+                            {os.vehicles?.modelo || "Veículo não identificado"}
                           </span>
                           {os.vehicles?.placa && (
                             <span className="text-xs font-mono bg-stone-100 text-stone-500 px-2 py-0.5 rounded-md border border-stone-200">
-                             {os.vehicles.placa}
+                              {os.vehicles.placa}
                             </span>
                           )}
                         </div>
                         <div className="flex items-center gap-4 mt-1 text-sm text-stone-500">
                           <span className="flex items-center gap-1">
-                            <User size={14}/> {os.clients?.nome || "Consumidor"}
+                            <User size={14} /> {os.clients?.nome || "Consumidor"}
                           </span>
                           <span className="flex items-center gap-1">
-                            <Clock size={14}/> {formatDate(os.created_at)}
+                            <Clock size={14} /> {formatDate(os.created_at)}
                           </span>
                         </div>
                       </div>
@@ -256,7 +256,7 @@ export default function ServicosOS() {
               </div>
             )
           )}
-      </div>
+        </div>
       </div>
     </div>
   );
