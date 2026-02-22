@@ -1,0 +1,122 @@
+[
+    {
+        "code": "P0001",
+        "description_pt": "Circuito de Controle do Regulador de Volume de Combustível Aberto",
+        "category": "Medição de Combustível/Ar",
+        "manufacturer": null
+    },
+    {
+        "code": "P0010",
+        "description_pt": "Atuador de Posição do Comando de Válvulas 'A' - Circuito Aberto (Banco 1)",
+        "category": "Controle de Motor/Emissões",
+        "manufacturer": null
+    },
+    {
+        "code": "P0101",
+        "description_pt": "Sensor de Fluxo de Massa de Ar (MAF) - Problema de Desempenho/Faixa",
+        "category": "Medição de Combustível/Ar",
+        "manufacturer": null
+    },
+    {
+        "code": "P0113",
+        "description_pt": "Sensor de Temperatura do Ar de Admissão (IAT) - Entrada Alta",
+        "category": "Medição de Combustível/Ar",
+        "manufacturer": null
+    },
+    {
+        "code": "P0135",
+        "description_pt": "Circuito do Aquecedor do Sensor de Oxigênio (O2) - Falha (Banco 1, Sensor 1)",
+        "category": "Medição de Combustível/Ar",
+        "manufacturer": null
+    },
+    {
+        "code": "P0171",
+        "description_pt": "Sistema Muito Pobre (Banco 1)",
+        "category": "Medição de Combustível/Ar",
+        "manufacturer": null
+    },
+    {
+        "code": "P0172",
+        "description_pt": "Sistema Muito Rico (Banco 1)",
+        "category": "Medição de Combustível/Ar",
+        "manufacturer": null
+    },
+    {
+        "code": "P0300",
+        "description_pt": "Falha de Ignição Aleatória/Múltipla Detectada nos Cilindros",
+        "category": "Sistema de Ignição",
+        "manufacturer": null
+    },
+    {
+        "code": "P0301",
+        "description_pt": "Falha de Ignição Detectada no Cilindro 1",
+        "category": "Sistema de Ignição",
+        "manufacturer": null
+    },
+    {
+        "code": "P0302",
+        "description_pt": "Falha de Ignição Detectada no Cilindro 2",
+        "category": "Sistema de Ignição",
+        "manufacturer": null
+    },
+    {
+        "code": "P0303",
+        "description_pt": "Falha de Ignição Detectada no Cilindro 3",
+        "category": "Sistema de Ignição",
+        "manufacturer": null
+    },
+    {
+        "code": "P0304",
+        "description_pt": "Falha de Ignição Detectada no Cilindro 4",
+        "category": "Sistema de Ignição",
+        "manufacturer": null
+    },
+    {
+        "code": "P0335",
+        "description_pt": "Circuito do Sensor de Posição do Virabrequim 'A' - Mau Funcionamento",
+        "category": "Sistema de Ignição",
+        "manufacturer": null
+    },
+    {
+        "code": "P0340",
+        "description_pt": "Circuito do Sensor de Posição do Eixo de Comando de Válvulas 'A' - Mau Funcionamento",
+        "category": "Sistema de Ignição",
+        "manufacturer": null
+    },
+    {
+        "code": "P0401",
+        "description_pt": "Sistema de Recirculação de Gases de Escape (EGR) - Fluxo Insuficiente Detectado",
+        "category": "Controles de Emissão Auxiliares",
+        "manufacturer": null
+    },
+    {
+        "code": "P0420",
+        "description_pt": "Eficiência do Sistema de Catalisador Abaixo do Limite (Banco 1)",
+        "category": "Controles de Emissão Auxiliares",
+        "manufacturer": null
+    },
+    {
+        "code": "P0442",
+        "description_pt": "Sistema de Controle de Emissão Evaporativa (EVAP) - Vazamento Pequeno Detectado",
+        "category": "Controles de Emissão Auxiliares",
+        "manufacturer": null
+    },
+    {
+        "code": "P0500",
+        "description_pt": "Sensor de Velocidade do Veículo (VSS) - Mau Funcionamento",
+        "category": "Controle de Velocidade e Marcha Lenta",
+        "manufacturer": null
+    },
+    {
+        "code": "P0601",
+        "description_pt": "Módulo de Controle Interno - Erro de Soma de Verificação de Memória (Memória ROM)",
+        "category": "Módulo do Computador (ECU)",
+        "manufacturer": null
+    },
+    {
+        "code": "P0700",
+        "description_pt": "Sistema de Controle da Transmissão - Mau Funcionamento",
+        "category": "Transmissão",
+        "manufacturer": null
+    }
+]
