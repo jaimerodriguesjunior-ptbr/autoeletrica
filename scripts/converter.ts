@@ -11,6 +11,12 @@ interface Obd2Code {
     manufacturer: string | null;
 }
 
+// O JSON original é um Array de objetos { Code: string, Description: string }
+interface RawCode {
+    Code: string;
+    Description: string;
+}
+
 // Determinar categoria baseada no prefixo do código
 function getCategory(code: string): string {
     const prefix = code.charAt(0).toUpperCase();
@@ -33,20 +39,16 @@ async function main() {
         process.exit(1);
     }
 
-    const rawData: Record<string, string> = await response.json();
-    const keys = Object.keys(rawData);
+    const rawData: RawCode[] = await response.json();
 
-    console.log(`Baixados ${keys.length} códigos. Convertendo...`);
+    console.log(`Baixados ${rawData.length} códigos. Convertendo...`);
 
-    const formatted: Obd2Code[] = keys
-        .filter((code) => {
-            const val = rawData[code];
-            return val != null && String(val).trim().length > 0;
-        })
-        .map((code) => ({
-            code: code.trim(),
-            description_pt: String(rawData[code]).trim(),
-            category: getCategory(code),
+    const formatted: Obd2Code[] = rawData
+        .filter((item) => item.Code && item.Description && item.Description.trim().length > 0)
+        .map((item) => ({
+            code: item.Code.trim(),
+            description_pt: item.Description.trim(),
+            category: getCategory(item.Code),
             manufacturer: null,
         }));
 
@@ -61,6 +63,12 @@ async function main() {
     });
     Object.entries(categories).forEach(([cat, count]) => {
         console.log(`   - ${cat}: ${count}`);
+    });
+
+    // Mostrar exemplos
+    console.log(`\n   Exemplos:`);
+    formatted.slice(0, 5).forEach(c => {
+        console.log(`   ${c.code}: ${c.description_pt}`);
     });
 }
 

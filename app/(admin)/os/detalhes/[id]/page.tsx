@@ -8,7 +8,7 @@ import {
   ArrowLeft, CheckCircle, Clock, Wrench, Package,
   CheckSquare, MessageCircle, User, Car, Loader2, DollarSign,
   Plus, X, Calendar, CreditCard, Trash2, Printer, Camera, UserCheck, ShieldCheck,
-  Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download
+  Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download, Search, AlertTriangle
 } from "lucide-react";
 import { createClient } from "../../../../../src/lib/supabase";
 import { useAuth } from "../../../../../src/contexts/AuthContext";
@@ -94,6 +94,14 @@ export default function DetalhesOS() {
 
   // Modal Metadados de Aprovação
   const [modalMetadados, setModalMetadados] = useState(false);
+
+  // Diagnóstico OBD-II
+  const [dtcAberto, setDtcAberto] = useState(false);
+  const [dtcBusca, setDtcBusca] = useState("");
+  const [dtcResultado, setDtcResultado] = useState<{ code: string; description_pt: string } | null>(null);
+  const [dtcsSalvos, setDtcsSalvos] = useState<{ id: string; code: string; description_pt: string; notes: string | null }[]>([]);
+  const [buscandoDtc, setBuscandoDtc] = useState(false);
+  const [salvandoDtc, setSalvandoDtc] = useState(false);
   const [checklistAberto, setChecklistAberto] = useState(false);
 
   // 1. Busca Dados da OS
@@ -143,12 +151,91 @@ export default function DetalhesOS() {
     }
   }, [supabase, profile]);
 
+  // Buscar DTCs salvos na OS
+  const fetchDtcsSalvos = useCallback(async () => {
+    if (!id) return;
+    try {
+      const { data, error } = await supabase
+        .from('work_order_dtc_codes')
+        .select('id, code, notes, obd2_codes(description_pt)')
+        .eq('work_order_id', id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setDtcsSalvos(
+        (data || []).map((d: any) => ({
+          id: d.id,
+          code: d.code,
+          description_pt: d.obd2_codes?.description_pt || 'Descrição não encontrada',
+          notes: d.notes,
+        }))
+      );
+    } catch (err) {
+      console.error('Erro ao buscar DTCs:', err);
+    }
+  }, [id, supabase]);
+
+  // Buscar código OBD-II na tabela
+  const handleBuscarDtc = async (termo: string) => {
+    setDtcBusca(termo);
+    const code = termo.trim().toUpperCase();
+    if (code.length < 2) { setDtcResultado(null); return; }
+    setBuscandoDtc(true);
+    try {
+      const { data } = await supabase
+        .from('obd2_codes')
+        .select('code, description_pt')
+        .ilike('code', `${code}%`)
+        .limit(1)
+        .single();
+      setDtcResultado(data || null);
+    } catch {
+      setDtcResultado(null);
+    } finally {
+      setBuscandoDtc(false);
+    }
+  };
+
+  // Adicionar código DTC à OS
+  const handleAdicionarDtc = async () => {
+    if (!dtcResultado || !os) return;
+    // Verificar se já está salvo
+    if (dtcsSalvos.some(d => d.code === dtcResultado.code)) {
+      alert('Este código já foi adicionado a esta OS.');
+      return;
+    }
+    setSalvandoDtc(true);
+    try {
+      const { error } = await supabase
+        .from('work_order_dtc_codes')
+        .insert({ work_order_id: os.id, code: dtcResultado.code });
+      if (error) throw error;
+      setDtcBusca('');
+      setDtcResultado(null);
+      fetchDtcsSalvos();
+    } catch (err: any) {
+      alert('Erro ao adicionar código: ' + err.message);
+    } finally {
+      setSalvandoDtc(false);
+    }
+  };
+
+  // Remover código DTC da OS
+  const handleRemoverDtc = async (dtcId: string) => {
+    if (!confirm('Remover este código de diagnóstico?')) return;
+    try {
+      await supabase.from('work_order_dtc_codes').delete().eq('id', dtcId);
+      fetchDtcsSalvos();
+    } catch (err: any) {
+      alert('Erro ao remover: ' + err.message);
+    }
+  };
+
   useEffect(() => {
     if (id && profile?.organization_id) {
       setLoading(true);
-      Promise.all([fetchOS(), fetchCatalogo()]).finally(() => setLoading(false));
+      Promise.all([fetchOS(), fetchCatalogo(), fetchDtcsSalvos()]).finally(() => setLoading(false));
     }
-  }, [fetchOS, fetchCatalogo, id, profile]);
+  }, [fetchOS, fetchCatalogo, fetchDtcsSalvos, id, profile]);
 
   // --- FUNÇÕES DE FOTO (CÓDIGO NOVO) ---
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -938,6 +1025,98 @@ export default function DetalhesOS() {
                     >
                       <Trash2 size={16} />
                     </button>
+                  </div>
+                )}
+              </div>
+
+              {/* === DIAGNÓSTICO OBD-II === */}
+              <div className="border-t border-stone-200 mt-4 pt-4">
+                <button
+                  onClick={() => setDtcAberto(!dtcAberto)}
+                  className="w-full flex items-center justify-between mb-3 hover:opacity-80 transition"
+                >
+                  <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                    <Search size={16} /> Diagnóstico OBD-II
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    {dtcsSalvos.length > 0 && (
+                      <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
+                        {dtcsSalvos.length}
+                      </span>
+                    )}
+                    {dtcAberto ? <ChevronUp size={18} className="text-stone-400" /> : <ChevronDown size={18} className="text-stone-400" />}
+                  </div>
+                </button>
+
+                {dtcAberto && (
+                  <div className="space-y-3 animate-in slide-in-from-top-2">
+                    {/* Campo de Busca */}
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={dtcBusca}
+                          onChange={(e) => handleBuscarDtc(e.target.value)}
+                          placeholder="Digite o código (ex: P0420)"
+                          className="w-full pl-8 pr-3 py-2.5 text-sm border border-stone-200 rounded-xl bg-white focus:outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] transition font-mono uppercase"
+                        />
+                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                      </div>
+                      <button
+                        onClick={handleAdicionarDtc}
+                        disabled={!dtcResultado || salvandoDtc}
+                        className="px-3 py-2.5 bg-[#1A1A1A] text-[#FACC15] rounded-xl text-sm font-bold hover:opacity-90 transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
+                      >
+                        {salvandoDtc ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                      </button>
+                    </div>
+
+                    {/* Resultado da Busca */}
+                    {buscandoDtc && (
+                      <div className="flex items-center gap-2 text-xs text-stone-400 py-2">
+                        <Loader2 size={12} className="animate-spin" /> Buscando...
+                      </div>
+                    )}
+
+                    {dtcResultado && !buscandoDtc && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                        <p className="text-xs font-bold text-blue-700 font-mono">{dtcResultado.code}</p>
+                        <p className="text-xs text-blue-600 mt-0.5">{dtcResultado.description_pt}</p>
+                      </div>
+                    )}
+
+                    {dtcBusca.length >= 2 && !dtcResultado && !buscandoDtc && (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex items-center gap-2">
+                        <AlertTriangle size={14} className="text-yellow-500" />
+                        <p className="text-xs text-yellow-700">Código não encontrado na base.</p>
+                      </div>
+                    )}
+
+                    {/* Lista de Códigos Salvos */}
+                    {dtcsSalvos.length > 0 && (
+                      <div className="space-y-2 pt-2">
+                        <p className="text-[10px] font-bold text-stone-400 uppercase">Códigos Registrados</p>
+                        {dtcsSalvos.map((dtc) => (
+                          <div key={dtc.id} className="flex items-start justify-between gap-2 bg-red-50 border border-red-200 rounded-xl p-2.5">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-red-700 font-mono">{dtc.code}</p>
+                              <p className="text-[11px] text-red-600 mt-0.5 leading-tight">{dtc.description_pt}</p>
+                            </div>
+                            <button
+                              onClick={() => handleRemoverDtc(dtc.id)}
+                              className="p-1.5 bg-red-100 text-red-500 rounded-lg hover:bg-red-200 transition flex-shrink-0"
+                              title="Remover código"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {dtcsSalvos.length === 0 && (
+                      <p className="text-xs text-stone-400 italic text-center py-1">Nenhum código registrado.</p>
+                    )}
                   </div>
                 )}
               </div>
