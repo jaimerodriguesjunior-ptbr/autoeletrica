@@ -98,7 +98,7 @@ export default function DetalhesOS() {
   // Diagnóstico OBD-II
   const [dtcAberto, setDtcAberto] = useState(false);
   const [dtcBusca, setDtcBusca] = useState("");
-  const [dtcResultado, setDtcResultado] = useState<{ code: string; description_pt: string } | null>(null);
+  const [dtcResultado, setDtcResultado] = useState<{ code: string; description_pt: string; source?: 'db' | 'ia' } | null>(null);
   const [dtcsSalvos, setDtcsSalvos] = useState<{ id: string; code: string; description_pt: string; notes: string | null }[]>([]);
   const [buscandoDtc, setBuscandoDtc] = useState(false);
   const [salvandoDtc, setSalvandoDtc] = useState(false);
@@ -174,20 +174,42 @@ export default function DetalhesOS() {
     }
   }, [id, supabase]);
 
-  // Buscar código OBD-II na tabela
+  // Buscar código OBD-II na tabela (com fallback para IA)
   const handleBuscarDtc = async (termo: string) => {
     setDtcBusca(termo);
     const code = termo.trim().toUpperCase();
     if (code.length < 2) { setDtcResultado(null); return; }
     setBuscandoDtc(true);
     try {
+      // 1. Busca no banco local
       const { data } = await supabase
         .from('obd2_codes')
         .select('code, description_pt')
-        .ilike('code', `${code}%`)
-        .limit(1)
+        .eq('code', code)
         .single();
-      setDtcResultado(data || null);
+
+      if (data) {
+        setDtcResultado({ ...data, source: 'db' });
+      } else if (code.length >= 5) {
+        // 2. Fallback: Busca via IA (apenas se código completo)
+        try {
+          const res = await fetch('/api/obd2-ia', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code }),
+          });
+          const iaData = await res.json();
+          if (iaData.description_pt) {
+            setDtcResultado({ code: iaData.code, description_pt: iaData.description_pt, source: 'ia' });
+          } else {
+            setDtcResultado(null);
+          }
+        } catch {
+          setDtcResultado(null);
+        }
+      } else {
+        setDtcResultado(null);
+      }
     } catch {
       setDtcResultado(null);
     } finally {
@@ -1079,16 +1101,21 @@ export default function DetalhesOS() {
                     )}
 
                     {dtcResultado && !buscandoDtc && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                        <p className="text-xs font-bold text-blue-700 font-mono">{dtcResultado.code}</p>
-                        <p className="text-xs text-blue-600 mt-0.5">{dtcResultado.description_pt}</p>
+                      <div className={`rounded-xl p-3 ${dtcResultado.source === 'ia' ? 'bg-purple-50 border border-purple-200' : 'bg-blue-50 border border-blue-200'}`}>
+                        <div className="flex items-center gap-2">
+                          <p className={`text-xs font-bold font-mono ${dtcResultado.source === 'ia' ? 'text-purple-700' : 'text-blue-700'}`}>{dtcResultado.code}</p>
+                          {dtcResultado.source === 'ia' && (
+                            <span className="text-[9px] font-bold bg-purple-200 text-purple-700 px-1.5 py-0.5 rounded-full">🤖 IA</span>
+                          )}
+                        </div>
+                        <p className={`text-xs mt-0.5 ${dtcResultado.source === 'ia' ? 'text-purple-600' : 'text-blue-600'}`}>{dtcResultado.description_pt}</p>
                       </div>
                     )}
 
-                    {dtcBusca.length >= 2 && !dtcResultado && !buscandoDtc && (
+                    {dtcBusca.length >= 5 && !dtcResultado && !buscandoDtc && (
                       <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex items-center gap-2">
                         <AlertTriangle size={14} className="text-yellow-500" />
-                        <p className="text-xs text-yellow-700">Código não encontrado na base.</p>
+                        <p className="text-xs text-yellow-700">Código não encontrado no banco nem pela IA.</p>
                       </div>
                     )}
 
