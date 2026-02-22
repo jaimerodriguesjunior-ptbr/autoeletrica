@@ -82,29 +82,33 @@ Se realmente não souber, responda: {"description":"Código ${codeClean} – Con
         }
 
         // Se ainda não tem descrição, usa fallback genérico
-        if (!description) {
+        const isGeneric = !description;
+        if (isGeneric) {
             description = `Código ${codeClean} – Consulte o manual do fabricante`;
         }
 
-        // Salvar no banco como cache para futuras buscas
-        try {
-            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-            const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-            const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        // Salvar no banco como cache SOMENTE se não for a resposta genérica
+        if (!isGeneric) {
+            try {
+                const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+                const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+                const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-            await supabase
-                .from('obd2_codes')
-                .upsert({
-                    code: codeClean,
-                    description_pt: description,
-                    category: 'IA (Gemini)',
-                    manufacturer: null,
-                }, { onConflict: 'code' });
+                await supabase
+                    .from('obd2_codes')
+                    .upsert({
+                        code: codeClean,
+                        description_pt: description,
+                        category: 'IA (Gemini)',
+                        manufacturer: null,
+                    }, { onConflict: 'code' });
 
-            console.log(`✅ [OBD2 IA] Código ${codeClean} salvo no cache: ${description}`);
-        } catch (cacheErr) {
-            console.warn("⚠️ [OBD2 IA] Erro ao salvar cache:", cacheErr);
-            // Não falha se cache der erro, continua retornando o resultado
+                console.log(`✅ [OBD2 IA] Código ${codeClean} salvo no cache: ${description}`);
+            } catch (cacheErr) {
+                console.warn("⚠️ [OBD2 IA] Erro ao salvar cache:", cacheErr);
+            }
+        } else {
+            console.log(`ℹ️ [OBD2 IA] Código ${codeClean} retornou reposta genérica. Não salvo no cache.`);
         }
 
         return NextResponse.json({

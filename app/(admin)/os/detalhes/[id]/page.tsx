@@ -98,7 +98,7 @@ export default function DetalhesOS() {
   // Diagnóstico OBD-II
   const [dtcAberto, setDtcAberto] = useState(false);
   const [dtcBusca, setDtcBusca] = useState("");
-  const [dtcResultado, setDtcResultado] = useState<{ code: string; description_pt: string; source?: 'db' | 'ia' } | null>(null);
+  const [dtcResultado, setDtcResultado] = useState<{ code: string; description_pt: string; source?: 'db' | 'ia' | 'error' } | null>(null);
   const [dtcsSalvos, setDtcsSalvos] = useState<{ id: string; code: string; description_pt: string; notes: string | null }[]>([]);
   const [buscandoDtc, setBuscandoDtc] = useState(false);
   const [salvandoDtc, setSalvandoDtc] = useState(false);
@@ -203,14 +203,15 @@ export default function DetalhesOS() {
           });
           const iaData = await res.json();
           console.log('[DTC] Resposta IA:', iaData);
-          if (iaData.description_pt) {
+          if (res.ok && iaData.description_pt) {
             setDtcResultado({ code: iaData.code, description_pt: iaData.description_pt, source: 'ia' });
           } else {
-            setDtcResultado(null);
+            // Pode ser rate limit, erro da Key do Gemini, etc.
+            setDtcResultado({ code, description_pt: iaData.error || 'Erro interno da IA (Limite excedido)', source: 'error' });
           }
         } catch (iaErr) {
           console.error('[DTC] Erro na chamada IA:', iaErr);
-          setDtcResultado(null);
+          setDtcResultado({ code, description_pt: 'Falha de rede ao se conectar com a IA', source: 'error' });
         }
       } else {
         setDtcResultado(null);
@@ -1120,14 +1121,24 @@ export default function DetalhesOS() {
                     )}
 
                     {dtcResultado && !buscandoDtc && (
-                      <div className={`rounded-xl p-3 ${dtcResultado.source === 'ia' ? 'bg-purple-50 border border-purple-200' : 'bg-blue-50 border border-blue-200'}`}>
+                      <div className={`rounded-xl p-3 border ${dtcResultado.source === 'error' ? 'bg-red-50 border-red-200' :
+                          dtcResultado.source === 'ia' ? 'bg-purple-50 border-purple-200' :
+                            'bg-blue-50 border-blue-200'
+                        }`}>
                         <div className="flex items-center gap-2">
-                          <p className={`text-xs font-bold font-mono ${dtcResultado.source === 'ia' ? 'text-purple-700' : 'text-blue-700'}`}>{dtcResultado.code}</p>
+                          <p className={`text-xs font-bold font-mono ${dtcResultado.source === 'error' ? 'text-red-700' :
+                              dtcResultado.source === 'ia' ? 'text-purple-700' : 'text-blue-700'
+                            }`}>{dtcResultado.code}</p>
                           {dtcResultado.source === 'ia' && (
                             <span className="text-[9px] font-bold bg-purple-200 text-purple-700 px-1.5 py-0.5 rounded-full">🤖 IA</span>
                           )}
+                          {dtcResultado.source === 'error' && (
+                            <span className="text-[9px] font-bold bg-red-200 text-red-700 px-1.5 py-0.5 rounded-full flex items-center gap-1"><AlertTriangle size={10} /> ERRO</span>
+                          )}
                         </div>
-                        <p className={`text-xs mt-0.5 ${dtcResultado.source === 'ia' ? 'text-purple-600' : 'text-blue-600'}`}>{dtcResultado.description_pt}</p>
+                        <p className={`text-xs mt-0.5 ${dtcResultado.source === 'error' ? 'text-red-600' :
+                            dtcResultado.source === 'ia' ? 'text-purple-600' : 'text-blue-600'
+                          }`}>{dtcResultado.description_pt}</p>
                       </div>
                     )}
 
