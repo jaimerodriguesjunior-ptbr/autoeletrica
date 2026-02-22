@@ -9,8 +9,8 @@ export default function Login() {
   const supabase = createClient();
   const { user } = useAuth();
 
-  const [email, setEmail] = useState("admin@rallyautocenter.com.br");
-  const [password, setPassword] = useState("Rally@2026");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
