@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   ArrowLeft, CheckCircle, Clock, Wrench, Package,
   CheckSquare, MessageCircle, User, Car, Loader2, DollarSign,
-  Plus, X, Calendar, CreditCard, Trash2, Printer, Camera
+  Plus, X, Calendar, CreditCard, Trash2, Printer, Camera, UserCheck, ShieldCheck,
+  Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download
 } from "lucide-react";
 import { createClient } from "../../../../../src/lib/supabase";
 import { useAuth } from "../../../../../src/contexts/AuthContext";
@@ -21,6 +22,7 @@ type WorkOrderItem = {
   total_price: number;
   tipo: string;
   product_id: string | null;
+  peca_cliente: boolean;
 };
 
 type WorkOrderFull = {
@@ -43,6 +45,16 @@ type WorkOrderFull = {
     fabricante: string | null;
   } | null;
   work_order_items: WorkOrderItem[];
+  aprovacao_ip?: string | null;
+  aprovacao_dispositivo?: string | null;
+  aprovacao_timestamp?: string | null;
+  aprovacao_versao_hash?: string | null;
+  odometro?: string | null;
+  nivel_combustivel?: string | null;
+  temperatura_motor?: string | null;
+  painel_obs?: string | null;
+  painel_foto?: string | null;
+  scanner_pdf?: string | null;
 };
 
 type CatalogItem = { id: string; nome: string; price?: number; preco_venda?: number; estoque_atual?: number };
@@ -69,12 +81,20 @@ export default function DetalhesOS() {
   const [termoBusca, setTermoBusca] = useState("");
   const [adicionandoItem, setAdicionandoItem] = useState(false);
 
+  // Scanner PDF
+  const scannerInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingScan, setUploadingScan] = useState(false);
+
   // Estados para Checkout (Financeiro)
   const [modalCheckoutAberto, setModalCheckoutAberto] = useState(false);
   const [formaPagamento, setFormaPagamento] = useState("pix");
   const [dataCheque, setDataCheque] = useState("");
   const [valorFinal, setValorFinal] = useState("");
   const [parcelas, setParcelas] = useState(1);
+
+  // Modal Metadados de Aprovação
+  const [modalMetadados, setModalMetadados] = useState(false);
+  const [checklistAberto, setChecklistAberto] = useState(false);
 
   // 1. Busca Dados da OS
   const fetchOS = useCallback(async () => {
@@ -85,7 +105,7 @@ export default function DetalhesOS() {
           *,
           clients ( id, nome, whatsapp ),
           vehicles ( modelo, placa, fabricante ),
-          work_order_items ( id, name, unit_price, quantity, total_price, tipo, product_id )
+          work_order_items ( id, name, unit_price, quantity, total_price, tipo, product_id, peca_cliente )
         `)
         .eq('id', id)
         .single();
@@ -232,7 +252,7 @@ export default function DetalhesOS() {
 
     setUpdating(true);
     try {
-      if (item.tipo === "peca" && item.product_id) {
+      if (item.tipo === "peca" && item.product_id && !item.peca_cliente) {
         const { data: prodData } = await supabase
           .from('products')
           .select('estoque_atual')
@@ -249,7 +269,7 @@ export default function DetalhesOS() {
 
       await supabase.from('work_order_items').delete().eq('id', item.id);
 
-      const novoTotal = (os.total || 0) - item.total_price;
+      const novoTotal = item.peca_cliente ? (os.total || 0) : (os.total || 0) - item.total_price;
       await supabase
         .from('work_orders')
         .update({ total: novoTotal })
@@ -260,6 +280,57 @@ export default function DetalhesOS() {
 
     } catch (error: any) {
       alert("Erro ao remover item: " + error.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // TOGGLE PEÇA DO CLIENTE
+  const handleTogglePecaCliente = async (item: WorkOrderItem) => {
+    if (!os) return;
+    setUpdating(true);
+    try {
+      const novoValor = !item.peca_cliente;
+
+      // 1. Atualiza o campo no banco
+      await supabase
+        .from('work_order_items')
+        .update({ peca_cliente: novoValor })
+        .eq('id', item.id);
+
+      // 2. Gerenciar estoque
+      if (item.tipo === 'peca' && item.product_id) {
+        const { data: prodData } = await supabase
+          .from('products')
+          .select('estoque_atual')
+          .eq('id', item.product_id)
+          .single();
+
+        if (prodData) {
+          const ajuste = novoValor ? item.quantity : -item.quantity;
+          await supabase
+            .from('products')
+            .update({ estoque_atual: (prodData.estoque_atual || 0) + ajuste })
+            .eq('id', item.product_id);
+        }
+      }
+
+      // 3. Recalcular total da OS (excluindo peças do cliente)
+      const itensAtualizados = os.work_order_items.map(i =>
+        i.id === item.id ? { ...i, peca_cliente: novoValor } : i
+      );
+      const novoTotal = itensAtualizados.reduce((acc, i) =>
+        i.peca_cliente ? acc : acc + i.total_price, 0
+      );
+
+      await supabase
+        .from('work_orders')
+        .update({ total: novoTotal })
+        .eq('id', os.id);
+
+      fetchOS();
+    } catch (error: any) {
+      alert("Erro ao atualizar peça do cliente: " + error.message);
     } finally {
       setUpdating(false);
     }
@@ -410,7 +481,8 @@ export default function DetalhesOS() {
           name: item.nome,
           quantity: quantidade,
           unit_price: valorUnitario,
-          total_price: totalItem
+          total_price: totalItem,
+          peca_cliente: false
         });
 
       if (itemError) throw itemError;
@@ -462,7 +534,7 @@ export default function DetalhesOS() {
     if (currentStatus === 'cancelado') return "bg-gray-100 text-gray-400 border-gray-200 grayscale";
 
     if (currentStatus === stepStatus) return "bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A] shadow-lg scale-105";
-    if (currentIndex > stepIndex) return "bg-green-100 text-green-700 border-green-200 opacity-60";
+    if (currentIndex > stepIndex) return "bg-green-200 text-green-800 border-green-300";
     return "bg-white text-stone-400 border-stone-100";
   };
 
@@ -541,13 +613,33 @@ export default function DetalhesOS() {
               <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-stone-100 -z-10"></div>
 
               {/* CARD: ORÇAMENTO */}
-              <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('orcamento')}`}>
+              <div
+                className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('orcamento')} ${os.status !== 'orcamento' && os.aprovacao_timestamp ? 'cursor-pointer hover:scale-[1.02]' : ''}`}
+                onClick={() => {
+                  if (os.status !== 'orcamento' && os.aprovacao_timestamp) setModalMetadados(true);
+                }}
+              >
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><DollarSign size={20} /></div>
-                  <div><p className="font-bold text-sm">Orçamento Criado</p><p className="text-xs opacity-80">Aguardando aprovação</p></div>
+                  <div>
+                    <p className="font-bold text-sm">Orçamento Criado</p>
+                    <p className="text-xs opacity-80">{os.status !== 'orcamento' && os.aprovacao_timestamp ? 'Aprovado ✓ (clique para ver detalhes)' : 'Aguardando aprovação'}</p>
+                  </div>
                 </div>
                 {os.status === 'orcamento' && (
-                  <button onClick={() => handleStatusChange('aprovado')} disabled={updating} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-blue-700 transition flex items-center gap-2">
+                  <button onClick={() => {
+                    const temPecaCliente = os.work_order_items?.some(i => i.peca_cliente);
+                    if (temPecaCliente) {
+                      const aceita = confirm(
+                        '⚠️ ATENÇÃO: Esta OS contém peças trazidas pelo cliente.\n\n' +
+                        'A aprovação local (feita pelo mecânico) não registra os dados de aceite do cliente e pode comprometer a segurança jurídica quanto à garantia dessas peças.\n\n' +
+                        'Para proteção da oficina, recomenda-se que o cliente aprove pelo portal.\n\n' +
+                        'Deseja aprovar localmente mesmo assim?'
+                      );
+                      if (!aceita) return;
+                    }
+                    handleStatusChange('aprovado');
+                  }} disabled={updating} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-blue-700 transition flex items-center gap-2">
                     {updating ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} Aprovar
                   </button>
                 )}
@@ -672,6 +764,52 @@ export default function DetalhesOS() {
               <p className="text-sm text-stone-500">{os.clients?.whatsapp || "Sem telefone"}</p>
             </div>
 
+            {/* DADOS DO PAINEL */}
+            {(os.odometro || os.nivel_combustivel || os.temperatura_motor || os.painel_obs) && (
+              <>
+                <div className="border-t border-stone-300 my-4"></div>
+                <button
+                  onClick={() => setChecklistAberto(!checklistAberto)}
+                  className="w-full flex items-center justify-between mb-3 hover:opacity-80 transition"
+                >
+                  <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                    <Gauge size={16} /> Checklist
+                  </h3>
+                  {checklistAberto ? <ChevronUp size={18} className="text-stone-400" /> : <ChevronDown size={18} className="text-stone-400" />}
+                </button>
+                {checklistAberto && (
+                  <div className="space-y-2 text-sm animate-in slide-in-from-top-2">
+                    {os.odometro && (
+                      <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-stone-100">
+                        <span className="text-stone-500 flex items-center gap-1.5"><Gauge size={13} /> Odômetro</span>
+                        <span className="font-bold text-[#1A1A1A]">{Number(os.odometro).toLocaleString('pt-BR')} km</span>
+                      </div>
+                    )}
+                    {os.nivel_combustivel && (
+                      <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-stone-100">
+                        <span className="text-stone-500 flex items-center gap-1.5"><Fuel size={13} /> Combustível</span>
+                        <span className="font-bold text-[#1A1A1A] capitalize">{os.nivel_combustivel}</span>
+                      </div>
+                    )}
+                    {os.temperatura_motor && (
+                      <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-stone-100">
+                        <span className="text-stone-500 flex items-center gap-1.5"><Thermometer size={13} /> Temperatura</span>
+                        <span className={`font-bold capitalize ${os.temperatura_motor === 'critica' ? 'text-red-600' :
+                          os.temperatura_motor === 'elevada' ? 'text-yellow-600' : 'text-green-600'
+                          }`}>{os.temperatura_motor}</span>
+                      </div>
+                    )}
+                    {os.painel_obs && (
+                      <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200 mt-2">
+                        <p className="text-[10px] font-bold text-yellow-600 uppercase mb-1">Observações do Painel</p>
+                        <p className="text-xs text-stone-600">{os.painel_obs}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
             <div className="border-t border-stone-300 my-4"></div>
 
             <div className="flex justify-between items-center mb-4">
@@ -688,23 +826,45 @@ export default function DetalhesOS() {
 
             <div className="space-y-3 text-sm">
               {os.work_order_items?.map((item) => (
-                <div key={item.id} className="flex justify-between items-center">
-                  <div>
-                    <p className="text-stone-600 font-medium">{item.name}</p>
-                    <p className="text-[10px] text-stone-400">{item.quantity}x {formatCurrency(item.unit_price)}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-[#1A1A1A]">{formatCurrency(item.total_price)}</span>
+                <div key={item.id} className={`rounded-xl p-3 ${item.peca_cliente ? 'bg-yellow-50 border-2 border-yellow-200' : ''}`}>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className={`text-stone-600 font-medium ${item.peca_cliente ? 'line-through opacity-60' : ''}`}>{item.name}</p>
+                      <p className="text-[10px] text-stone-400">{item.quantity}x {formatCurrency(item.unit_price)}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`font-bold ${item.peca_cliente ? 'text-stone-400 line-through' : 'text-[#1A1A1A]'}`}>{formatCurrency(item.total_price)}</span>
 
-                    {/* BOTÃO SEM CONDICIONAL VISUAL (RESOLVIDO) */}
-                    <button
-                      onClick={() => handleRemoverItem(item)}
-                      className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition"
-                      title="Remover Item"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                      {/* BOTÃO PEÇA DO CLIENTE */}
+                      {item.tipo === 'peca' && (
+                        <button
+                          onClick={() => handleTogglePecaCliente(item)}
+                          disabled={updating}
+                          className={`p-1.5 rounded-lg transition ${item.peca_cliente
+                            ? 'bg-yellow-400 text-[#1A1A1A]'
+                            : 'bg-stone-100 text-stone-400 hover:bg-yellow-100 hover:text-yellow-700'
+                            }`}
+                          title={item.peca_cliente ? 'Peça do cliente (clique para desmarcar)' : 'Marcar como peça do cliente'}
+                        >
+                          <UserCheck size={14} />
+                        </button>
+                      )}
+
+                      {/* BOTÃO REMOVER */}
+                      <button
+                        onClick={() => handleRemoverItem(item)}
+                        className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition"
+                        title="Remover Item"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
+                  {item.peca_cliente && (
+                    <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold bg-yellow-400 text-[#1A1A1A] px-2 py-0.5 rounded-full">
+                      <UserCheck size={10} /> PEÇA DO CLIENTE
+                    </span>
+                  )}
                 </div>
               ))}
 
@@ -715,6 +875,71 @@ export default function DetalhesOS() {
               <div className="border-t border-stone-300 my-2 pt-4 flex justify-between text-lg">
                 <span className="font-bold text-[#1A1A1A]">Total</span>
                 <span className="font-bold text-[#1A1A1A]">{formatCurrency(os.total)}</span>
+              </div>
+
+              {/* RELATÓRIO DE SCANNER */}
+              <div className="border-t border-stone-200 mt-4 pt-4">
+                <input
+                  type="file"
+                  ref={scannerInputRef}
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={async (e) => {
+                    if (!e.target.files?.[0] || !os) return;
+                    setUploadingScan(true);
+                    try {
+                      const file = e.target.files[0];
+                      const fileName = `${os.id}/scanner_${Date.now()}.pdf`;
+                      const { error: upErr } = await supabase.storage.from('os-images').upload(fileName, file);
+                      if (upErr) throw upErr;
+                      const { data: urlData } = supabase.storage.from('os-images').getPublicUrl(fileName);
+                      await supabase.from('work_orders').update({ scanner_pdf: urlData.publicUrl }).eq('id', os.id);
+                      setOs({ ...os, scanner_pdf: urlData.publicUrl });
+                      alert('Relatório enviado!');
+                    } catch (err: any) {
+                      alert('Erro ao enviar: ' + err.message);
+                    } finally {
+                      setUploadingScan(false);
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => { if (scannerInputRef.current) scannerInputRef.current.value = ''; scannerInputRef.current?.click(); }}
+                  disabled={uploadingScan}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-stone-300 text-stone-500 hover:border-[#FACC15] hover:text-[#1A1A1A] transition font-bold text-sm"
+                >
+                  {uploadingScan ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />}
+                  {uploadingScan ? 'Enviando...' : 'Relatório de Scanner'}
+                </button>
+
+                {os.scanner_pdf && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <a
+                      href={os.scanner_pdf}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700 text-sm font-bold hover:bg-blue-100 transition"
+                    >
+                      <Download size={16} />
+                      Relatório de Scanner.pdf
+                    </a>
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Deseja remover o relatório de scanner?')) return;
+                        try {
+                          await supabase.from('work_orders').update({ scanner_pdf: null }).eq('id', os.id);
+                          setOs({ ...os, scanner_pdf: null });
+                        } catch (err: any) {
+                          alert('Erro ao remover: ' + err.message);
+                        }
+                      }}
+                      className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-500 hover:bg-red-100 transition"
+                      title="Remover relatório"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -890,6 +1115,51 @@ export default function DetalhesOS() {
             >
               {updating ? <Loader2 className="animate-spin" /> : <CheckCircle />}
               Confirmar Recebimento
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL METADADOS DE APROVAÇÃO */}
+      {modalMetadados && os.aprovacao_timestamp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-bold text-[#1A1A1A] flex items-center gap-2">
+                <ShieldCheck size={20} className="text-green-600" /> Dados da Aprovação
+              </h2>
+              <button onClick={() => setModalMetadados(false)}><X /></button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="bg-green-50 border border-green-200 rounded-2xl p-4">
+                <p className="text-[10px] font-bold text-green-600 uppercase mb-1">Data e Hora</p>
+                <p className="text-sm font-bold text-[#1A1A1A]">
+                  {new Date(os.aprovacao_timestamp).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'medium' })}
+                </p>
+              </div>
+
+              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
+                <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Endereço IP</p>
+                <p className="text-sm font-mono font-bold text-[#1A1A1A]">{os.aprovacao_ip || 'Não disponível'}</p>
+              </div>
+
+              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
+                <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Dispositivo</p>
+                <p className="text-xs text-[#1A1A1A] break-all">{os.aprovacao_dispositivo || 'Não disponível'}</p>
+              </div>
+
+              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
+                <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Hash do Orçamento</p>
+                <p className="text-[10px] font-mono text-stone-600 break-all">{os.aprovacao_versao_hash || 'Não disponível'}</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setModalMetadados(false)}
+              className="w-full bg-stone-100 text-stone-600 font-bold py-3 rounded-2xl border-2 border-stone-300 hover:bg-stone-200 transition"
+            >
+              Fechar
             </button>
           </div>
         </div>

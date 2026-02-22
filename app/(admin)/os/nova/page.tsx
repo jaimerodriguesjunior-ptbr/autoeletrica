@@ -18,6 +18,11 @@ import {
   Minus,
   Calendar,
   Mic,
+  UserCheck,
+  Gauge,
+  Thermometer,
+  Fuel,
+  Eye,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -49,6 +54,7 @@ type OSItem = {
   tipo: "peca" | "servico";
   qtd: number;
   semEstoque?: boolean;
+  pecaCliente?: boolean;
 };
 
 type VeiculoConfirmado = {
@@ -93,6 +99,16 @@ export default function NovaOS() {
   // Passo 2: OS
   const [defeito, setDefeito] = useState("");
   const [previsaoEntrega, setPrevisaoEntrega] = useState("");
+
+  // Passo 2: Dados do Painel
+  const painelInputRef = useRef<HTMLInputElement>(null);
+  const [odometro, setOdometro] = useState("");
+  const [nivelCombustivel, setNivelCombustivel] = useState("");
+  const [temperaturaMotor, setTemperaturaMotor] = useState("");
+  const [painelObs, setPainelObs] = useState("");
+  const [analisandoPainel, setAnalisandoPainel] = useState(false);
+  const [painelFotoPreview, setPainelFotoPreview] = useState<string | null>(null);
+  const [painelFile, setPainelFile] = useState<File | null>(null);
   const [itens, setItens] = useState<OSItem[]>([]);
   const [fotosEvidencia, setFotosEvidencia] = useState<string[]>([]);
 
@@ -177,6 +193,57 @@ export default function NovaOS() {
     setVeiculoConfirmado(null);
     setClienteSelecionado(null);
     setPrevisaoEntrega("");
+    setOdometro("");
+    setNivelCombustivel("");
+    setTemperaturaMotor("");
+    setPainelObs("");
+    setPainelFotoPreview(null);
+    setPainelFile(null);
+  };
+
+  // --- ANÁLISE DO PAINEL COM IA ---
+  const handleFotoPainel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+    const file = e.target.files[0];
+    setPainelFotoPreview(URL.createObjectURL(file));
+    setPainelFile(file);
+    setAnalisandoPainel(true);
+
+    try {
+      // Converter para base64
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+
+      const res = await fetch('/api/painel-ia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64 }),
+      });
+
+      const data = await res.json();
+
+      if (data.odometro && String(data.odometro) !== 'nao_identificado') {
+        setOdometro(String(data.odometro).replace(/\D/g, ''));
+      }
+      if (data.combustivel && String(data.combustivel) !== 'nao_identificado') {
+        const mapa: Record<string, string> = { 'vazio': 'vazio', '1/4': '1/4', '1/2': '1/2', '3/4': '3/4', 'cheio': 'cheio' };
+        setNivelCombustivel(mapa[data.combustivel] || String(data.combustivel));
+      }
+      if (data.temperatura && String(data.temperatura) !== 'nao_identificado') {
+        setTemperaturaMotor(String(data.temperatura));
+      }
+      if (data.luzes_alerta && Array.isArray(data.luzes_alerta) && data.luzes_alerta.length > 0) {
+        setPainelObs('Luzes acesas: ' + data.luzes_alerta.join(', '));
+      }
+    } catch (error) {
+      console.error('Erro ao analisar painel:', error);
+      alert('Não foi possível analisar a foto. Preencha os campos manualmente.');
+    } finally {
+      setAnalisandoPainel(false);
+    }
   };
 
   // ============================================================
@@ -281,7 +348,7 @@ export default function NovaOS() {
     setSaving(true);
 
     try {
-      const total = itens.reduce((acc, item) => acc + item.valor * item.qtd, 0);
+      const total = itens.reduce((acc, item) => item.pecaCliente ? acc : acc + item.valor * item.qtd, 0);
 
       const { data: osData, error: osError } = await supabase
         .from("work_orders")
@@ -293,6 +360,10 @@ export default function NovaOS() {
           description: defeito,
           total: total,
           previsao_entrega: previsaoEntrega || null,
+          odometro: odometro || null,
+          nivel_combustivel: nivelCombustivel || null,
+          temperatura_motor: temperaturaMotor || null,
+          painel_obs: painelObs || null,
         })
         .select()
         .single();
@@ -315,14 +386,41 @@ export default function NovaOS() {
           quantity: item.qtd,
           unit_price: item.valor,
           total_price: item.valor * item.qtd,
+          peca_cliente: item.pecaCliente || false,
         }));
 
         const { error: itemsError } = await supabase.from("work_order_items").insert(itensParaSalvar);
         if (itemsError) throw itemsError;
       }
 
+      // Upload foto do painel (se houver)
+      if (painelFile) {
+        const fileExt = painelFile.name.split('.').pop();
+        const fileName = `${osData.id}/painel_${Date.now()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('os-images')
+          .upload(fileName, painelFile);
+
+        if (!uploadError) {
+          const { data: publicUrlData } = supabase.storage
+            .from('os-images')
+            .getPublicUrl(fileName);
+
+          const painelUrl = publicUrlData.publicUrl;
+
+          await supabase
+            .from('work_orders')
+            .update({
+              painel_foto: painelUrl,
+              photos: [painelUrl]
+            })
+            .eq('id', osData.id);
+        }
+      }
+
       alert("OS Criada com Sucesso!");
-      window.location.href = "/os";
+      window.location.href = `/os/detalhes/${osData.id}`;
 
     } catch (error: any) {
       console.error("Erro ao salvar:", error);
@@ -406,7 +504,13 @@ export default function NovaOS() {
 
   const removerItem = (id: string | number) => setItens(itens.filter((item) => item.id !== id));
 
-  const total = itens.reduce((acc, item) => acc + item.valor * item.qtd, 0);
+  const total = itens.reduce((acc, item) => item.pecaCliente ? acc : acc + item.valor * item.qtd, 0);
+
+  const togglePecaCliente = (id: string | number) => {
+    setItens(prev => prev.map(item =>
+      item.id === id ? { ...item, pecaCliente: !item.pecaCliente } : item
+    ));
+  };
 
   const selecionarCliente = (c: Client) => {
     setClienteSelecionado(c);
@@ -621,6 +725,124 @@ export default function NovaOS() {
             </div>
           </div>
 
+          {/* CHECKLIST DO VEÍCULO (Dados do Painel) */}
+          <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 space-y-4">
+            <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+              <ArrowRight size={18} className="text-[#FACC15]" /> Checklist do Veículo
+            </h3>
+
+            {/* Input oculto para câmera do painel */}
+            <input type="file" ref={painelInputRef} accept="image/*" capture="environment" className="hidden" onChange={handleFotoPainel} />
+
+            {/* Odômetro com câmera */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                <Gauge size={12} /> ODÔMETRO (KM)
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={odometro}
+                  onChange={(e) => setOdometro(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Ex: 45230"
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] pr-14"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (painelInputRef.current) painelInputRef.current.value = '';
+                    painelInputRef.current?.click();
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-stone-200 hover:border-[#FACC15] text-stone-400 hover:text-[#FACC15] transition"
+                >
+                  {analisandoPainel ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : painelFotoPreview ? (
+                    <div className="relative w-full h-full">
+                      <Image src={painelFotoPreview} alt="Painel" fill className="object-cover rounded-lg" />
+                    </div>
+                  ) : (
+                    <Camera size={18} />
+                  )}
+                </button>
+              </div>
+              {analisandoPainel && (
+                <p className="text-xs text-[#FACC15] font-bold ml-2 animate-pulse flex items-center gap-1">
+                  <Eye size={12} /> IA analisando o painel...
+                </p>
+              )}
+            </div>
+
+            {/* Nível de Combustível */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                <Fuel size={12} /> NÍVEL DE COMBUSTÍVEL
+              </label>
+              <div className="flex gap-2">
+                {[
+                  { val: 'vazio', label: 'Vazio' },
+                  { val: '1/4', label: '¼' },
+                  { val: '1/2', label: '½' },
+                  { val: '3/4', label: '¾' },
+                  { val: 'cheio', label: 'Cheio' },
+                ].map((opt) => (
+                  <button
+                    key={opt.val}
+                    type="button"
+                    onClick={() => setNivelCombustivel(opt.val)}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition border-2 ${nivelCombustivel === opt.val
+                      ? 'bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A] shadow-md'
+                      : 'bg-[#F8F7F2] text-stone-500 border-stone-300 hover:border-[#FACC15]'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Temperatura */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                <Thermometer size={12} /> TEMPERATURA DO MOTOR
+              </label>
+              <div className="flex gap-2">
+                {[
+                  { val: 'normal', label: 'Normal', color: 'bg-green-100 text-green-700 border-green-300' },
+                  { val: 'elevada', label: 'Elevada', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+                  { val: 'critica', label: 'Crítica', color: 'bg-red-100 text-red-700 border-red-300' },
+                ].map((opt) => (
+                  <button
+                    key={opt.val}
+                    type="button"
+                    onClick={() => setTemperaturaMotor(opt.val)}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition border-2 ${temperaturaMotor === opt.val
+                      ? `${opt.color} shadow-md scale-105`
+                      : 'bg-[#F8F7F2] text-stone-500 border-stone-300 hover:border-[#FACC15]'
+                      }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Observações */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                <AlertCircle size={12} /> OBSERVAÇÕES DO PAINEL
+              </label>
+              <textarea
+                rows={3}
+                value={painelObs}
+                onChange={(e) => setPainelObs(e.target.value)}
+                placeholder="Luzes acesas, barulhos, ou observações da inspeção..."
+                className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none resize-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] text-sm"
+              ></textarea>
+            </div>
+          </div>
+
           {/* Fotos */}
           <div className="space-y-2">
             <h3 className="font-bold text-[#1A1A1A] ml-2 flex items-center gap-2">
@@ -691,8 +913,8 @@ export default function NovaOS() {
                   setIsListening(true);
                 }}
                 className={`p-2.5 rounded-full transition-all duration-200 ${isListening
-                    ? "bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse"
-                    : "bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]"
+                  ? "bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse"
+                  : "bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]"
                   }`}
                 title={isListening ? "Parar gravação" : "Falar o problema"}
               >
@@ -730,40 +952,56 @@ export default function NovaOS() {
 
             <div className="space-y-2">
               {itens.map((item) => (
-                <div key={item.id} className="flex justify-between items-center p-3 bg-[#F8F7F2] rounded-2xl">
-                  <div>
-                    <p className="font-bold text-sm text-[#1A1A1A]">{item.nome}</p>
-                    <p className="text-[10px] text-stone-500 uppercase font-bold">
-                      {item.tipo}
-                    </p>
+                <div key={item.id} className={`p-3 rounded-2xl ${item.pecaCliente ? 'bg-yellow-50 border-2 border-yellow-200' : 'bg-[#F8F7F2]'}`}>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className={`font-bold text-sm text-[#1A1A1A] ${item.pecaCliente ? 'line-through opacity-60' : ''}`}>{item.nome}</p>
+                      <p className="text-[10px] text-stone-500 uppercase font-bold">
+                        {item.tipo}
+                      </p>
+                    </div>
+
+                    {/* CONTROLE DE QUANTIDADE */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center bg-white rounded-lg px-1">
+                        <button
+                          onClick={() => alterarQuantidade(item.id, -1)}
+                          className="p-1 hover:text-red-500"
+                        >
+                          <Minus size={14} />
+                        </button>
+                        <span className="text-xs font-bold w-6 text-center">{item.qtd}</span>
+                        <button
+                          onClick={() => alterarQuantidade(item.id, 1)}
+                          className="p-1 hover:text-green-500"
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </div>
+
+                      <div className="text-right min-w-[70px]">
+                        <span className={`font-bold block ${item.pecaCliente ? 'text-stone-400 line-through' : 'text-[#1A1A1A]'}`}>R$ {(item.valor * item.qtd).toFixed(2)}</span>
+                      </div>
+
+                      <button onClick={() => removerItem(item.id)} className="text-stone-300 hover:text-red-500 pl-2 border-l border-stone-200">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
 
-                  {/* CONTROLE DE QUANTIDADE */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center bg-white rounded-lg px-1">
-                      <button
-                        onClick={() => alterarQuantidade(item.id, -1)}
-                        className="p-1 hover:text-red-500"
-                      >
-                        <Minus size={14} />
-                      </button>
-                      <span className="text-xs font-bold w-6 text-center">{item.qtd}</span>
-                      <button
-                        onClick={() => alterarQuantidade(item.id, 1)}
-                        className="p-1 hover:text-green-500"
-                      >
-                        <Plus size={14} />
-                      </button>
-                    </div>
-
-                    <div className="text-right min-w-[70px]">
-                      <span className="font-bold text-[#1A1A1A] block">R$ {(item.valor * item.qtd).toFixed(2)}</span>
-                    </div>
-
-                    <button onClick={() => removerItem(item.id)} className="text-stone-300 hover:text-red-500 pl-2 border-l border-stone-200">
-                      <Trash2 size={16} />
+                  {/* Botão Peça do Cliente */}
+                  {item.tipo === "peca" && (
+                    <button
+                      onClick={() => togglePecaCliente(item.id)}
+                      className={`mt-2 flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition ${item.pecaCliente
+                        ? 'bg-yellow-400 text-[#1A1A1A]'
+                        : 'bg-stone-200 text-stone-500 hover:bg-yellow-100 hover:text-yellow-700'
+                        }`}
+                    >
+                      <UserCheck size={12} />
+                      {item.pecaCliente ? 'PEÇA DO CLIENTE ✓' : 'Peça do cliente?'}
                     </button>
-                  </div>
+                  )}
                 </div>
               ))}
               {itens.length === 0 && (
