@@ -943,7 +943,7 @@ export default function DetalhesOS() {
 
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-[#1A1A1A]">Itens da OS</h3>
-              {os.status !== 'cancelado' && (
+              {os.status !== 'cancelado' && os.status !== 'entregue' && (
                 <button
                   onClick={() => setModalAberto(true)}
                   className="bg-white hover:bg-stone-100 text-[#1A1A1A] p-2 rounded-full shadow-sm transition"
@@ -964,29 +964,32 @@ export default function DetalhesOS() {
                     <div className="flex items-center gap-3">
                       <span className={`font-bold ${item.peca_cliente ? 'text-stone-400 line-through' : 'text-[#1A1A1A]'}`}>{formatCurrency(item.total_price)}</span>
 
-                      {/* BOTÃO PEÇA DO CLIENTE */}
-                      {item.tipo === 'peca' && (
-                        <button
-                          onClick={() => handleTogglePecaCliente(item)}
-                          disabled={updating}
-                          className={`p-1.5 rounded-lg transition ${item.peca_cliente
-                            ? 'bg-yellow-400 text-[#1A1A1A]'
-                            : 'bg-stone-100 text-stone-400 hover:bg-yellow-100 hover:text-yellow-700'
-                            }`}
-                          title={item.peca_cliente ? 'Peça do cliente (clique para desmarcar)' : 'Marcar como peça do cliente'}
-                        >
-                          <UserCheck size={14} />
-                        </button>
-                      )}
+                      {/* BOTÃO PEÇA DO CLIENTE E BOTÃO REMOVER SOMENTE SE A OS NÃO ESTIVER ENTREGUE/CANCELADA */}
+                      {os.status !== 'cancelado' && os.status !== 'entregue' && (
+                        <>
+                          {item.tipo === 'peca' && (
+                            <button
+                              onClick={() => handleTogglePecaCliente(item)}
+                              disabled={updating}
+                              className={`p-1.5 rounded-lg transition ${item.peca_cliente
+                                ? 'bg-yellow-400 text-[#1A1A1A]'
+                                : 'bg-stone-100 text-stone-400 hover:bg-yellow-100 hover:text-yellow-700'
+                                }`}
+                              title={item.peca_cliente ? 'Peça do cliente (clique para desmarcar)' : 'Marcar como peça do cliente'}
+                            >
+                              <UserCheck size={14} />
+                            </button>
+                          )}
 
-                      {/* BOTÃO REMOVER */}
-                      <button
-                        onClick={() => handleRemoverItem(item)}
-                        className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition"
-                        title="Remover Item"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                          <button
+                            onClick={() => handleRemoverItem(item)}
+                            className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition"
+                            title="Remover Item"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                   {item.peca_cliente && (
@@ -1122,12 +1125,12 @@ export default function DetalhesOS() {
 
                     {dtcResultado && !buscandoDtc && (
                       <div className={`rounded-xl p-3 border ${dtcResultado.source === 'error' ? 'bg-red-50 border-red-200' :
-                          dtcResultado.source === 'ia' ? 'bg-purple-50 border-purple-200' :
-                            'bg-blue-50 border-blue-200'
+                        dtcResultado.source === 'ia' ? 'bg-purple-50 border-purple-200' :
+                          'bg-blue-50 border-blue-200'
                         }`}>
                         <div className="flex items-center gap-2">
                           <p className={`text-xs font-bold font-mono ${dtcResultado.source === 'error' ? 'text-red-700' :
-                              dtcResultado.source === 'ia' ? 'text-purple-700' : 'text-blue-700'
+                            dtcResultado.source === 'ia' ? 'text-purple-700' : 'text-blue-700'
                             }`}>{dtcResultado.code}</p>
                           {dtcResultado.source === 'ia' && (
                             <span className="text-[9px] font-bold bg-purple-200 text-purple-700 px-1.5 py-0.5 rounded-full">🤖 IA</span>
@@ -1137,7 +1140,7 @@ export default function DetalhesOS() {
                           )}
                         </div>
                         <p className={`text-xs mt-0.5 ${dtcResultado.source === 'error' ? 'text-red-600' :
-                            dtcResultado.source === 'ia' ? 'text-purple-600' : 'text-blue-600'
+                          dtcResultado.source === 'ia' ? 'text-purple-600' : 'text-blue-600'
                           }`}>{dtcResultado.description_pt}</p>
                       </div>
                     )}

@@ -122,7 +122,7 @@ export default function AdminLayout({
 
         {/* NAVEGAÇÃO */}
         <div className="flex-1 overflow-y-auto no-scrollbar pb-6 px-4">
-          <nav className="space-y-1.5 flex flex-col items-center lg:items-stretch">
+          <nav className="space-y-1.5 flex flex-col items-stretch">
             {menuItems.map((item) => {
               const isActive = pathname === item.path || pathname.startsWith(item.path + "/");
               return (
@@ -132,7 +132,7 @@ export default function AdminLayout({
                   onClick={() => setSidebarOpen(false)}
                   className={`
                     group flex items-center relative py-3 rounded-2xl transition-all duration-300
-                    ${isCollapsed ? 'justify-center w-12 h-12 px-0 mx-auto' : 'px-4 gap-3'}
+                    ${isCollapsed ? 'justify-center w-12 h-12 px-0 mx-auto' : 'justify-start px-4 gap-3'}
                     ${isActive
                       ? "bg-[#1A1A1A] text-white shadow-xl shadow-[#1A1A1A]/20 font-bold translate-x-1 lg:translate-x-0 lg:scale-[1.02]"
                       : "text-stone-500 hover:bg-[#1A1A1A]/5 hover:text-[#1A1A1A] font-medium"
@@ -201,8 +201,8 @@ export default function AdminLayout({
             onClick={signOut}
             title={isCollapsed ? "Sair do Sistema" : undefined}
             className={`
-              w-full flex items-center justify-center gap-2 py-3 mt-2 rounded-xl text-red-500 hover:bg-red-50 hover:shadow-sm font-bold transition-all
-              ${isCollapsed ? 'px-0 w-12 h-12 mx-auto' : 'px-4'}
+              w-full flex items-center gap-2 py-3 mt-2 rounded-xl text-red-500 hover:bg-red-50 hover:shadow-sm font-bold transition-all
+              ${isCollapsed ? 'justify-center px-0 w-12 h-12 mx-auto' : 'justify-start px-4'}
             `}
           >
             <LogOut size={20} />
