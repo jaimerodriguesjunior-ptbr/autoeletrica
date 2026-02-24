@@ -8,12 +8,10 @@ import {
   Package, AlertCircle, Loader2, X, AlertTriangle, Download, FileText
 } from "lucide-react";
 // eslint-disable-next-line @next/next/no-img-element
-import { createClient } from "../../src/lib/supabase";
 
 function ConteudoPortal() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const supabase = createClient();
 
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState("");
@@ -39,37 +37,18 @@ function ConteudoPortal() {
 
   const fetchOS = async () => {
     try {
-      const { data, error } = await supabase
-        .from('work_orders')
-        .select(`
-          *,
-          vehicles ( modelo, placa, cor, fabricante ),
-          clients ( nome, whatsapp ),
-          work_order_items ( name, total_price, peca_cliente )
-        `)
-        .eq('public_token', token)
-        .single();
+      const res = await fetch(`/api/portal/os?token=${encodeURIComponent(token!)}`);
+      const json = await res.json();
 
-      if (error) throw error;
-      if (!data) throw new Error("Ordem de Serviço não encontrada.");
+      if (!res.ok) throw new Error(json.error || 'Erro ao buscar OS.');
 
-      setOs(data);
+      setOs(json.os);
 
-      // Busca logo da empresa vinculada à OS
-      if (data.organization_id) {
-        const { data: companyData } = await supabase
-          .from('company_settings')
-          .select('logo_url, telefone')
-          .eq('organization_id', data.organization_id)
-          .limit(1)
-          .single();
-
-        if (companyData?.logo_url) {
-          setLogoUrl(companyData.logo_url);
-        }
-        if (companyData?.telefone) {
-          setTelefoneEmpresa(companyData.telefone.replace(/\D/g, ''));
-        }
+      if (json.logoUrl) {
+        setLogoUrl(json.logoUrl);
+      }
+      if (json.telefone) {
+        setTelefoneEmpresa(json.telefone.replace(/\D/g, ''));
       }
     } catch (error: any) {
       setErro("Não foi possível carregar os dados. Verifique o link.");
@@ -95,7 +74,6 @@ function ConteudoPortal() {
     setDrawerAberto(false);
     try {
       // Capturar metadados
-      const aprovacao_timestamp = new Date().toISOString();
       const aprovacao_dispositivo = navigator.userAgent;
 
       // Buscar IP público
@@ -114,18 +92,19 @@ function ConteudoPortal() {
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const aprovacao_versao_hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-      const { error } = await supabase
-        .from('work_orders')
-        .update({
-          status: 'aprovado',
+      const res = await fetch('/api/portal/aprovar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
           aprovacao_ip,
           aprovacao_dispositivo,
-          aprovacao_timestamp,
           aprovacao_versao_hash
         })
-        .eq('id', os.id);
+      });
 
-      if (error) throw error;
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erro ao aprovar.');
 
       setOs({ ...os, status: 'aprovado' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
