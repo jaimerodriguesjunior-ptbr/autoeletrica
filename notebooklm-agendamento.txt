@@ -1,0 +1,3780 @@
+﻿MODULO DE AGENDAMENTOS - AUTOELETRICA PRO
+============================================================
+Gerado em: 2026-02-28 16:59
+
+
+============================================================
+ARQUIVO: app\(admin)\agendamentos\page.tsx
+============================================================
+
+"use client";
+
+import { useEffect, useState, useMemo, useRef } from "react";
+import {
+    CalendarDays, Plus, Clock, Car, User, Wrench, X, Loader2,
+    ChevronLeft, ChevronRight, Search, AlertCircle, CheckCircle, XCircle, Eye, MessageCircle, FileText
+} from "lucide-react";
+import { createClient } from "../../../src/lib/supabase";
+import { useAuth } from "../../../src/contexts/AuthContext";
+import Link from "next/link";
+import MonthCalendarPopover from "./_components/MonthCalendarPopover";
+import { RescheduleModal } from "./_components/RescheduleModal";
+
+type Appointment = {
+    id: string;
+    organization_id: string;
+    client_id: string | null;
+    vehicle_id: string | null;
+    work_order_id: number | null;
+    type: string;
+    status: string;
+    description: string | null;
+    start_time: string;
+    duration_minutes: number;
+    token: string;
+    clients?: { nome: string; whatsapp: string } | null;
+    vehicles?: { modelo: string; placa: string } | null;
+};
+
+export default function AgendamentosPage() {
+    const supabase = createClient();
+    const { profile } = useAuth();
+
+    const [loading, setLoading] = useState(true);
+    const [appointments, setAppointments] = useState<Appointment[]>([]);
+    const [selectedDate, setSelectedDate] = useState(new Date());
+    const [modalOpen, setModalOpen] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [capacity, setCapacity] = useState(3);
+
+    const [formDesc, setFormDesc] = useState("");
+    const [formDate, setFormDate] = useState("");
+    const [formTime, setFormTime] = useState("09:00");
+    const [formDuration, setFormDuration] = useState(60);
+    const [formType, setFormType] = useState("avaliacao");
+    const [rescheduleData, setRescheduleData] = useState<{ id: string, start_time: string } | null>(null);
+
+    // Campos avulsos para cliente não cadastrado
+    const [formCarroAvulso, setFormCarroAvulso] = useState("");
+    const [formWaAvulso, setFormWaAvulso] = useState("");
+
+    // Busca de cliente
+    const [clientSearch, setClientSearch] = useState("");
+    const [clientResults, setClientResults] = useState<any[]>([]);
+    const [selectedClient, setSelectedClient] = useState<any>(null);
+    const [selectedVehicle, setSelectedVehicle] = useState<any>(null);
+    const [clientVehicles, setClientVehicles] = useState<any[]>([]);
+
+    // Busca de OS (para tipo "ja_tem_os")
+    const [osSearch, setOsSearch] = useState("");
+    const [osResults, setOsResults] = useState<any[]>([]);
+    const [selectedOS, setSelectedOS] = useState<any>(null);
+
+    const heatmapScrollRef = useRef<HTMLDivElement>(null);
+
+    const isToday = selectedDate.toDateString() === new Date().toDateString();
+
+    useEffect(() => {
+        if (profile?.organization_id) {
+            fetchAppointments();
+            fetchCapacity();
+        }
+    }, [profile, selectedDate]);
+
+    const fetchCapacity = async () => {
+        const { data } = await supabase
+            .from("company_settings")
+            .select("scheduling_capacity")
+            .eq("organization_id", profile!.organization_id)
+            .single();
+        if (data?.scheduling_capacity) setCapacity(data.scheduling_capacity);
+    };
+
+    const fetchAppointments = async () => {
+        setLoading(true);
+        const dayStr = selectedDate.toISOString().split("T")[0];
+        const nextDay = new Date(selectedDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const nextDayStr = nextDay.toISOString().split("T")[0];
+
+        const { data } = await supabase
+            .from("appointments")
+            .select(`
+        *,
+        clients (nome, whatsapp),
+        vehicles (modelo, placa)
+      `)
+            .eq("organization_id", profile!.organization_id)
+            .gte("start_time", dayStr)
+            .lt("start_time", nextDayStr)
+            .neq("status", "cancelado")
+            .order("start_time", { ascending: true });
+
+        setAppointments(data || []);
+        setLoading(false);
+    };
+
+    // Busca clientes ao digitar
+    useEffect(() => {
+        if (clientSearch.length < 2) { setClientResults([]); return; }
+        const timer = setTimeout(async () => {
+            if (!profile?.organization_id) return;
+            const { data } = await supabase
+                .from("clients")
+                .select("id, nome, whatsapp")
+                .eq("organization_id", profile.organization_id)
+                .ilike("nome", `%${clientSearch}%`)
+                .limit(5);
+            setClientResults(data || []);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [clientSearch, profile]);
+
+    const handleSelectClient = (client: any) => {
+        setSelectedClient(client);
+        setClientSearch(client.nome);
+        setClientResults([]);
+    };
+
+    // Busca OS ao digitar (para "Já tem OS")
+    useEffect(() => {
+        if (formType !== "ja_tem_os") return;
+        if (osSearch.length < 1) { setOsResults([]); return; }
+        const timer = setTimeout(async () => {
+            if (!profile?.organization_id) return;
+            // Busca as OS recentes não canceladas e filtra client-side
+            const { data } = await supabase
+                .from("work_orders")
+                .select("id, status, description, clients(id, nome, whatsapp), vehicles(id, modelo, placa)")
+                .eq("organization_id", profile.organization_id)
+                .neq("status", "cancelado")
+                .order("created_at", { ascending: false })
+                .limit(50);
+
+            if (!data) { setOsResults([]); return; }
+
+            const termo = osSearch.toLowerCase();
+            const filtered = data.filter(os => {
+                const idStr = String(os.id).toLowerCase();
+                const clienteNome = (os.clients as any)?.nome?.toLowerCase() || "";
+                const placa = (os.vehicles as any)?.placa?.toLowerCase() || "";
+                const desc = os.description?.toLowerCase() || "";
+                return idStr.includes(termo) || clienteNome.includes(termo) || placa.includes(termo) || desc.includes(termo);
+            }).slice(0, 6);
+
+            setOsResults(filtered);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [osSearch, formType, profile]);
+
+    const handleSelectOS = (os: any) => {
+        setSelectedOS(os);
+        setOsSearch(`OS #${String(os.id).slice(0, 4).toUpperCase()}`);
+        setOsResults([]);
+    };
+
+    // HEATMAP: calcular ocupação por hora
+    const heatmapData = useMemo(() => {
+        const hours: { hour: number; count: number }[] = [];
+        for (let h = 7; h <= 18; h++) {
+            let count = 0;
+            appointments.forEach(a => {
+                const start = new Date(a.start_time);
+                const startH = start.getHours();
+                const endH = startH + Math.ceil((a.duration_minutes || 60) / 60);
+                if (h >= startH && h < endH) count++;
+            });
+            hours.push({ hour: h, count });
+        }
+        return hours;
+    }, [appointments]);
+
+    const getHeatColor = (count: number) => {
+        if (count === 0) return "bg-green-100 text-green-700 border-green-200";
+        const ratio = count / capacity;
+        if (ratio <= 0.5) return "bg-green-200 text-green-800 border-green-300";
+        if (ratio <= 0.9) return "bg-yellow-200 text-yellow-800 border-yellow-300";
+        return "bg-red-200 text-red-800 border-red-300";
+    };
+
+    // Auto-scroll para o horário atual se for o dia de hoje
+    useEffect(() => {
+        if (!heatmapScrollRef.current || !isToday || heatmapData.length === 0) return;
+
+        const currentHour = new Date().getHours();
+
+        // Timeout pequeno para dar tempo de renderizar a lista
+        const timeoutId = setTimeout(() => {
+            const targetElement = heatmapScrollRef.current?.querySelector(`[data-hour="${currentHour}"]`);
+            if (targetElement) {
+                targetElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }, 100);
+
+        return () => clearTimeout(timeoutId);
+    }, [heatmapData, isToday]);
+
+    const handleSave = async () => {
+        if (!formDate || !formTime) return alert("Informe data e horário.");
+
+        // Validação específica por tipo
+        if (formType === "ja_tem_os" && !selectedOS) {
+            return alert("Selecione uma Ordem de Serviço.");
+        }
+        if (formType === "avaliacao" && !selectedClient && !clientSearch.trim() && !formDesc.trim()) {
+            return alert("Preencha pelo menos o nome do cliente ou uma descrição do serviço.");
+        }
+
+        setSaving(true);
+        try {
+            // Corrige o timezone do form para não pular de dia
+            const [ano, ms, dia] = formDate.split("-").map(Number);
+            const [hora, min] = formTime.split(":").map(Number);
+
+            const startTime = new Date(ano, ms - 1, dia, hora, min, 0);
+
+            if (startTime < new Date()) {
+                setSaving(false);
+                return alert("Não é possível agendar para um horário no passado.");
+            }
+
+            let finalDesc = formDesc;
+            let clientId = selectedClient?.id || null;
+            let vehicleId = selectedVehicle?.id || null;
+            let workOrderId = null;
+
+            if (formType === "ja_tem_os" && selectedOS) {
+                // Pega tudo da OS
+                clientId = selectedOS.clients?.id || null;
+                vehicleId = selectedOS.vehicles?.id || null;
+                workOrderId = selectedOS.id;
+                if (!finalDesc) {
+                    finalDesc = selectedOS.description || `OS #${String(selectedOS.id).slice(0, 4).toUpperCase()}`;
+                }
+            } else {
+                // Agrupa os dados extras na descrição
+                const blocosExtras = [];
+                if (formCarroAvulso) blocosExtras.push(`Veículo: ${formCarroAvulso}`);
+                if (!selectedClient && formWaAvulso) blocosExtras.push(`WhatsApp: ${formWaAvulso}`);
+                if (!selectedClient && clientSearch.trim()) blocosExtras.push(`Nome: ${clientSearch.trim()}`);
+
+                if (blocosExtras.length > 0) {
+                    finalDesc = finalDesc
+                        ? `${finalDesc}\n---\n${blocosExtras.join(" | ")}`
+                        : blocosExtras.join(" | ");
+                }
+            }
+
+            const { error } = await supabase.from("appointments").insert({
+                organization_id: profile!.organization_id,
+                client_id: clientId,
+                vehicle_id: vehicleId,
+                work_order_id: workOrderId,
+                type: formType,
+                description: finalDesc || null,
+                start_time: startTime.toISOString(),
+                duration_minutes: formDuration,
+            });
+
+            if (error) throw error;
+
+            // Auto-scale: verificar se a quantidade nesse slot é maior que o recorde
+            const startHour = parseInt(formTime.split(":")[0]);
+            const slotsOcupados = appointments.filter(a => {
+                const h = new Date(a.start_time).getHours();
+                return h === startHour;
+            }).length + 1; // +1 pelo que acabou de ser criado
+
+            if (slotsOcupados > capacity) {
+                await supabase
+                    .from("company_settings")
+                    .update({ scheduling_capacity: slotsOcupados })
+                    .eq("organization_id", profile!.organization_id);
+                setCapacity(slotsOcupados);
+            }
+
+            // Reset form
+            setFormDesc(""); setFormType("avaliacao"); setFormDuration(60);
+            setFormCarroAvulso(""); setFormWaAvulso("");
+            setSelectedClient(null); setSelectedVehicle(null);
+            setClientSearch(""); setClientVehicles([]);
+            setOsSearch(""); setOsResults([]); setSelectedOS(null);
+            setModalOpen(false);
+            fetchAppointments();
+        } catch (e: any) {
+            alert("Erro ao salvar: " + e.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleStatusChange = async (id: string, newStatus: string) => {
+        await supabase.from("appointments").update({ status: newStatus }).eq("id", id);
+        fetchAppointments();
+    };
+
+    const changeDay = (delta: number) => {
+        const nd = new Date(selectedDate);
+        nd.setDate(nd.getDate() + delta);
+        setSelectedDate(nd);
+    };
+
+    const formatHour = (h: number) => `${h.toString().padStart(2, "0")}:00`;
+
+    const getTypeLabel = (t: string) => {
+        if (t === "avaliacao") return "Avaliação";
+        if (t === "ja_tem_os") return "Já tem OS";
+        return "Geral";
+    };
+
+    const getTypeColor = (t: string) => {
+        if (t === "avaliacao") return "bg-blue-100 text-blue-700";
+        if (t === "ja_tem_os") return "bg-orange-100 text-orange-700";
+        return "bg-stone-100 text-stone-600";
+    };
+
+    const getStatusIcon = (s: string) => {
+        if (s === "confirmado") return <CheckCircle size={16} className="text-green-500" />;
+        if (s === "concluido") return <CheckCircle size={16} className="text-green-500" />;
+        if (s === "nao_compareceu") return <XCircle size={16} className="text-red-500" />;
+        if (s === "em_atendimento") return <Wrench size={16} className="text-blue-500" />;
+        return <Clock size={16} className="text-yellow-500" />;
+    };
+
+    const handleWhatsapp = (a: Appointment) => {
+        let number = a.clients?.whatsapp?.replace(/\D/g, "") || "";
+
+        // Fallback: extrair número da descrição
+        if (!number && a.description) {
+            const match = a.description.match(/WhatsApp:\s*(\d+)/i);
+            if (match) number = match[1];
+        }
+
+        if (!number) {
+            alert("Este agendamento não possui um WhatsApp.");
+            return;
+        }
+
+        const dataFormatada = new Date(a.start_time).toLocaleDateString("pt-BR");
+        const horaFormatada = new Date(a.start_time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        const baseUrl = window.location.origin;
+        const link = `${baseUrl}/acompanhar?token=${a.token}`;
+
+        const nome = a.clients?.nome || 'Cliente';
+
+        const text = `Olá ${nome}, tudo bem?\n\n` +
+            `Seu agendamento de *${getTypeLabel(a.type)}* está marcado para o dia *${dataFormatada}* às *${horaFormatada}*.\n\n` +
+            `Você pode confirmar sua presença e acompanhar tudo pelo link abaixo:\n\n${link}`;
+
+        window.open(`https://wa.me/55${number}?text=${encodeURIComponent(text)}`, "_blank");
+    };
+
+    return (
+        <div className="space-y-6 pb-32">
+
+            {/* HEADER */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold text-[#1A1A1A]">Agenda</h1>
+                    <p className="text-stone-500 text-sm mt-1">Gerencie avaliações, retornos e compromissos.</p>
+                </div>
+                <button
+                    onClick={() => {
+                        setFormDate(selectedDate.toISOString().split("T")[0]);
+                        setModalOpen(true);
+                    }}
+                    className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-6 py-3 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105"
+                >
+                    <Plus size={20} /> Novo Agendamento
+                </button>
+            </div>
+
+            {/* NAVEGAÇÃO DE DIAS */}
+            <div className="flex items-center justify-center gap-4 bg-white rounded-[32px] shadow-sm px-4 py-3 border border-stone-200">
+                <button onClick={() => changeDay(-1)} className="p-2 bg-white rounded-full shadow-sm border border-stone-200 hover:bg-stone-50 transition">
+                    <ChevronLeft size={20} />
+                </button>
+
+                <div className="flex flex-col items-center">
+                    <MonthCalendarPopover
+                        selectedDate={selectedDate}
+                        onDateSelect={setSelectedDate}
+                        organizationId={profile?.organization_id || ""}
+                        capacity={capacity}
+                    />
+                </div>
+
+                <button onClick={() => changeDay(1)} className="p-2 bg-white rounded-full shadow-sm border border-stone-200 hover:bg-stone-50 transition">
+                    <ChevronRight size={20} />
+                </button>
+            </div>
+
+            {/* HEATMAP */}
+            <div className="bg-white rounded-[24px] p-6 border-2 border-stone-300 shadow-sm">
+                <h3 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-4">Ocupação por Horário</h3>
+                <div ref={heatmapScrollRef} className="flex gap-1.5 overflow-x-auto pb-2 scroll-smooth hide-scrollbar">
+                    {heatmapData.map(slot => (
+                        <div
+                            key={slot.hour}
+                            data-hour={slot.hour}
+                            className={`flex-1 min-w-[50px] rounded-xl p-2 text-center border transition ${getHeatColor(slot.count)} ${isToday && slot.hour === new Date().getHours() ? 'ring-2 ring-[#1A1A1A] ring-offset-1' : ''}`}
+                        >
+                            <p className="text-[10px] font-bold opacity-70">{formatHour(slot.hour)}</p>
+                            <p className="text-lg font-extrabold">{slot.count}</p>
+                        </div>
+                    ))}
+                </div>
+                <div className="flex items-center gap-4 mt-3 text-[10px] font-bold text-stone-400">
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-200 border border-green-300"></span> Tranquilo</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-200 border border-yellow-300"></span> Movimentado</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-200 border border-red-300"></span> Lotado</span>
+                </div>
+            </div>
+
+            {/* LISTA DE AGENDAMENTOS */}
+            <div className="bg-white rounded-[24px] p-6 border-2 border-stone-300 shadow-sm">
+                <h3 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-4">
+                    Agendamentos ({appointments.length})
+                </h3>
+
+                {loading ? (
+                    <div className="flex justify-center py-10"><Loader2 className="animate-spin text-[#FACC15]" size={32} /></div>
+                ) : appointments.length === 0 ? (
+                    <div className="text-center py-10 text-stone-400">
+                        <CalendarDays size={40} className="mx-auto mb-2 opacity-40" />
+                        <p className="font-medium">Nenhum agendamento para este dia.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {appointments.map(a => {
+                            const startTime = new Date(a.start_time);
+                            return (
+                                <div key={a.id} className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-4 p-4 md:p-3 bg-[#F8F7F2] rounded-2xl border border-stone-200 hover:border-stone-300 transition group">
+
+                                    {/* HORÁRIO */}
+                                    <div className="flex items-center md:flex-col justify-between md:justify-center w-full md:w-auto md:min-w-[70px] border-b md:border-b-0 pb-3 md:pb-0 border-stone-200 md:text-center text-left">
+                                        <p className="text-lg md:text-xl font-extrabold text-[#1A1A1A]">
+                                            {startTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                                        </p>
+                                        <p className="text-[10px] text-stone-400 font-bold md:mt-0">{a.duration_minutes}min</p>
+                                    </div>
+
+                                    <div className="hidden md:block w-px h-10 bg-stone-300"></div>
+
+                                    {/* INFO */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${getTypeColor(a.type)}`}>
+                                                {getTypeLabel(a.type)}
+                                            </span>
+                                            {a.work_order_id && (
+                                                <Link href={`/os/detalhes/${a.work_order_id}`} className="text-[10px] font-bold text-blue-500 underline">
+                                                    OS vinculada
+                                                </Link>
+                                            )}
+                                        </div>
+                                        <p className="font-bold text-[#1A1A1A] text-sm md:truncate whitespace-normal md:whitespace-nowrap leading-snug">
+                                            {a.clients?.nome
+                                                ? `${a.clients.nome}${a.description ? ` - ${a.description}` : ''}`
+                                                : a.description || 'Sem descrição'}
+                                        </p>
+                                        {a.vehicles && (
+                                            <p className="text-xs text-stone-500 mt-0.5">{a.vehicles.modelo} • {a.vehicles.placa}</p>
+                                        )}
+                                    </div>
+
+                                    {/* Ícones de Status e Ações */}
+                                    <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 w-full md:w-auto shrink-0 mt-2 md:mt-0 pt-3 md:pt-0 border-t md:border-t-0 border-stone-200/50">
+                                        {/* Ícone de Confirmação */}
+                                        {a.status === 'confirmado' && (
+                                            <div title="Presença confirmada pelo cliente" className="p-2 bg-green-50 text-green-600 rounded-xl">
+                                                <CheckCircle size={16} />
+                                            </div>
+                                        )}
+
+                                        {/* WhatsApp */}
+                                        {(a.clients?.whatsapp || (a.description && /WhatsApp:\s*\d+/i.test(a.description))) && (
+                                            <button
+                                                onClick={() => handleWhatsapp(a)}
+                                                title="Enviar WhatsApp"
+                                                className="p-2 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition"
+                                            >
+                                                <MessageCircle size={16} />
+                                            </button>
+                                        )}
+
+                                        {/* Nova OS (quando não tem OS vinculada) */}
+                                        {!a.work_order_id && (
+                                            <Link
+                                                href={`/atendimento/nova-os?${[
+                                                    a.client_id ? `client_id=${a.client_id}` : '',
+                                                    a.vehicle_id ? `vehicle_id=${a.vehicle_id}` : '',
+                                                    a.token ? `appointment_token=${a.token}` : ''
+                                                ].filter(Boolean).join('&')}`}
+                                                title="Abrir Nova OS"
+                                                className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition"
+                                            >
+                                                <FileText size={16} />
+                                            </Link>
+                                        )}
+
+                                        {/* Reagendar */}
+                                        {a.status !== "cancelado" && a.status !== "concluido" && (
+                                            <button
+                                                onClick={() => setRescheduleData({ id: a.id, start_time: a.start_time })}
+                                                title="Reagendar"
+                                                className="p-2 bg-stone-100 text-stone-600 rounded-xl hover:bg-stone-200 transition"
+                                            >
+                                                <Clock size={16} />
+                                            </button>
+                                        )}
+
+                                        {/* Cancelar */}
+                                        {a.status !== "cancelado" && a.status !== "concluido" && (
+                                            <button
+                                                onClick={() => {
+                                                    if (confirm("Deseja cancelar este agendamento?")) {
+                                                        handleStatusChange(a.id, "cancelado");
+                                                    }
+                                                }}
+                                                title="Cancelar Agendamento"
+                                                className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition"
+                                            >
+                                                <XCircle size={16} />
+                                            </button>
+                                        )}
+
+                                        {/* Concluir Avaliação (Baixa manual) */}
+                                        {a.status !== "cancelado" && a.status !== "concluido" && !a.work_order_id && (
+                                            <button
+                                                onClick={() => {
+                                                    if (confirm("Deseja dar baixa neste agendamento como 'Concluído' sem abrir OS?")) {
+                                                        handleStatusChange(a.id, "concluido");
+                                                    }
+                                                }}
+                                                title="Marcar como Concluído (Sem OS)"
+                                                className="p-2 bg-stone-800 text-[#FACC15] rounded-xl hover:bg-black transition"
+                                            >
+                                                <CheckCircle size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
+            {/* MODAL NOVO AGENDAMENTO */}
+            {
+                modalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+                            <div className="flex justify-between items-center">
+                                <h2 className="text-xl font-bold text-[#1A1A1A]">Novo Agendamento</h2>
+                                <button onClick={() => setModalOpen(false)}><X /></button>
+                            </div>
+
+                            {/* TIPO */}
+                            <div>
+                                <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">TIPO</label>
+                                <div className="flex gap-2">
+                                    {[
+                                        { value: "avaliacao", label: "Avaliação" },
+                                        { value: "ja_tem_os", label: "Já tem OS" },
+                                    ].map(t => (
+                                        <button
+                                            key={t.value}
+                                            onClick={() => setFormType(t.value)}
+                                            className={`flex-1 py-2 rounded-xl font-bold text-sm border-2 transition ${formType === t.value ? "bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A]" : "bg-stone-50 text-stone-500 border-stone-200 hover:border-stone-300"}`}
+                                        >
+                                            {t.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* === CAMPOS CONDICIONAIS POR TIPO === */}
+
+                            {formType === "avaliacao" && (
+                                <>
+                                    {/* CLIENTE */}
+                                    <div className="relative">
+                                        <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">CLIENTE (opcional)</label>
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
+                                            <input
+                                                type="text"
+                                                value={clientSearch}
+                                                onChange={e => {
+                                                    setClientSearch(e.target.value);
+                                                    setSelectedClient(null);
+                                                    setSelectedVehicle(null);
+                                                    setClientVehicles([]);
+                                                }}
+                                                placeholder="Buscar cliente (ou apenas digite o nome)..."
+                                                className="w-full bg-[#F8F7F2] rounded-xl py-3 pl-10 pr-4 outline-none border-2 border-stone-300 focus:border-[#FACC15]"
+                                            />
+                                        </div>
+                                        {clientResults.length > 0 && (
+                                            <div className="absolute z-10 w-full mt-1 bg-white rounded-xl shadow-lg border border-stone-200 max-h-40 overflow-y-auto">
+                                                {clientResults.map(c => (
+                                                    <button key={c.id} onClick={() => handleSelectClient(c)} className="w-full text-left px-4 py-2 hover:bg-stone-50 text-sm font-medium text-[#1A1A1A]">
+                                                        {c.nome}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* VEÍCULO (sempre visível, texto livre) */}
+                                    <div>
+                                        <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">VEÍCULO (opcional)</label>
+                                        <div className="relative">
+                                            <Car className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
+                                            <input
+                                                type="text"
+                                                value={formCarroAvulso}
+                                                onChange={e => setFormCarroAvulso(e.target.value)}
+                                                placeholder="Ex: Gol Prata ABC-1234"
+                                                className="w-full bg-[#F8F7F2] rounded-xl py-3 pl-10 pr-4 outline-none border-2 border-stone-300 focus:border-[#FACC15]"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* WHATSAPP (só quando não selecionou cliente cadastrado) */}
+                                    {!selectedClient && (
+                                        <div>
+                                            <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">WHATSAPP (opcional)</label>
+                                            <div className="relative">
+                                                <MessageCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
+                                                <input
+                                                    type="text"
+                                                    value={formWaAvulso}
+                                                    onChange={e => setFormWaAvulso(e.target.value)}
+                                                    placeholder="(DD) 9..."
+                                                    className="w-full bg-[#F8F7F2] rounded-xl py-3 pl-10 pr-4 outline-none border-2 border-stone-300 focus:border-[#FACC15]"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {formType === "ja_tem_os" && (
+                                <>
+                                    {/* BUSCA DE OS */}
+                                    <div className="relative">
+                                        <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">BUSCAR ORDEM DE SERVIÇO</label>
+                                        <div className="relative">
+                                            <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
+                                            <input
+                                                type="text"
+                                                value={osSearch}
+                                                onChange={e => { setOsSearch(e.target.value); setSelectedOS(null); }}
+                                                placeholder="Digite o número da OS ou descrição..."
+                                                className="w-full bg-[#F8F7F2] rounded-xl py-3 pl-10 pr-4 outline-none border-2 border-stone-300 focus:border-[#FACC15]"
+                                            />
+                                        </div>
+                                        {osResults.length > 0 && !selectedOS && (
+                                            <div className="absolute z-10 w-full mt-1 bg-white rounded-xl shadow-lg border border-stone-200 max-h-48 overflow-y-auto">
+                                                {osResults.map(os => (
+                                                    <button
+                                                        key={os.id}
+                                                        onClick={() => handleSelectOS(os)}
+                                                        className="w-full text-left px-4 py-3 hover:bg-stone-50 border-b border-stone-100 last:border-0"
+                                                    >
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="font-bold text-sm text-[#1A1A1A]">OS #{String(os.id).slice(0, 4).toUpperCase()}</span>
+                                                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-stone-100 text-stone-500">{os.status?.replace('_', ' ')}</span>
+                                                        </div>
+                                                        <p className="text-xs text-stone-500 mt-0.5">
+                                                            {os.clients?.nome || 'Sem cliente'} {os.vehicles ? `• ${os.vehicles.modelo} (${os.vehicles.placa})` : ''}
+                                                        </p>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* RESUMO DA OS SELECIONADA */}
+                                    {selectedOS && (
+                                        <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-200 space-y-1">
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-bold text-sm text-blue-800">OS #{String(selectedOS.id).slice(0, 4).toUpperCase()}</span>
+                                                <button onClick={() => { setSelectedOS(null); setOsSearch(""); }} className="text-xs text-red-500 font-bold hover:underline">Trocar</button>
+                                            </div>
+                                            {selectedOS.clients?.nome && <p className="text-xs text-blue-700"><User size={12} className="inline mr-1" />{selectedOS.clients.nome}</p>}
+                                            {selectedOS.vehicles && <p className="text-xs text-blue-700"><Car size={12} className="inline mr-1" />{selectedOS.vehicles.modelo} • {selectedOS.vehicles.placa}</p>}
+                                            {selectedOS.description && <p className="text-xs text-stone-500 mt-1 truncate">{selectedOS.description}</p>}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {/* DATA + HORA */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">DATA</label>
+                                    <input
+                                        type="date"
+                                        value={formDate}
+                                        onChange={e => setFormDate(e.target.value)}
+                                        className="w-full bg-[#F8F7F2] rounded-xl py-3 px-4 outline-none border-2 border-stone-300 focus:border-[#FACC15] font-bold"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">HORÁRIO</label>
+                                    <input
+                                        type="time"
+                                        value={formTime}
+                                        onChange={e => setFormTime(e.target.value)}
+                                        className="w-full bg-[#F8F7F2] rounded-xl py-3 px-4 outline-none border-2 border-stone-300 focus:border-[#FACC15] font-bold"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* DURAÇÃO */}
+                            <div>
+                                <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">DURAÇÃO ESTIMADA</label>
+                                <div className="flex gap-2">
+                                    {[15, 30, 60, 120, 240, 480].map(d => (
+                                        <button
+                                            key={d}
+                                            onClick={() => setFormDuration(d)}
+                                            className={`flex-1 py-2 rounded-xl font-bold text-xs border-2 transition ${formDuration === d ? "bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A]" : "bg-stone-50 text-stone-500 border-stone-200"}`}
+                                        >
+                                            {d < 60 ? `${d}min` : d === 240 ? "Meio Dia" : d === 480 ? "Dia Todo" : `${d / 60}h`}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* DESCRIÇÃO */}
+                            <div>
+                                <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">DESCRIÇÃO (opcional)</label>
+                                <textarea
+                                    value={formDesc}
+                                    onChange={e => setFormDesc(e.target.value)}
+                                    placeholder="Ex: Trocar lâmpada farol esquerdo"
+                                    rows={2}
+                                    className="w-full bg-[#F8F7F2] rounded-xl py-3 px-4 outline-none border-2 border-stone-300 focus:border-[#FACC15] resize-none"
+                                />
+                            </div>
+
+                            {/* SALVAR */}
+                            <button
+                                onClick={handleSave}
+                                disabled={saving}
+                                className="w-full bg-[#1A1A1A] hover:bg-black text-[#FACC15] py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg transition disabled:opacity-50"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={20} /> : <CalendarDays size={20} />}
+                                {saving ? "Salvando..." : "Agendar"}
+                            </button>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* MODAL REAGENDAMENTO ENCAPSULADO */}
+            {rescheduleData && (
+                <RescheduleModal
+                    isOpen={!!rescheduleData}
+                    onClose={() => setRescheduleData(null)}
+                    appointmentId={rescheduleData.id}
+                    currentStartTime={rescheduleData.start_time}
+                    onSuccess={() => {
+                        setRescheduleData(null);
+                        fetchAppointments();
+                        setTimeout(() => window.location.reload(), 300);
+                    }}
+                />
+            )}
+        </div >
+    );
+}
+
+
+============================================================
+ARQUIVO: app\(admin)\agendamentos\_components\RescheduleModal.tsx
+============================================================
+
+"use client";
+
+import { useState } from "react";
+import { Loader2, X, Calendar as CalendarIcon, Clock } from "lucide-react";
+import { createClient } from "../../../../src/lib/supabase";
+
+interface RescheduleModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    appointmentId: string;
+    currentStartTime: string; // ISO String
+    onSuccess: () => void;
+}
+
+export function RescheduleModal({ isOpen, onClose, appointmentId, currentStartTime, onSuccess }: RescheduleModalProps) {
+    const supabase = createClient();
+
+    // Inicializar os campos com a data/hora atual do agendamento
+    const currentDateObj = new Date(currentStartTime);
+
+    // Ajustar fuso horário local
+    const tzOffset = currentDateObj.getTimezoneOffset() * 60000;
+    const localISOTime = (new Date(currentDateObj.getTime() - tzOffset)).toISOString().slice(0, 16);
+
+    const [date, setDate] = useState(localISOTime.split("T")[0]);
+    const [time, setTime] = useState(localISOTime.split("T")[1].substring(0, 5));
+
+    const [saving, setSaving] = useState(false);
+
+    if (!isOpen) return null;
+
+    const handleSave = async () => {
+        if (!date || !time) {
+            alert("Preencha data e hora.");
+            return;
+        }
+
+        setSaving(true);
+        try {
+            // Combina data e hora selecionadas
+            // Ex: "2024-03-01T14:30:00"
+            // Importante: No Supabase salvamos TIMESTAMPTZ, mas o JS Date parsea strings ISO locais se não houver 'Z'
+            const newStartString = `${date}T${time}:00`;
+            const newDateObj = new Date(newStartString);
+
+            if (isNaN(newDateObj.getTime())) {
+                throw new Error("Data inválida.");
+            }
+
+            const { error } = await supabase
+                .from("appointments")
+                .update({
+                    start_time: newDateObj.toISOString(),
+                    status: 'agendado'
+                })
+                .eq("id", appointmentId);
+
+            if (error) throw error;
+
+            onSuccess();
+            onClose();
+        } catch (err: any) {
+            console.error("Erro ao reagendar:", err);
+            alert("Erro ao reagendar: " + err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h2 className="text-xl font-bold text-[#1A1A1A]">Reagendar</h2>
+                        <p className="text-xs text-stone-500 mt-0.5">Escolha a nova data e hora</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+                        <X size={20} className="text-stone-500" />
+                    </button>
+                </div>
+
+                <div className="space-y-4">
+                    {/* DATA */}
+                    <div>
+                        <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">NOVA DATA</label>
+                        <div className="relative">
+                            <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
+                            <input
+                                type="date"
+                                value={date}
+                                onChange={e => setDate(e.target.value)}
+                                className="w-full bg-[#F8F7F2] rounded-xl py-3 pl-10 pr-4 outline-none border-2 border-stone-300 focus:border-[#FACC15] font-medium text-[#1A1A1A]"
+                            />
+                        </div>
+                    </div>
+
+                    {/* HORA */}
+                    <div>
+                        <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">NOVO HORÁRIO</label>
+                        <div className="relative">
+                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
+                            <input
+                                type="time"
+                                value={time}
+                                onChange={e => setTime(e.target.value)}
+                                className="w-full bg-[#F8F7F2] rounded-xl py-3 pl-10 pr-4 outline-none border-2 border-stone-300 focus:border-[#FACC15] font-medium text-[#1A1A1A]"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 py-3 px-4 bg-stone-100 text-stone-600 font-bold rounded-xl hover:bg-stone-200 transition text-sm"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="flex-1 py-3 px-4 bg-[#1A1A1A] text-[#FACC15] font-extrabold rounded-xl hover:bg-black transition text-sm flex items-center justify-center gap-2 shadow-lg disabled:opacity-70"
+                    >
+                        {saving ? <Loader2 size={16} className="animate-spin" /> : null}
+                        {saving ? "Salvando..." : "Salvar"}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+============================================================
+ARQUIVO: app\(admin)\agendamentos\_components\MonthCalendarPopover.tsx
+============================================================
+
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2 } from "lucide-react";
+import { createClient } from "../../../../src/lib/supabase";
+
+type MonthCalendarPopoverProps = {
+    selectedDate: Date;
+    onDateSelect: (date: Date) => void;
+    organizationId: string;
+    capacity: number; // para basear o limite de lotação de cores (ex: 3 vagas)
+};
+
+export default function MonthCalendarPopover({
+    selectedDate,
+    onDateSelect,
+    organizationId,
+    capacity
+}: MonthCalendarPopoverProps) {
+    const supabase = createClient();
+    const [isOpen, setIsOpen] = useState(false);
+    const [viewDate, setViewDate] = useState(new Date(selectedDate));
+    const [counts, setCounts] = useState<Record<string, number>>({});
+    const [loading, setLoading] = useState(false);
+    const popoverRef = useRef<HTMLDivElement>(null);
+
+    // Fechar ao clicar fora
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        if (isOpen) document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [isOpen]);
+
+    // Reseta a view para a data selecionada sempre que abrir
+    useEffect(() => {
+        if (isOpen) {
+            setViewDate(new Date(selectedDate));
+        }
+    }, [isOpen, selectedDate]);
+
+    // Busca contagem quando a view muda de mês
+    useEffect(() => {
+        if (!isOpen || !organizationId) return;
+
+        const fetchMonthCounts = async () => {
+            setLoading(true);
+            try {
+                // Pegar do primeiro ao ultimo dia do mes
+                const year = viewDate.getFullYear();
+                const month = viewDate.getMonth();
+                const primeiroDia = new Date(year, month, 1);
+                const ultimoDia = new Date(year, month + 1, 0, 23, 59, 59);
+
+                // Como start_time pode pular dia por causa de Timezone UTC no banco VS Timezone Local NodeJS,
+                // vamos buscar um range um dia pra tras e um pra frente por segurança de fuso e tratar no JS.
+                const startIso = new Date(primeiroDia.getTime() - 24 * 60 * 60 * 1000).toISOString();
+                const endIso = new Date(ultimoDia.getTime() + 24 * 60 * 60 * 1000).toISOString();
+
+                const { data, error } = await supabase
+                    .from("appointments")
+                    .select("start_time")
+                    .eq("organization_id", organizationId)
+                    .neq("status", "cancelado")
+                    .gte("start_time", startIso)
+                    .lte("start_time", endIso);
+
+                if (error) throw error;
+
+                const newCounts: Record<string, number> = {};
+                (data || []).forEach(apt => {
+                    const dt = new Date(apt.start_time);
+                    // Como só queremos saber "quantos" tem num dia exato BRT:
+                    const isoLocalStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+                    newCounts[isoLocalStr] = (newCounts[isoLocalStr] || 0) + 1;
+                });
+
+                setCounts(newCounts);
+            } catch (error) {
+                console.error("Erro ao buscar contagens do mês:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchMonthCounts();
+    }, [isOpen, viewDate.getMonth(), viewDate.getFullYear(), organizationId]);
+
+    // Calendario Utils
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0(Dom) a 6(Sab)
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+    const handlePrevMonth = (e: React.MouseEvent) => { e.stopPropagation(); setViewDate(new Date(year, month - 1, 1)); };
+    const handleNextMonth = (e: React.MouseEvent) => { e.stopPropagation(); setViewDate(new Date(year, month + 1, 1)); };
+
+    // Grade de Dias
+    const daysArray = [];
+    for (let i = 0; i < firstDayOfMonth; i++) daysArray.push(null); // padding inical
+    for (let i = 1; i <= daysInMonth; i++) daysArray.push(i);
+
+    // Formata a data atual do view para exibir o texto do trigger principal
+    const formattedSelectedDate = selectedDate.toLocaleDateString("pt-BR", {
+        weekday: "long",
+        day: "numeric",
+        month: "long"
+    }).replace("-feira", "");
+
+    // É o dia de 'Hoje' para o trigger?
+    const isToday = new Date().toDateString() === selectedDate.toDateString();
+
+    const getHeatmapColor = (count: number) => {
+        if (!count || count === 0) return "bg-stone-50 text-stone-300"; // vazio
+        // A lógica do admin é vaga (capacity * slots). Pegaremos uma cor mais ou menos
+        // com base no threshold imaginado para o dia. (Aproximadamente capacity * 8h uteis)
+        const vMax = capacity * 8;
+        const ratio = count / (vMax || 24);
+
+        if (ratio <= 0.3) return "bg-green-100 text-green-700 font-bold border border-green-200";
+        if (ratio <= 0.6) return "bg-yellow-100 text-yellow-700 font-bold border border-yellow-200";
+        return "bg-red-100 text-red-700 font-bold border border-red-200";
+    };
+
+    return (
+        <div className="relative z-10" ref={popoverRef}>
+            {/* Trigger (Texto central clickavel) */}
+            <div className="flex flex-col items-center justify-center">
+                <button
+                    onClick={() => setIsOpen(!isOpen)}
+                    className="flex flex-col items-center justify-center gap-1 group px-4 py-2 hover:bg-stone-100 rounded-xl transition-colors"
+                >
+                    <div className="flex items-center gap-2">
+                        <span className="text-[22px] font-extrabold text-[#1A1A1A] capitalize tracking-tight flex items-center gap-2">
+                            {formattedSelectedDate}
+                            <CalendarIcon size={20} className="text-stone-400 group-hover:text-stone-700 transition-colors" />
+                        </span>
+                    </div>
+                    {isToday && (
+                        <span className="bg-[#1A1A1A] text-[#FACC15] text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded-full">
+                            Hoje
+                        </span>
+                    )}
+                </button>
+            </div>
+
+            {/* Popover */}
+            {isOpen && (
+                <div className="absolute z-[9999] top-full left-1/2 -translate-x-1/2 mt-2 w-80 bg-white border border-stone-200 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] p-4 animate-in fade-in zoom-in-95 duration-200 origin-top">
+                    {/* Header: Troca de Mês */}
+                    <div className="flex items-center justify-between mb-4">
+                        <button onClick={handlePrevMonth} className="p-2 hover:bg-stone-100 rounded-full transition-colors text-stone-500">
+                            <ChevronLeft size={20} />
+                        </button>
+                        <h3 className="font-extrabold text-[#1A1A1A] text-lg capitalize flex items-center gap-2">
+                            {monthNames[month]} {year}
+                            {loading && <Loader2 size={16} className="animate-spin text-stone-400" />}
+                        </h3>
+                        <button onClick={handleNextMonth} className="p-2 hover:bg-stone-100 rounded-full transition-colors text-stone-500">
+                            <ChevronRight size={20} />
+                        </button>
+                    </div>
+
+                    {/* Weekdays */}
+                    <div className="grid grid-cols-7 gap-1 mb-2">
+                        {weekDays.map(wd => (
+                            <div key={wd} className="text-center text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                                {wd}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Grade de Dias */}
+                    <div className="grid grid-cols-7 gap-1">
+                        {daysArray.map((dia, idx) => {
+                            if (!dia) return <div key={`empty-${idx}`} className="h-10" />;
+
+                            const dStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+                            const isSelected = selectedDate.getDate() === dia && selectedDate.getMonth() === month && selectedDate.getFullYear() === year;
+                            const isHoje = new Date().getDate() === dia && new Date().getMonth() === month && new Date().getFullYear() === year;
+                            const count = counts[dStr] || 0;
+                            const heatColor = getHeatmapColor(count);
+
+                            return (
+                                <button
+                                    key={idx}
+                                    onClick={() => {
+                                        onDateSelect(new Date(year, month, dia));
+                                        setIsOpen(false);
+                                    }}
+                                    className={`relative h-11 rounded-lg flex flex-col items-center justify-center transition-all border
+                    ${isSelected ? 'ring-2 ring-offset-1 ring-[#1A1A1A] border-[#1A1A1A] !!bg-[#FACC15]' : 'border-transparent hover:border-stone-300'}
+                  `}
+                                >
+                                    <span className={`text-sm font-bold ${isHoje && !isSelected ? 'text-blue-600' : 'text-[#1A1A1A]'}`}>
+                                        {dia}
+                                    </span>
+
+                                    {/* Indicador de "Lotação" / Agendamentos */}
+                                    {count > 0 && (
+                                        <div className={`absolute bottom-1 w-5 h-3.5 rounded flex items-center justify-center text-[9px] ${heatColor}`}>
+                                            {count}
+                                        </div>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Legenda */}
+                    <div className="mt-4 pt-4 border-t border-stone-100 flex items-center justify-center gap-4 text-[10px] font-bold text-stone-400">
+                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded bg-green-200"></div>Tranquilo</div>
+                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded bg-yellow-200"></div>Médio</div>
+                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded bg-red-200"></div>Cheio</div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+============================================================
+ARQUIVO: src\components\GlobalAppointmentAlert.tsx
+============================================================
+
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { Clock, AlertTriangle, AlertCircle, Calendar, ArrowRight, Loader2, ChevronLeft, ChevronRight, Check, Eye } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { RescheduleModal } from "../../app/(admin)/agendamentos/_components/RescheduleModal";
+
+type Apto = {
+    id: string;
+    start_time: string;
+    duration_minutes: number;
+    type: string;
+    status: string;
+    description: string;
+    token: string;
+    clients: { nome: string; whatsapp: string } | null;
+    vehicles: { modelo: string; placa: string } | null;
+    work_order_id: number | null;
+};
+
+export function GlobalAppointmentAlert() {
+    const [agendamentos, setAgendamentos] = useState<Apto[]>([]);
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const [isSnoozing, setIsSnoozing] = useState(false);
+    const [isFinishing, setIsFinishing] = useState(false);
+    const [rescheduleData, setRescheduleData] = useState<{ id: string, start_time: string } | null>(null);
+    const router = useRouter();
+
+    const fetchAlertas = useCallback(async () => {
+        try {
+            const res = await fetch("/api/agendamentos/alertas");
+            if (!res.ok) {
+                console.error("[GlobalAlert] Erro na API", res.status);
+                return;
+            }
+            const data = await res.json();
+            console.log("[GlobalAlert] Resposta da API:", data);
+
+            // Ordenar por horário
+            const sorted = (data || []).sort((a: Apto, b: Apto) =>
+                new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+            );
+
+            setAgendamentos(sorted);
+            if (currentIndex >= sorted.length) {
+                setCurrentIndex(Math.max(0, sorted.length - 1));
+            }
+        } catch (e) {
+            console.error("Falha ao buscar alertas", e);
+        }
+    }, [currentIndex]);
+
+    // Polling a cada 1 minuto
+    useEffect(() => {
+        fetchAlertas();
+        const interval = setInterval(fetchAlertas, 60000);
+        return () => clearInterval(interval);
+    }, [fetchAlertas]);
+
+    if (agendamentos.length === 0) return null;
+
+    const currentApt = agendamentos[currentIndex];
+    if (!currentApt) return null;
+
+    // Calculo do estado de tempo
+    const aptTime = new Date(currentApt.start_time);
+    const now = new Date();
+    const diffMinutos = Math.round((now.getTime() - aptTime.getTime()) / 60000); // positivo = atrasado, negativo = adiantado
+
+    let alertType: "proximo" | "exato" | "atrasado" = "proximo";
+    if (diffMinutos > 15) alertType = "atrasado";
+    else if (diffMinutos >= 0) alertType = "exato";
+
+    const nextApt = () => setCurrentIndex((p) => Math.min(agendamentos.length - 1, p + 1));
+    const prevApt = () => setCurrentIndex((p) => Math.max(0, p - 1));
+
+    const adiarAlerta = async (minutos: number) => {
+        setIsSnoozing(true);
+        try {
+            await fetch("/api/agendamentos/alertas/adiar", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ appointment_id: currentApt.id, minutos }),
+            });
+            // Recarrega lista imediatamente (o atual deve sumir por causa do filtro no backend)
+            await fetchAlertas();
+        } catch (e) {
+            alert("Erro ao adiar alerta");
+        } finally {
+            setIsSnoozing(false);
+        }
+    };
+
+    const naoCompareceu = async () => {
+        if (!confirm("Marcar cliente como não compareceu?")) return;
+        setIsFinishing(true);
+        try {
+            // Importa supabase config via API route manual e atualiza
+            const res = await fetch(`/api/agendamentos/${currentApt.id}/status`, {
+                method: 'PATCH',
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: 'nao_compareceu' })
+            });
+            if (res.ok) fetchAlertas();
+        } catch (e) {
+            alert("Erro");
+        } finally {
+            setIsFinishing(false);
+        }
+    };
+
+    const isProximo = alertType === "proximo";
+    const isAtrasado = alertType === "atrasado";
+
+    const nomeCliente = currentApt.clients?.nome || (currentApt.description && currentApt.description.match(/Nome:\s*([A-Za-zÀ-ÿ\s]+)/i)?.[1]) || "Cliente";
+
+    return (
+        <div className={`relative w-full text-white shadow-md border-b flex flex-col md:flex-row items-start md:items-center justify-between px-4 md:px-6 py-4 md:py-3 transition-colors duration-300 gap-4 md:gap-0
+      ${isProximo ? 'bg-blue-600 border-blue-700' : isAtrasado ? 'bg-red-600 border-red-700' : 'bg-[#FACC15] text-[#1A1A1A] border-yellow-500'}
+    `}>
+
+            {/* Esquerda: Status Text + Info */}
+            <div className="flex items-start md:items-center gap-3 md:gap-4 w-full md:w-auto">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isProximo ? 'bg-blue-500' : isAtrasado ? 'bg-red-500' : 'bg-yellow-400'}`}>
+                    {isProximo ? <Clock size={20} className={isProximo ? "text-white" : "text-[#1A1A1A]"} /> :
+                        isAtrasado ? <AlertTriangle size={20} className="text-white" /> :
+                            <AlertCircle size={20} className="text-[#1A1A1A]" />}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1 md:mb-0">
+                        <p className={`text-xs font-bold uppercase tracking-wider ${isProximo ? "text-blue-200" : isAtrasado ? "text-red-200" : "text-yellow-800"}`}>
+                            {isProximo ? `Previsto em ${Math.abs(diffMinutos)} min` :
+                                isAtrasado ? `ATRASADO (${diffMinutos}m)` : "Na Loja"}
+                        </p>
+                        <p className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${isProximo ? "bg-blue-700 text-blue-100" : isAtrasado ? "bg-red-700 text-red-100" : "bg-yellow-500 text-yellow-900"}`}>
+                            {aptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                    </div>
+
+                    <h3 className="font-extrabold text-base leading-tight mt-0.5 truncate pr-2">
+                        {nomeCliente}
+                        {currentApt.vehicles && <span className="font-normal opacity-80 ml-2">({currentApt.vehicles.modelo})</span>}
+                    </h3>
+
+                    <p className="text-sm opacity-90 truncate max-w-full md:max-w-[400px]">
+                        {currentApt.description || currentApt.type.replace('_', ' ')}
+                    </p>
+                </div>
+            </div>
+
+            {/* Direita: Ações */}
+            <div className="flex flex-wrap items-center gap-2 md:gap-3 w-full md:w-auto">
+                {/* Carrossel Controller */}
+                {agendamentos.length > 1 && (
+                    <div className={`flex items-center border rounded-lg overflow-hidden mr-0 md:mr-2 w-full md:w-auto justify-between md:justify-start mb-2 md:mb-0
+            ${isProximo ? 'border-blue-500 bg-blue-700/50' : isAtrasado ? 'border-red-500 bg-red-700/50' : 'border-yellow-600 bg-yellow-500/50'}
+          `}>
+                        <button disabled={currentIndex === 0} onClick={prevApt} className="p-2 md:p-1 hover:bg-black/10 disabled:opacity-30"><ChevronLeft size={16} /></button>
+                        <span className="text-xs font-bold px-4 md:px-2 whitespace-nowrap">{currentIndex + 1} de {agendamentos.length}</span>
+                        <button disabled={currentIndex === agendamentos.length - 1} onClick={nextApt} className="p-2 md:p-1 hover:bg-black/10 disabled:opacity-30"><ChevronRight size={16} /></button>
+                    </div>
+                )}
+
+                {/* Botoes de Controle */}
+                <div className="flex flex-1 md:flex-none gap-2">
+                    <button
+                        onClick={() => adiarAlerta(15)}
+                        disabled={isSnoozing}
+                        className={`flex-1 md:flex-none px-3 py-2.5 md:py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-opacity hover:opacity-80
+                   ${isAtrasado ? 'bg-red-700 text-white' : isProximo ? 'bg-blue-700 text-white' : 'bg-yellow-600 text-yellow-50'}
+                 `}
+                    >
+                        {isSnoozing ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
+                        Avisar +15m
+                    </button>
+
+                    {isAtrasado && (
+                        <button
+                            onClick={() => setRescheduleData({ id: currentApt.id, start_time: currentApt.start_time })}
+                            className="flex-1 md:flex-none px-3 py-2.5 md:py-2 bg-black/20 text-white rounded-xl text-xs font-bold hover:bg-black/30 transition-colors relative z-50 cursor-pointer text-center"
+                        >
+                            Reagendar
+                        </button>
+                    )}
+                </div>
+
+                {!currentApt.work_order_id && (
+                    <Link
+                        href={`/atendimento/nova-os?appointment_token=${currentApt.token}`}
+                        className={`w-full md:w-auto px-4 py-2.5 md:py-2 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm hover:-translate-y-0.5 transition-transform mt-1 md:mt-0
+                 ${isProximo || isAtrasado ? 'bg-white text-[#1A1A1A]' : 'bg-[#1A1A1A] text-[#FACC15]'}
+               `}
+                    >
+                        <Check size={16} /> ABRIR OS
+                    </Link>
+                )}
+
+                {currentApt.work_order_id && (
+                    <Link
+                        href={`/os/detalhes/${currentApt.work_order_id}`}
+                        className={`w-full md:w-auto px-4 py-2.5 md:py-2 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm hover:-translate-y-0.5 transition-transform mt-1 md:mt-0
+                 ${isProximo || isAtrasado ? 'bg-white text-[#1A1A1A]' : 'bg-[#1A1A1A] text-[#FACC15]'}
+               `}
+                    >
+                        <Eye size={16} /> VER OS
+                    </Link>
+                )}
+            </div>
+
+            {rescheduleData && (
+                <RescheduleModal
+                    isOpen={!!rescheduleData}
+                    onClose={() => setRescheduleData(null)}
+                    appointmentId={rescheduleData.id}
+                    currentStartTime={rescheduleData.start_time}
+                    onSuccess={() => {
+                        setRescheduleData(null);
+                        fetchAlertas();
+                        setTimeout(() => window.location.reload(), 300);
+                    }}
+                />
+            )}
+        </div>
+    );
+}
+
+
+============================================================
+ARQUIVO: app\api\agendamentos\alertas\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { createClient } from "../../../../src/utils/supabase/server";
+
+export const dynamic = "force-dynamic"; // Desativa cache para exibir em tempo real dependendo dos minutos
+
+export async function GET() {
+    console.log("[API Alertas] Incializada chamada...");
+    try {
+        const supabase = createClient();
+
+        // Verifica auth
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            console.log("[API Alertas] Sem usuario");
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        // Busca o profile para pegar organization_id
+        const { data: profile } = await supabase
+            .from("profiles")
+            .select("organization_id")
+            .eq("id", user.id)
+            .single();
+
+        if (!profile?.organization_id) {
+            console.log("[API Alertas] Sem org");
+            return NextResponse.json({ error: "No organization" }, { status: 400 });
+        }
+
+        const agora = new Date();
+        const inicioIso = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), 0, 0, 0).toISOString();
+        const fimIso = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), 23, 59, 59).toISOString();
+
+        console.log(`[Alertas] Buscando de ${inicioIso} a ${fimIso}`);
+
+        const { data: apts, error } = await supabase
+            .from("appointments")
+            .select(`
+                id,
+                start_time,
+                duration_minutes,
+                type,
+                status,
+                description,
+                token,
+                work_order_id,
+                alerta_adiado_ate,
+                clients ( nome, whatsapp ),
+                vehicles ( modelo, placa )
+            `)
+            .eq("organization_id", profile.organization_id)
+            .in("status", ["agendado", "confirmado"])
+            .gte("start_time", inicioIso)
+            .lte("start_time", fimIso)
+            .order("start_time", { ascending: true });
+
+        if (error) {
+            console.error("[API Alertas] Erro db", error);
+            throw error;
+        }
+
+        console.log(`[Alertas] Encontrados no dia: ${apts?.length || 0}`);
+
+        const alertasVigentes = (apts || []).filter((apt: any) => {
+            const horaAgendamento = new Date(apt.start_time);
+
+            // Marca de inicio do radar: 15 minutos antes da hora marcada
+            const inicioDoRadar = new Date(horaAgendamento.getTime() - 15 * 60000);
+
+            if (agora < inicioDoRadar) {
+                console.log(`[Alertas] Cedo: ${horaAgendamento.toISOString()}. Comeca: ${inicioDoRadar.toISOString()}. Agora: ${agora.toISOString()}`);
+                return false;
+            }
+
+            if (apt.alerta_adiado_ate) {
+                const soneca = new Date(apt.alerta_adiado_ate);
+                if (agora < soneca) {
+                    console.log(`[Alertas] Em Soneca: ${apt.alerta_adiado_ate}`);
+                    return false;
+                }
+            }
+
+            console.log(`[Alertas] APROVADO! Mostrar no banner: ${horaAgendamento.toISOString()}`);
+            return true;
+        });
+
+        return NextResponse.json(alertasVigentes);
+
+    } catch (error: any) {
+        console.error("[GET Alertas Erro CATCH]", error);
+        return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+    }
+}
+
+
+============================================================
+ARQUIVO: app\api\agendamentos\alertas\adiar\route.ts
+============================================================
+
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "../../../../../src/utils/supabase/server";
+
+export async function POST(req: NextRequest) {
+    try {
+        const supabase = createClient();
+
+        // Verifica auth
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const body = await req.json();
+        const { appointment_id, minutos } = body;
+
+        if (!appointment_id || !minutos) {
+            return NextResponse.json({ error: "Faltam parâmetros" }, { status: 400 });
+        }
+
+        // Calcula a nova hora de alerta adiada
+        const agora = new Date();
+        const novaSoneca = new Date(agora.getTime() + (minutos * 60000));
+
+        const { error } = await supabase
+            .from("appointments")
+            .update({ alerta_adiado_ate: novaSoneca.toISOString() })
+            .eq("id", appointment_id);
+
+        if (error) throw error;
+
+        return NextResponse.json({ message: "Soneca registrada" });
+
+    } catch (error: any) {
+        console.error("[POST Soneca Alerta]", error);
+        return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+    }
+}
+
+
+============================================================
+ARQUIVO: app\(admin)\atendimento\nova-os\page.tsx
+============================================================
+
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import {
+    ArrowLeft,
+    Camera,
+    Plus,
+    Trash2,
+    Save,
+    Car,
+    CheckCircle,
+    X,
+    Search,
+    ChevronLeft,
+    Loader2,
+    AlertCircle,
+    ArrowRight,
+    Minus,
+    Calendar,
+    Mic,
+    Gauge,
+    Thermometer,
+    Fuel,
+    Eye,
+    UserCheck,
+} from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
+import { createClient } from "../../../../src/lib/supabase";
+import { useAuth } from "../../../../src/contexts/AuthContext";
+
+// Speech Recognition type for TypeScript
+interface ISpeechRecognition extends EventTarget {
+    lang: string;
+    interimResults: boolean;
+    continuous: boolean;
+    start(): void;
+    stop(): void;
+    onresult: ((event: any) => void) | null;
+    onend: (() => void) | null;
+    onerror: ((event: any) => void) | null;
+}
+
+// --- TIPOS ---
+type Client = { id: string; nome: string; whatsapp: string | null };
+type Product = { id: string; nome: string; preco_venda: number; estoque_atual: number };
+type Service = { id: string; nome: string; price: number };
+
+type OSItem = {
+    id: string | number;
+    db_id: string;
+    nome: string;
+    valor: number;
+    tipo: "peca" | "servico";
+    qtd: number;
+    semEstoque?: boolean;
+    pecaCliente?: boolean;
+};
+
+type VeiculoConfirmado = {
+    id: string;
+    placa: string;
+    modelo: string;
+    fabricante?: string;
+};
+
+export default function NovaOS() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const appointmentToken = searchParams.get('appointment_token');
+    const supabase = createClient();
+    const { profile, loading: authLoading } = useAuth();
+
+    // Refs
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const evidenceInputRef = useRef<HTMLInputElement>(null);
+    const recognitionRef = useRef<ISpeechRecognition | null>(null);
+
+    // Speech-to-text
+    const [isListening, setIsListening] = useState(false);
+
+    // --- CONTROLE DE ETAPAS ---
+    const [step, setStep] = useState<1 | 2>(1);
+
+    // --- ESTADOS GERAIS ---
+    const [loadingInit, setLoadingInit] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [searchingVehicle, setSearchingVehicle] = useState(false);
+
+    // Passo 1: Veículo
+    const [placaInput, setPlacaInput] = useState("");
+    const [placaFoto, setPlacaFoto] = useState<string | null>(null);
+    const [modeloInput, setModeloInput] = useState("");
+    const [fabricanteInput, setFabricanteInput] = useState("");
+    const [anoInput, setAnoInput] = useState("");
+    const [obsVeiculoInput, setObsVeiculoInput] = useState("");
+
+    const [veiculoConfirmado, setVeiculoConfirmado] = useState<VeiculoConfirmado | null>(null);
+    const [veiculoNaoEncontrado, setVeiculoNaoEncontrado] = useState(false);
+
+    // Passo 2: OS
+    const [defeito, setDefeito] = useState("");
+    const [previsaoEntrega, setPrevisaoEntrega] = useState("");
+
+    // Passo 2: Dados do Painel
+    const painelInputRef = useRef<HTMLInputElement>(null);
+    const [odometro, setOdometro] = useState("");
+    const [nivelCombustivel, setNivelCombustivel] = useState("");
+    const [temperaturaMotor, setTemperaturaMotor] = useState("");
+    const [painelObs, setPainelObs] = useState("");
+    const [analisandoPainel, setAnalisandoPainel] = useState(false);
+    const [painelFotoPreview, setPainelFotoPreview] = useState<string | null>(null);
+    const [painelFile, setPainelFile] = useState<File | null>(null);
+
+    const [itens, setItens] = useState<OSItem[]>([]);
+    const [fotosEvidencia, setFotosEvidencia] = useState<string[]>([]);
+
+    // Dados do Banco
+    const [listaClientes, setListaClientes] = useState<Client[]>([]);
+    const [listaProdutos, setListaProdutos] = useState<Product[]>([]);
+    const [listaServicos, setListaServicos] = useState<Service[]>([]);
+
+    // Modais e Seleções
+    const [clienteSelecionado, setClienteSelecionado] = useState<Client | null>(null);
+    const [modalClienteAberto, setModalClienteAberto] = useState(false);
+    const [modalClienteView, setModalClienteView] = useState<"buscar" | "cadastrar">("buscar");
+    const [modalItemAberto, setModalItemAberto] = useState(false);
+    const [abaItem, setAbaItem] = useState<"pecas" | "servicos">("pecas");
+
+    // Filtros e Inputs Modais
+    const [termoBuscaItem, setTermoBuscaItem] = useState("");
+    const [termoBuscaCliente, setTermoBuscaCliente] = useState("");
+    const [novoNomeCliente, setNovoNomeCliente] = useState("");
+    const [novoZapCliente, setNovoZapCliente] = useState("");
+    const [loadingCadastroRapido, setLoadingCadastroRapido] = useState(false);
+
+    // --- CARREGAMENTO INICIAL ---
+    useEffect(() => {
+        if (authLoading) return;
+        if (profile?.organization_id) {
+            fetchDadosIniciais();
+        } else {
+            setLoadingInit(false);
+        }
+    }, [profile, authLoading]);
+
+    const fetchDadosIniciais = async () => {
+        try {
+            const [clientsRes, productsRes, servicesRes] = await Promise.all([
+                supabase.from("clients").select("id, nome, whatsapp").order("nome"),
+                supabase.from("products").select("id, nome, preco_venda, estoque_atual").order("nome"),
+                supabase.from("services").select("id, nome, price").order("nome"),
+            ]);
+
+            setListaClientes(clientsRes.data || []);
+            setListaProdutos(productsRes.data || []);
+            setListaServicos(servicesRes.data || []);
+        } catch (error) {
+            console.error("Erro ao carregar dados:", error);
+        } finally {
+            setLoadingInit(false);
+        }
+    };
+
+    // --- FUNÇÕES DE CÂMERA ---
+    const abrirCameraPlaca = () => fileInputRef.current?.click();
+    const handleFotoPlaca = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.[0]) setPlacaFoto(URL.createObjectURL(e.target.files[0]));
+    };
+    const removerFotoPlaca = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setPlacaFoto(null);
+    };
+
+    const abrirCameraEvidencia = () => evidenceInputRef.current?.click();
+    const handleFotoEvidencia = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const novasFotos = Array.from(e.target.files).map((file) => URL.createObjectURL(file));
+            setFotosEvidencia([...fotosEvidencia, ...novasFotos]);
+        }
+    };
+    const removerFotoEvidencia = (index: number) => {
+        setFotosEvidencia(fotosEvidencia.filter((_, i) => i !== index));
+    };
+
+    // --- RESET ---
+    const resetarPasso1 = () => {
+        setStep(1);
+        setVeiculoNaoEncontrado(false);
+        setPlacaInput("");
+        setPlacaFoto(null);
+        setModeloInput("");
+        setFabricanteInput("");
+        setAnoInput("");
+        setObsVeiculoInput("");
+        setVeiculoConfirmado(null);
+        setClienteSelecionado(null);
+        setPrevisaoEntrega("");
+        setOdometro("");
+        setNivelCombustivel("");
+        setTemperaturaMotor("");
+        setPainelObs("");
+        setPainelFotoPreview(null);
+        setPainelFile(null);
+    };
+
+    // --- ANÁLISE DO PAINEL COM IA ---
+    const handleFotoPainel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files?.[0]) return;
+        const file = e.target.files[0];
+        setPainelFotoPreview(URL.createObjectURL(file));
+        setPainelFile(file);
+        setAnalisandoPainel(true);
+
+        try {
+            // Converter para base64
+            const reader = new FileReader();
+            const base64 = await new Promise<string>((resolve) => {
+                reader.onload = () => resolve(reader.result as string);
+                reader.readAsDataURL(file);
+            });
+
+            const res = await fetch('/api/painel-ia', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imageBase64: base64 }),
+            });
+
+            const data = await res.json();
+
+            if (data.odometro && String(data.odometro) !== 'nao_identificado') {
+                setOdometro(String(data.odometro).replace(/\D/g, ''));
+            }
+            if (data.combustivel && String(data.combustivel) !== 'nao_identificado') {
+                const mapa: Record<string, string> = { 'vazio': 'vazio', '1/4': '1/4', '1/2': '1/2', '3/4': '3/4', 'cheio': 'cheio' };
+                setNivelCombustivel(mapa[data.combustivel] || String(data.combustivel));
+            }
+            if (data.temperatura && String(data.temperatura) !== 'nao_identificado') {
+                setTemperaturaMotor(String(data.temperatura));
+            }
+            if (data.luzes_alerta && Array.isArray(data.luzes_alerta) && data.luzes_alerta.length > 0) {
+                setPainelObs('Luzes acesas: ' + data.luzes_alerta.join(', '));
+            }
+        } catch (error) {
+            console.error('Erro ao analisar painel:', error);
+            alert('Não foi possível analisar a foto. Preencha os campos manualmente.');
+        } finally {
+            setAnalisandoPainel(false);
+        }
+    };
+
+    // ============================================================
+    // PASSO 1: VEÍCULO
+    // ============================================================
+
+    const handleBuscarVeiculo = async () => {
+        if (!placaInput || placaInput.length < 7) return alert("Digite uma placa válida.");
+
+        setSearchingVehicle(true);
+        setVeiculoNaoEncontrado(false);
+
+        setModeloInput("");
+        setFabricanteInput("");
+        setAnoInput("");
+        setObsVeiculoInput("");
+
+        try {
+            const { data, error } = await supabase
+                .from("vehicles")
+                .select(`
+          id, placa, modelo, fabricante, ano, obs,
+          clients ( id, nome, whatsapp )
+        `)
+                .eq("organization_id", profile?.organization_id)
+                .eq("placa", placaInput.toUpperCase())
+                .maybeSingle();
+
+            if (error) throw error;
+
+            if (data) {
+                setVeiculoConfirmado({
+                    id: data.id,
+                    placa: data.placa,
+                    modelo: data.modelo,
+                    fabricante: data.fabricante,
+                });
+
+                // @ts-ignore
+                if (data.clients) {
+                    // @ts-ignore
+                    setClienteSelecionado(data.clients);
+                }
+
+                setStep(2);
+            } else {
+                setVeiculoNaoEncontrado(true);
+            }
+
+        } catch (error: any) {
+            console.error(error);
+            alert("Erro ao buscar veículo: " + error.message);
+        } finally {
+            setSearchingVehicle(false);
+        }
+    };
+
+    const handleCadastrarVeiculoAvancar = async () => {
+        if (!modeloInput) return alert("Informe o modelo do veículo.");
+
+        setSearchingVehicle(true);
+
+        try {
+            const { data, error } = await supabase
+                .from("vehicles")
+                .insert({
+                    organization_id: profile?.organization_id,
+                    placa: placaInput.toUpperCase(),
+                    modelo: modeloInput,
+                    fabricante: fabricanteInput,
+                    ano: anoInput,
+                    obs: obsVeiculoInput,
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            setVeiculoConfirmado({
+                id: data.id,
+                placa: data.placa,
+                modelo: data.modelo,
+                fabricante: data.fabricante,
+            });
+            setStep(2);
+
+        } catch (error: any) {
+            alert("Erro ao cadastrar veículo: " + error.message);
+        } finally {
+            setSearchingVehicle(false);
+        }
+    };
+
+    // ============================================================
+    // PASSO 2: FINALIZAR OS
+    // ============================================================
+
+    const handleFinalizarOS = async () => {
+        if (!clienteSelecionado) return alert("Selecione um cliente.");
+        if (!veiculoConfirmado) return alert("Erro: Veículo não identificado.");
+
+        setSaving(true);
+
+        try {
+            const total = itens.reduce((acc, item) => item.pecaCliente ? acc : acc + item.valor * item.qtd, 0);
+
+            const insertPayload: any = {
+                organization_id: profile?.organization_id,
+                client_id: clienteSelecionado.id,
+                vehicle_id: veiculoConfirmado.id,
+                status: "orcamento",
+                description: defeito,
+                total: total,
+                previsao_entrega: previsaoEntrega || null,
+                odometro: odometro || null,
+                nivel_combustivel: nivelCombustivel || null,
+                temperatura_motor: temperaturaMotor || null,
+                painel_obs: painelObs || null,
+            };
+
+            // Herdar token do agendamento (consistência do portal)
+            if (appointmentToken) {
+                insertPayload.public_token = appointmentToken;
+            }
+
+            const { data: osData, error: osError } = await supabase
+                .from("work_orders")
+                .insert(insertPayload)
+                .select()
+                .single();
+
+            if (osError) throw osError;
+
+            // Vincular agendamento à OS criada
+            if (appointmentToken) {
+                await supabase
+                    .from('appointments')
+                    .update({ work_order_id: osData.id })
+                    .eq('token', appointmentToken);
+            }
+
+            await supabase
+                .from("vehicles")
+                .update({ client_id: clienteSelecionado.id })
+                .eq("id", veiculoConfirmado.id);
+
+            if (itens.length > 0) {
+                const itensParaSalvar = itens.map((item) => ({
+                    work_order_id: osData.id,
+                    organization_id: profile?.organization_id,
+                    product_id: item.tipo === "peca" ? item.db_id : null,
+                    service_id: item.tipo === "servico" ? item.db_id : null,
+                    tipo: item.tipo,
+                    name: item.nome,
+                    quantity: item.qtd,
+                    unit_price: item.valor,
+                    total_price: item.pecaCliente ? 0 : item.valor * item.qtd,
+                    peca_cliente: item.pecaCliente || false,
+                }));
+
+                const { error: itemsError } = await supabase.from("work_order_items").insert(itensParaSalvar);
+                if (itemsError) throw itemsError;
+
+                // Baixar do estoque as peças que não são do cliente
+                for (const item of itens) {
+                    if (item.tipo === "peca" && item.db_id && !item.pecaCliente) {
+                        const { data: prodData } = await supabase
+                            .from('products')
+                            .select('estoque_atual')
+                            .eq('id', item.db_id)
+                            .single();
+
+                        if (prodData) {
+                            await supabase
+                                .from('products')
+                                .update({ estoque_atual: (prodData.estoque_atual || 0) - item.qtd })
+                                .eq('id', item.db_id);
+                        }
+                    }
+                }
+            }
+
+            // Upload foto do painel (se houver)
+            if (painelFile) {
+                const fileExt = painelFile.name.split('.').pop();
+                const fileName = `${osData.id}/painel_${Date.now()}.${fileExt}`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('os-images')
+                    .upload(fileName, painelFile);
+
+                if (!uploadError) {
+                    const { data: publicUrlData } = supabase.storage
+                        .from('os-images')
+                        .getPublicUrl(fileName);
+
+                    const painelUrl = publicUrlData.publicUrl;
+
+                    await supabase
+                        .from('work_orders')
+                        .update({
+                            painel_foto: painelUrl,
+                            photos: [painelUrl]
+                        })
+                        .eq('id', osData.id);
+                }
+            }
+
+            alert("OS Criada com Sucesso!");
+            window.location.href = "/atendimento";
+
+        } catch (error: any) {
+            console.error("Erro ao salvar:", error);
+            alert("Erro ao finalizar OS: " + error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // ============================================================
+    // CADASTRO RÁPIDO DE CLIENTE
+    // ============================================================
+
+    const handleSalvarNovoCliente = async () => {
+        if (!novoNomeCliente) return alert("Nome é obrigatório");
+
+        try {
+            setLoadingCadastroRapido(true);
+
+            const { data, error } = await supabase
+                .from("clients")
+                .insert({
+                    organization_id: profile?.organization_id,
+                    nome: novoNomeCliente,
+                    whatsapp: novoZapCliente,
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            const novo = { id: data.id, nome: data.nome, whatsapp: data.whatsapp };
+            setListaClientes([...listaClientes, novo]);
+            setClienteSelecionado(novo);
+            setModalClienteAberto(false);
+            setNovoNomeCliente("");
+            setNovoZapCliente("");
+        } catch (e: any) {
+            alert("Erro ao cadastrar cliente: " + e.message);
+        } finally {
+            setLoadingCadastroRapido(false);
+        }
+    };
+
+    const selecionarItem = (item: any, tipo: "peca" | "servico") => {
+        const itemExistente = itens.find(i => i.db_id === item.id && i.tipo === tipo);
+
+        if (itemExistente) {
+            setItens(prev => prev.map(i =>
+                i.id === itemExistente.id ? { ...i, qtd: i.qtd + 1 } : i
+            ));
+        } else {
+            const semEstoque = tipo === "peca" && (item.estoque_atual || 0) <= 0;
+            const valorUnitario = item.price || item.preco_venda || 0;
+
+            setItens([
+                ...itens,
+                {
+                    id: Math.random(),
+                    db_id: item.id,
+                    nome: item.nome,
+                    valor: valorUnitario,
+                    tipo,
+                    qtd: 1,
+                    semEstoque
+                },
+            ]);
+        }
+        setModalItemAberto(false);
+    };
+
+    const alterarQuantidade = (id: string | number, delta: number) => {
+        setItens(prev => prev.map(item => {
+            if (item.id === id) {
+                const novaQtd = item.qtd + delta;
+                return novaQtd > 0 ? { ...item, qtd: novaQtd } : item;
+            }
+            return item;
+        }));
+    };
+
+    const removerItem = (id: string | number) => setItens(itens.filter((item) => item.id !== id));
+
+    const total = itens.reduce((acc, item) => item.pecaCliente ? acc : acc + item.valor * item.qtd, 0);
+
+    const togglePecaCliente = (id: string | number) => {
+        setItens(prev => prev.map(item =>
+            item.id === id ? { ...item, pecaCliente: !item.pecaCliente } : item
+        ));
+    };
+
+    const selecionarCliente = (c: Client) => {
+        setClienteSelecionado(c);
+        setModalClienteAberto(false);
+    };
+
+    if (loadingInit)
+        return (
+            <div className="h-screen flex items-center justify-center">
+                <Loader2 className="animate-spin text-[#FACC15]" size={40} />
+            </div>
+        );
+
+    return (
+        <div className="max-w-4xl mx-auto space-y-6 pb-32">
+            {/* INPUTS ESCONDIDOS */}
+            <input type="file" ref={fileInputRef} accept="image/*" capture="environment" className="hidden" onChange={handleFotoPlaca} />
+            <input type="file" ref={evidenceInputRef} accept="image/*" multiple className="hidden" onChange={handleFotoEvidencia} />
+
+            {/* CABEÇALHO */}
+            <div className="flex items-center gap-4">
+                <button
+                    onClick={() => (step === 1 ? (window.location.href = "/atendimento") : resetarPasso1())}
+                    className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-[#1A1A1A] shadow-sm hover:bg-stone-50 transition"
+                >
+                    <ArrowLeft size={20} />
+                </button>
+                <div>
+                    <h1 className="text-2xl font-bold text-[#1A1A1A]">Nova OS</h1>
+                    <p className="text-stone-500 text-xs">
+                        {step === 1 ? "Passo 1: Identificar Veículo" : "Passo 2: Detalhes do Serviço"}
+                    </p>
+                </div>
+            </div>
+
+            {/* PASSO 1 */}
+            {step === 1 && (
+                <div className="animate-in slide-in-from-left duration-300">
+                    <div className="bg-white rounded-[32px] p-8 border-2 border-stone-300 shadow-sm text-center space-y-6">
+                        <div className="w-16 h-16 bg-[#F8F7F2] rounded-full flex items-center justify-center mx-auto text-[#1A1A1A]">
+                            <Car size={32} />
+                        </div>
+
+                        <div>
+                            <h2 className="text-xl font-bold text-[#1A1A1A]">Qual é o veículo?</h2>
+                            <p className="text-stone-400 text-sm">Digite a placa ou tire uma foto</p>
+                        </div>
+
+                        <div className="max-w-md mx-auto space-y-4">
+                            <div className="relative">
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    value={placaInput}
+                                    onChange={(e) => {
+                                        setPlacaInput(e.target.value.toUpperCase());
+                                        setVeiculoNaoEncontrado(false);
+                                    }}
+                                    placeholder="ABC1234"
+                                    className="w-full text-center text-3xl font-bold uppercase tracking-widest bg-[#F8F7F2] rounded-2xl py-6 outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] placeholder:text-stone-300 pr-16"
+                                    maxLength={8}
+                                />
+                                <button
+                                    onClick={abrirCameraPlaca}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-stone-200 hover:border-[#FACC15] text-stone-400 hover:text-[#FACC15] transition"
+                                >
+                                    {placaFoto ? (
+                                        <div className="relative w-full h-full group">
+                                            <Image src={placaFoto} alt="Placa" fill className="object-cover rounded-lg" />
+                                            <div
+                                                onClick={removerFotoPlaca}
+                                                className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 text-white rounded-lg transition-opacity"
+                                            >
+                                                <X size={14} />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <Camera size={20} />
+                                    )}
+                                </button>
+                            </div>
+
+                            {veiculoNaoEncontrado && (
+                                <div className="bg-yellow-50 p-6 rounded-[24px] border border-yellow-100 text-left space-y-4 animate-in fade-in slide-in-from-top-2">
+                                    <div className="flex items-center gap-2 text-yellow-800 text-sm font-bold border-b border-yellow-200 pb-2">
+                                        <AlertCircle size={16} /> Veículo Novo - Preencha os dados
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-stone-400 ml-2">FABRICANTE</label>
+                                            <input
+                                                type="text"
+                                                autoFocus
+                                                value={fabricanteInput}
+                                                onChange={(e) => setFabricanteInput(e.target.value)}
+                                                placeholder="VW, Fiat..."
+                                                className="w-full bg-white rounded-xl p-3 font-medium text-[#1A1A1A] outline-none border-2 border-yellow-300 focus:ring-2 focus:ring-[#FACC15]"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-stone-400 ml-2">ANO</label>
+                                            <input
+                                                type="text"
+                                                value={anoInput}
+                                                onChange={(e) => setAnoInput(e.target.value)}
+                                                placeholder="2015"
+                                                className="w-full bg-white rounded-xl p-3 font-medium text-[#1A1A1A] outline-none border-2 border-yellow-300 focus:ring-2 focus:ring-[#FACC15]"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-stone-400 ml-2">MODELO / VERSÃO</label>
+                                        <input
+                                            type="text"
+                                            value={modeloInput}
+                                            onChange={(e) => setModeloInput(e.target.value)}
+                                            placeholder="Ex: Gol G5 1.6 Power"
+                                            className="w-full bg-white rounded-xl p-3 font-medium text-[#1A1A1A] outline-none border-2 border-yellow-300 focus:ring-2 focus:ring-[#FACC15]"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-stone-400 ml-2">OBSERVAÇÕES (Opcional)</label>
+                                        <input
+                                            type="text"
+                                            value={obsVeiculoInput}
+                                            onChange={(e) => setObsVeiculoInput(e.target.value)}
+                                            placeholder="Ex: Arranhão porta esquerda"
+                                            className="w-full bg-white rounded-xl p-3 font-medium text-[#1A1A1A] outline-none border-2 border-yellow-300 focus:ring-2 focus:ring-[#FACC15]"
+                                        />
+                                    </div>
+
+                                    <button
+                                        onClick={handleCadastrarVeiculoAvancar}
+                                        disabled={searchingVehicle}
+                                        className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-xl shadow-md hover:scale-105 transition flex items-center justify-center gap-2 mt-2"
+                                    >
+                                        {searchingVehicle ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+                                        Salvar Veículo e Avançar
+                                    </button>
+                                </div>
+                            )}
+
+                            {!veiculoNaoEncontrado && (
+                                <button
+                                    onClick={handleBuscarVeiculo}
+                                    disabled={searchingVehicle || placaInput.length < 7}
+                                    className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl shadow-lg hover:scale-105 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                >
+                                    {searchingVehicle ? <Loader2 className="animate-spin" /> : <Search size={20} />}
+                                    Buscar Veículo
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* PASSO 2 */}
+            {step === 2 && (
+                <div className="space-y-6 animate-in slide-in-from-right duration-300">
+                    {/* Veículo */}
+                    <div className="bg-[#1A1A1A] text-[#FACC15] rounded-3xl p-4 flex items-center justify-between shadow-lg">
+                        <div className="flex items-center gap-4">
+                            <div className="p-2 bg-white/10 rounded-xl">
+                                <Car size={24} />
+                            </div>
+                            <div>
+                                <p className="text-xs text-white/60 font-bold uppercase">Veículo Selecionado</p>
+                                <div className="flex items-baseline gap-2">
+                                    <h3 className="text-xl font-bold">{veiculoConfirmado?.placa}</h3>
+                                    <span className="text-sm font-medium text-white">
+                                        {veiculoConfirmado?.fabricante} {veiculoConfirmado?.modelo}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <button onClick={resetarPasso1} className="text-xs font-bold underline hover:text-white">
+                            Trocar
+                        </button>
+                    </div>
+
+                    {/* Cliente */}
+                    <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
+                        <h3 className="font-bold text-[#1A1A1A] mb-3 flex items-center gap-2">
+                            <ArrowRight size={18} className="text-[#FACC15]" /> Quem é o cliente?
+                        </h3>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                readOnly
+                                placeholder="Toque para selecionar..."
+                                value={clienteSelecionado ? clienteSelecionado.nome : ""}
+                                onClick={() => {
+                                    setModalClienteAberto(true);
+                                    setModalClienteView("buscar");
+                                }}
+                                className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none cursor-pointer border-2 border-stone-300 hover:border-[#FACC15] transition font-medium"
+                            />
+                            <button
+                                onClick={() => {
+                                    setModalClienteAberto(true);
+                                    setModalClienteView("buscar");
+                                }}
+                                className={`w-14 rounded-2xl flex items-center justify-center transition shrink-0 ${clienteSelecionado ? "bg-green-100 text-green-700" : "bg-[#1A1A1A] text-white"
+                                    }`}
+                            >
+                                {clienteSelecionado ? <CheckCircle size={24} /> : <Search size={20} />}
+                            </button>
+                        </div>
+                    </div>
+
+                    {clienteSelecionado && (
+                        <>
+                            {/* CHECKLIST DO VEÍCULO (Dados do Painel) */}
+                            <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm space-y-4">
+                                <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                                    <ArrowRight size={18} className="text-[#FACC15]" /> Checklist do Veículo
+                                </h3>
+
+                                {/* Input oculto para câmera do painel */}
+                                <input type="file" ref={painelInputRef} accept="image/*" className="hidden" onChange={handleFotoPainel} />
+
+                                {/* Odômetro com câmera */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                                        <Gauge size={12} /> ODÔMETRO (KM)
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={odometro}
+                                            onChange={(e) => setOdometro(e.target.value.replace(/\D/g, ''))}
+                                            placeholder="Ex: 45230"
+                                            className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] pr-14"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (painelInputRef.current) painelInputRef.current.value = '';
+                                                painelInputRef.current?.click();
+                                            }}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-stone-200 hover:border-[#FACC15] text-stone-400 hover:text-[#FACC15] transition"
+                                        >
+                                            {analisandoPainel ? (
+                                                <Loader2 size={18} className="animate-spin" />
+                                            ) : painelFotoPreview ? (
+                                                <div className="relative w-full h-full">
+                                                    <Image src={painelFotoPreview} alt="Painel" fill className="object-cover rounded-lg" />
+                                                </div>
+                                            ) : (
+                                                <Camera size={18} />
+                                            )}
+                                        </button>
+                                    </div>
+                                    {analisandoPainel && (
+                                        <p className="text-xs text-[#FACC15] font-bold ml-2 animate-pulse flex items-center gap-1">
+                                            <Eye size={12} /> IA analisando o painel...
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Nível de Combustível */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                                        <Fuel size={12} /> NÍVEL DE COMBUSTÍVEL
+                                    </label>
+                                    <div className="flex gap-2">
+                                        {[
+                                            { val: 'vazio', label: 'Vazio' },
+                                            { val: '1/4', label: '¼' },
+                                            { val: '1/2', label: '½' },
+                                            { val: '3/4', label: '¾' },
+                                            { val: 'cheio', label: 'Cheio' },
+                                        ].map((opt) => (
+                                            <button
+                                                key={opt.val}
+                                                type="button"
+                                                onClick={() => setNivelCombustivel(opt.val)}
+                                                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition border-2 ${nivelCombustivel === opt.val
+                                                    ? 'bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A] shadow-md'
+                                                    : 'bg-[#F8F7F2] text-stone-500 border-stone-300 hover:border-[#FACC15]'
+                                                    }`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Temperatura */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                                        <Thermometer size={12} /> TEMPERATURA DO MOTOR
+                                    </label>
+                                    <div className="flex gap-2">
+                                        {[
+                                            { val: 'normal', label: 'Normal', color: 'bg-green-100 text-green-700 border-green-300' },
+                                            { val: 'elevada', label: 'Elevada', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+                                            { val: 'critica', label: 'Crítica', color: 'bg-red-100 text-red-700 border-red-300' },
+                                        ].map((opt) => (
+                                            <button
+                                                key={opt.val}
+                                                type="button"
+                                                onClick={() => setTemperaturaMotor(opt.val)}
+                                                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition border-2 ${temperaturaMotor === opt.val
+                                                    ? `${opt.color} shadow-md scale-105`
+                                                    : 'bg-[#F8F7F2] text-stone-500 border-stone-300 hover:border-[#FACC15]'
+                                                    }`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Observações */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                                        <AlertCircle size={12} /> OBSERVAÇÕES DO PAINEL
+                                    </label>
+                                    <textarea
+                                        rows={3}
+                                        value={painelObs}
+                                        onChange={(e) => setPainelObs(e.target.value)}
+                                        placeholder="Luzes acesas, barulhos, ou observações da inspeção..."
+                                        className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none resize-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] text-sm"
+                                    ></textarea>
+                                </div>
+                            </div>
+
+                            {/* Fotos */}
+                            <div className="space-y-2">
+                                <h3 className="font-bold text-[#1A1A1A] ml-2 flex items-center gap-2">
+                                    <Camera size={18} /> Fotos e Evidências
+                                </h3>
+                                <div className="flex gap-4 overflow-x-auto pb-4 snap-x scrollbar-hide">
+                                    <button
+                                        onClick={abrirCameraEvidencia}
+                                        className="flex-none w-32 h-32 bg-white rounded-3xl border-2 border-dashed border-stone-200 flex flex-col items-center justify-center gap-2 text-stone-400 hover:border-[#FACC15] hover:text-[#FACC15] transition snap-start"
+                                    >
+                                        <Camera size={24} />
+                                        <span className="text-xs font-bold">Adicionar</span>
+                                    </button>
+                                    {fotosEvidencia.map((foto, index) => (
+                                        <div
+                                            key={index}
+                                            className="flex-none w-32 h-32 bg-stone-100 rounded-3xl relative overflow-hidden snap-center border border-stone-100 group"
+                                        >
+                                            <Image src={foto} alt={`Evidência ${index}`} fill className="object-cover" />
+                                            <button
+                                                onClick={() => removerFotoEvidencia(index)}
+                                                className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* CARD 1: RELATO (Defeito) */}
+                            <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                                        <ArrowRight size={18} className="text-[#FACC15]" /> Reclamação do cliente/Problema
+                                    </h3>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (isListening) {
+                                                recognitionRef.current?.stop();
+                                                return;
+                                            }
+                                            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                                            if (!SpeechRecognition) {
+                                                alert("Seu navegador não suporta reconhecimento de voz. Use o Google Chrome.");
+                                                return;
+                                            }
+                                            const recognition: ISpeechRecognition = new SpeechRecognition();
+                                            recognition.lang = "pt-BR";
+                                            recognition.interimResults = false;
+                                            recognition.continuous = true;
+                                            recognitionRef.current = recognition;
+                                            recognition.onresult = (event: any) => {
+                                                let transcript = "";
+                                                for (let i = event.resultIndex; i < event.results.length; i++) {
+                                                    if (event.results[i].isFinal) {
+                                                        transcript += event.results[i][0].transcript;
+                                                    }
+                                                }
+                                                if (transcript) {
+                                                    setDefeito((prev) => prev ? prev + " " + transcript : transcript);
+                                                }
+                                            };
+                                            recognition.onend = () => setIsListening(false);
+                                            recognition.onerror = () => setIsListening(false);
+                                            recognition.start();
+                                            setIsListening(true);
+                                        }}
+                                        className={`p-2.5 rounded-full transition-all duration-200 ${isListening
+                                            ? "bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse"
+                                            : "bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]"
+                                            }`}
+                                        title={isListening ? "Parar gravação" : "Falar o problema"}
+                                    >
+                                        <Mic size={18} />
+                                    </button>
+                                </div>
+                                {isListening && (
+                                    <div className="flex items-center gap-2 mb-2 animate-pulse">
+                                        <span className="w-2 h-2 bg-red-500 rounded-full" />
+                                        <span className="text-xs font-bold text-red-500">Estou ouvindo... fale o problema do veículo</span>
+                                    </div>
+                                )}
+                                <textarea
+                                    rows={3}
+                                    value={defeito}
+                                    onChange={(e) => setDefeito(e.target.value)}
+                                    placeholder="Descreva o defeito ou serviço..."
+                                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none resize-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                                ></textarea>
+                            </div>
+
+                            {/* CARD 2: ITENS */}
+                            <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                                        <ArrowRight size={18} className="text-[#FACC15]" /> Itens do Orçamento
+                                    </h3>
+                                    <button
+                                        onClick={() => setModalItemAberto(true)}
+                                        className="text-xs font-bold bg-[#F8F7F2] text-[#1A1A1A] px-3 py-2 rounded-full flex items-center gap-1 hover:bg-[#FACC15] transition"
+                                    >
+                                        <Plus size={14} /> Adicionar
+                                    </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {itens.map((item) => (
+                                        <div key={item.id} className={`p-3 rounded-2xl ${item.pecaCliente ? 'bg-yellow-50 border-2 border-yellow-200' : 'bg-[#F8F7F2]'}`}>
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <p className={`font-bold text-sm text-[#1A1A1A] ${item.pecaCliente ? 'line-through opacity-60' : ''}`}>{item.nome}</p>
+                                                    <p className="text-[10px] text-stone-500 uppercase font-bold">
+                                                        {item.tipo}
+                                                    </p>
+                                                </div>
+
+                                                {/* CONTROLE DE QUANTIDADE */}
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex items-center bg-white rounded-lg px-1">
+                                                        <button
+                                                            onClick={() => alterarQuantidade(item.id, -1)}
+                                                            className="p-1 hover:text-red-500"
+                                                        >
+                                                            <Minus size={14} />
+                                                        </button>
+                                                        <span className="text-xs font-bold w-6 text-center">{item.qtd}</span>
+                                                        <button
+                                                            onClick={() => alterarQuantidade(item.id, 1)}
+                                                            className="p-1 hover:text-green-500"
+                                                        >
+                                                            <Plus size={14} />
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="flex flex-col items-end">
+                                                        <div className={`flex items-center gap-1 bg-white px-2 py-1 rounded-lg border focus-within:border-[#FACC15] focus-within:ring-1 focus-within:ring-[#FACC15] shadow-sm ${item.pecaCliente ? 'border-yellow-200 opacity-60' : 'border-stone-200'}`}>
+                                                            <span className="text-xs text-stone-400 font-bold">R$</span>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                min="0"
+                                                                value={item.valor}
+                                                                disabled={item.pecaCliente}
+                                                                onChange={(e) => {
+                                                                    const val = parseFloat(e.target.value);
+                                                                    setItens(prev => prev.map(i => i.id === item.id ? { ...i, valor: isNaN(val) ? 0 : val } : i));
+                                                                }}
+                                                                className={`w-16 text-right font-bold outline-none text-sm bg-transparent ${item.pecaCliente ? 'text-stone-400 line-through' : 'text-[#1A1A1A]'}`}
+                                                            />
+                                                        </div>
+                                                        {item.qtd > 1 && (
+                                                            <span className={`text-[10px] font-bold mt-1 ${item.pecaCliente ? 'text-stone-300 line-through' : 'text-stone-400'}`}>
+                                                                Total: R$ {((item.valor || 0) * item.qtd).toFixed(2)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <button onClick={() => removerItem(item.id)} className="text-stone-300 hover:text-red-500 pl-2 border-l border-stone-200">
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Botão Peça do Cliente */}
+                                            {item.tipo === "peca" && (
+                                                <button
+                                                    onClick={() => togglePecaCliente(item.id)}
+                                                    className={`mt-2 flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition ${item.pecaCliente
+                                                        ? 'bg-yellow-400 text-[#1A1A1A]'
+                                                        : 'bg-stone-200 text-stone-500 hover:bg-yellow-100 hover:text-yellow-700'
+                                                        }`}
+                                                >
+                                                    <UserCheck size={12} />
+                                                    {item.pecaCliente ? 'PEÇA DO CLIENTE ✓' : 'Peça do cliente?'}
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {itens.length === 0 && (
+                                        <p className="text-center text-stone-400 text-sm py-6 border-2 border-dashed border-stone-100 rounded-2xl">
+                                            Nenhum item adicionado.
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="flex justify-between items-center pt-2">
+                                    <p className="text-stone-500 font-bold text-sm">Total Estimado</p>
+                                    <p className="text-2xl font-bold text-[#1A1A1A]">R$ {total.toFixed(2)}</p>
+                                </div>
+                            </div>
+
+                            {/* CARD 3: PREVISÃO (Último passo, separado) */}
+                            <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
+                                <label className="text-xs font-bold text-stone-400 mb-2 flex items-center gap-1">
+                                    <Calendar size={14} /> Previsão de Entrega (Opcional)
+                                </label>
+                                <input
+                                    type="date"
+                                    value={previsaoEntrega}
+                                    onChange={(e) => setPrevisaoEntrega(e.target.value)}
+                                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                                />
+                            </div>
+
+                            {/* Botão Final */}
+                            <div className="pt-4">
+                                <button
+                                    onClick={handleFinalizarOS}
+                                    disabled={saving}
+                                    className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-full shadow-lg hover:scale-105 transition flex items-center justify-center gap-2 disabled:opacity-70"
+                                >
+                                    {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+                                    Iniciar Ordem de Serviço (OS)
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+
+            {/* MODAL CLIENTES */}
+            {modalClienteAberto && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl space-y-4">
+                        {modalClienteView === "buscar" ? (
+                            <>
+                                <div className="flex justify-between items-center">
+                                    <h2 className="font-bold text-lg">Buscar Cliente</h2>
+                                    <button onClick={() => setModalClienteAberto(false)}>
+                                        <X />
+                                    </button>
+                                </div>
+                                <input
+                                    autoFocus
+                                    placeholder="Nome..."
+                                    value={termoBuscaCliente}
+                                    onChange={(e) => setTermoBuscaCliente(e.target.value)}
+                                    className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
+                                />
+                                <div className="max-h-60 overflow-auto space-y-2">
+                                    {listaClientes
+                                        .filter((c) => c.nome.toLowerCase().includes(termoBuscaCliente.toLowerCase()))
+                                        .map((c) => (
+                                            <button
+                                                key={c.id}
+                                                onClick={() => selecionarCliente(c)}
+                                                className="w-full text-left p-3 hover:bg-stone-50 rounded-xl font-medium"
+                                            >
+                                                {c.nome}
+                                            </button>
+                                        ))}
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setModalClienteView("cadastrar");
+                                        setNovoNomeCliente(termoBuscaCliente);
+                                    }}
+                                    className="w-full py-3 border-2 border-dashed border-stone-200 rounded-xl text-stone-500 font-bold hover:border-[#FACC15]"
+                                >
+                                    Cadastrar Novo
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex justify-between items-center">
+                                    <h2 className="font-bold text-lg">Novo Cliente</h2>
+                                    <button onClick={() => setModalClienteView("buscar")}>
+                                        <ChevronLeft />
+                                    </button>
+                                </div>
+                                <input
+                                    placeholder="Nome"
+                                    value={novoNomeCliente}
+                                    onChange={(e) => setNovoNomeCliente(e.target.value)}
+                                    className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
+                                />
+                                <input
+                                    placeholder="WhatsApp"
+                                    value={novoZapCliente}
+                                    onChange={(e) => setNovoZapCliente(e.target.value)}
+                                    className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
+                                    type="tel"
+                                />
+                                <button
+                                    onClick={handleSalvarNovoCliente}
+                                    disabled={loadingCadastroRapido}
+                                    className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3 rounded-xl flex items-center justify-center gap-2"
+                                >
+                                    {loadingCadastroRapido ? <Loader2 className="animate-spin" /> : "Salvar"}
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL ITENS */}
+            {modalItemAberto && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl space-y-4 h-[500px] flex flex-col">
+                        <div className="flex justify-between items-center">
+                            <h2 className="font-bold text-lg">Adicionar Item</h2>
+                            <button onClick={() => setModalItemAberto(false)}>
+                                <X />
+                            </button>
+                        </div>
+                        <div className="flex bg-stone-200 p-1.5 rounded-2xl border-2 border-stone-300 shadow-inner gap-1">
+                            <button
+                                onClick={() => setAbaItem("pecas")}
+                                className={`flex-1 py-2 rounded-lg text-sm font-bold transition border-2 ${abaItem === "pecas" ? "bg-white shadow-md text-[#1A1A1A] border-stone-300" : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
+                                    }`}
+                            >
+                                Peças
+                            </button>
+                            <button
+                                onClick={() => setAbaItem("servicos")}
+                                className={`flex-1 py-2 rounded-lg text-sm font-bold transition border-2 ${abaItem === "servicos" ? "bg-white shadow-md text-[#1A1A1A] border-stone-300" : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
+                                    }`}
+                            >
+                                Serviços
+                            </button>
+                        </div>
+                        <input
+                            autoFocus
+                            placeholder="Buscar..."
+                            value={termoBuscaItem}
+                            onChange={(e) => setTermoBuscaItem(e.target.value)}
+                            className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
+                        />
+                        <div className="flex-1 overflow-auto space-y-2">
+                            {abaItem === "pecas" &&
+                                listaProdutos
+                                    .filter((p) => p.nome.toLowerCase().includes(termoBuscaItem.toLowerCase()))
+                                    .map((p) => (
+                                        <button
+                                            key={p.id}
+                                            onClick={() => selecionarItem(p, "peca")}
+                                            className="w-full flex justify-between p-3 hover:bg-stone-50 rounded-xl text-left"
+                                        >
+                                            <div>
+                                                <p className="font-bold">{p.nome}</p>
+                                                <p className="text-xs text-stone-400">Estoque: {p.estoque_atual}</p>
+                                            </div>
+                                            <span className="font-bold">R$ {p.preco_venda?.toFixed(2)}</span>
+                                        </button>
+                                    ))}
+
+                            {abaItem === "servicos" &&
+                                listaServicos
+                                    .filter((s) => s.nome.toLowerCase().includes(termoBuscaItem.toLowerCase()))
+                                    .map((s) => (
+                                        <button
+                                            key={s.id}
+                                            onClick={() => selecionarItem(s, "servico")}
+                                            className="w-full flex justify-between p-3 hover:bg-stone-50 rounded-xl text-left"
+                                        >
+                                            <p className="font-bold">{s.nome}</p>
+                                            <span className="font-bold">R$ {(s.price || 0).toFixed(2)}</span>
+                                        </button>
+                                    ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+[ARQUIVO NAO ENCONTRADO: app\(admin)\os\detalhes\[id]\page.tsx]
+
+============================================================
+ARQUIVO: app\acompanhar\page.tsx
+============================================================
+
+"use client";
+
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  CheckCircle, Clock, Wrench, Car, Camera,
+  MessageCircle, ChevronDown, ChevronUp, ShieldCheck,
+  Package, AlertCircle, Loader2, X, AlertTriangle, Download, FileText
+} from "lucide-react";
+// eslint-disable-next-line @next/next/no-img-element
+
+function ConteudoPortal() {
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token");
+
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState("");
+  const [os, setOs] = useState<any>(null);
+  const [isAppointment, setIsAppointment] = useState(false);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [confirmando, setConfirmando] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string>("/logo.svg");
+  const [telefoneEmpresa, setTelefoneEmpresa] = useState<string>("");
+
+  // Controle visual
+  const [detalhesAbertos, setDetalhesAbertos] = useState(false);
+  const [atualizando, setAtualizando] = useState(false);
+  const [fotoExpandida, setFotoExpandida] = useState<string | null>(null);
+  const [drawerAberto, setDrawerAberto] = useState(false);
+
+  useEffect(() => {
+    if (token) {
+      fetchOS();
+    } else {
+      setErro("Link inválido ou expirado.");
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  const fetchOS = async () => {
+    try {
+      const res = await fetch(`/api/portal/os?token=${encodeURIComponent(token!)}`);
+      const json = await res.json();
+
+      if (!res.ok) throw new Error(json.error || 'Erro ao buscar dados.');
+
+      setOs(json.os);
+      setIsAppointment(json.isAppointment || false);
+      setAppointments(json.appointments || []);
+
+      if (json.logoUrl) {
+        setLogoUrl(json.logoUrl);
+      }
+      if (json.telefone) {
+        setTelefoneEmpresa(json.telefone.replace(/\D/g, ''));
+      }
+    } catch (error: any) {
+      setErro("Não foi possível carregar os dados. Verifique o link.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verifica se há peça do cliente antes de aprovar
+  const handleCliqueAprovar = () => {
+    if (!os) return;
+    const temPecaCliente = os.work_order_items?.some((item: any) => item.peca_cliente);
+    if (temPecaCliente) {
+      setDrawerAberto(true);
+    } else {
+      handleAprovar();
+    }
+  };
+
+  const handleAprovar = async () => {
+    if (!os) return;
+    setAtualizando(true);
+    setDrawerAberto(false);
+    try {
+      // Capturar metadados
+      const aprovacao_dispositivo = navigator.userAgent;
+
+      // Buscar IP público
+      let aprovacao_ip = "desconhecido";
+      try {
+        const ipRes = await fetch('https://api.ipify.org?format=json');
+        const ipData = await ipRes.json();
+        aprovacao_ip = ipData.ip;
+      } catch { /* silencioso */ }
+
+      // Hash da versão do orçamento (itens + valores)
+      const versaoStr = (os.work_order_items || []).map((i: any) => `${i.name}:${i.total_price}:${i.peca_cliente}`).join('|');
+      const encoder = new TextEncoder();
+      const data = encoder.encode(versaoStr + ':' + os.total);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const aprovacao_versao_hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const res = await fetch('/api/portal/aprovar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          aprovacao_ip,
+          aprovacao_dispositivo,
+          aprovacao_versao_hash
+        })
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erro ao aprovar.');
+
+      setOs({ ...os, status: 'aprovado' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      alert("Orçamento aprovado com sucesso!");
+
+    } catch (error) {
+      alert("Erro ao aprovar. Tente novamente.");
+    } finally {
+      setAtualizando(false);
+    }
+  };
+
+  const handleContato = () => {
+    if (!telefoneEmpresa) return alert('Telefone da oficina não configurado.');
+    window.open(`https://wa.me/55${telefoneEmpresa}?text=Olá, estou vendo a OS #${os?.id}`, '_blank');
+  };
+
+  const handleConfirmarPresenca = async (aptToken?: string) => {
+    const tokenToUse = aptToken || token;
+    if (!tokenToUse) return;
+    setConfirmando(true);
+    try {
+      const res = await fetch('/api/portal/confirmar-presenca', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: tokenToUse })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erro ao confirmar.');
+
+      if (isAppointment) {
+        setOs({ ...os, status: 'confirmado' });
+      } else {
+        setAppointments(prev => prev.map(a => a.token === tokenToUse ? { ...a, status: 'confirmado' } : a));
+      }
+    } catch (error: any) {
+      alert('Erro ao confirmar presença: ' + error.message);
+    } finally {
+      setConfirmando(false);
+    }
+  };
+
+  const getStatusColor = (step: number) => {
+    if (!os) return "";
+    const status = os.status;
+    let currentStep = 1;
+
+    if (status === 'orcamento') currentStep = 2;
+    if (status === 'aprovado') currentStep = 3;
+    if (status === 'aguardando_peca') currentStep = 3;
+    if (status === 'em_servico') currentStep = 4;
+    if (status === 'pronto' || status === 'entregue') currentStep = 5;
+
+    if (step < currentStep) return "bg-green-500 text-white border-green-500";
+
+    if (step === currentStep) {
+      if (status === 'orcamento') return "bg-[#FACC15] text-[#1A1A1A] border-[#FACC15] animate-pulse";
+      if (status === 'aguardando_peca') return "bg-orange-500 text-white border-orange-500 animate-pulse";
+      if (status === 'em_servico') return "bg-blue-500 text-white border-blue-500 animate-pulse";
+      if (status === 'pronto') return "bg-green-600 text-white border-green-600 animate-bounce";
+      return "bg-green-500 text-white border-green-500";
+    }
+
+    return "bg-white text-stone-300 border-stone-200";
+  };
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-[#F8F7F2]">
+      <div className="flex flex-col items-center gap-2 text-stone-400">
+        <Loader2 className="animate-spin text-[#FACC15]" size={40} />
+        <p className="text-sm">Buscando informações...</p>
+      </div>
+    </div>
+  );
+
+  if (erro) return (
+    <div className="min-h-screen flex items-center justify-center bg-[#F8F7F2] p-6 text-center">
+      <div className="bg-white p-8 rounded-[32px] shadow-sm">
+        <AlertCircle size={48} className="text-red-400 mx-auto mb-4" />
+        <h3 className="text-xl font-bold text-[#1A1A1A]">Link Inválido</h3>
+        <p className="text-stone-500 mt-2">{erro}</p>
+      </div>
+    </div>
+  );
+
+  const nomeVeiculo = os.vehicles?.modelo;
+  const placaVeiculo = os.vehicles?.placa;
+
+  return (
+    <div className="min-h-screen bg-[#F8F7F2] pb-52 relative">
+
+      {/* 1. CABEÇALHO */}
+      <header className="bg-white py-4 px-6 shadow-md border-b-2 border-stone-300 sticky top-0 z-50">
+        <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center pr-5">
+            <img src={logoUrl} alt="Logo" className="h-10 w-auto object-contain" />
+          </div>
+          <div className="w-px h-8 bg-stone-400"></div>
+          <div className="pl-5 flex items-center">
+            <h1 className="text-xs font-extrabold text-[#1A1A1A] uppercase tracking-wider">
+              PORTAL DO CLIENTE
+            </h1>
+          </div>
+        </div>
+      </header>
+
+      {/* 2. CARD VEÍCULO + TIMELINE OU DADOS AGENDAMENTO */}
+      <div className="px-4 pt-4 max-w-xl mx-auto">
+        <div className="bg-white rounded-[24px] p-4 shadow-sm border-2 border-stone-300">
+
+          {/* VEÍCULO - Compacto */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-stone-100 rounded-full flex items-center justify-center shrink-0 border border-stone-300">
+              <Car size={20} className="text-[#1A1A1A]" />
+            </div>
+            <div className="text-left min-w-0">
+              <h2 className="text-base font-extrabold text-[#1A1A1A] leading-tight truncate">
+                {nomeVeiculo || "Veículo não identificado"}
+              </h2>
+              <p className="text-stone-500 font-mono text-xs uppercase">
+                {placaVeiculo || "---"}
+              </p>
+            </div>
+          </div>
+
+          {/* TIMELINE (Só para OS) */}
+          {!isAppointment && (
+            <div className="relative px-1">
+              <div className="absolute left-4 right-4 top-4 h-0.5 bg-stone-200 -z-10"></div>
+              <div className="flex justify-between items-start">
+                <div className="flex flex-col items-center gap-1.5 w-12">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(1)}`}>
+                    <CheckCircle size={12} />
+                  </div>
+                  <span className="text-[8px] font-bold text-stone-500 leading-tight">Diag.</span>
+                </div>
+
+                <div className="flex flex-col items-center gap-1.5 w-12">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(2)}`}>
+                    <Clock size={12} />
+                  </div>
+                  <span className="text-[8px] font-bold text-stone-500 leading-tight">Aprov.</span>
+                </div>
+
+                <div className="flex flex-col items-center gap-1.5 w-12">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(3)}`}>
+                    <Package size={12} />
+                  </div>
+                  <span className={`text-[8px] font-bold leading-tight ${os.status === 'aguardando_peca' ? 'text-orange-600' : 'text-stone-500'}`}>
+                    Peças
+                  </span>
+                </div>
+
+                <div className="flex flex-col items-center gap-1.5 w-12">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(4)}`}>
+                    <Wrench size={12} />
+                  </div>
+                  <span className="text-[8px] font-bold text-stone-500 leading-tight">Serviço</span>
+                </div>
+
+                <div className="flex flex-col items-center gap-1.5 w-12">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(5)}`}>
+                    <CheckCircle size={12} />
+                  </div>
+                  <span className="text-[8px] font-bold text-stone-500 leading-tight">Pronto</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* DADOS DE AGENDAMENTO */}
+          {isAppointment && (
+            <div className="mt-4 pt-4 border-t border-stone-200">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Status do Agendamento</span>
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase ${os.status === 'confirmado' ? 'bg-green-100 text-green-700' :
+                  os.status === 'cancelado' || os.status === 'nao_compareceu' ? 'bg-red-100 text-red-700' :
+                    os.status === 'concluido' ? 'bg-[#1A1A1A] text-[#FACC15]' :
+                      'bg-blue-100 text-blue-700'
+                  }`}>
+                  {os.status === 'confirmado' ? 'Presença confirmada ✓' : os.status === 'concluido' ? 'Finalizado ✓' : os.status.replace('_', ' ')}
+                </span>
+              </div>
+
+              {os.status === 'cancelado' ? (
+                <div className="rounded-xl p-5 border-2 bg-red-50 border-red-200 text-center space-y-3">
+                  <AlertCircle size={32} className="mx-auto text-red-500 mb-1" />
+                  <p className="text-sm font-bold text-red-800 uppercase">Agendamento Cancelado</p>
+                  <a
+                    href={`https://wa.me/55${telefoneEmpresa}?text=Ol%C3%A1!%20Meu%20agendamento%20foi%20cancelado,%20gostaria%20de%20remarcar.`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 mt-2 px-4 py-2 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition w-full text-sm"
+                  >
+                    <MessageCircle size={16} /> Chame no Whatsapp pra reagendar
+                  </a>
+                </div>
+              ) : os.status === 'concluido' ? (
+                <div className="rounded-xl p-6 border-2 bg-[#1A1A1A] border-black text-center space-y-3 shadow-lg">
+                  <CheckCircle size={36} className="mx-auto text-[#FACC15] mb-2" />
+                  <p className="text-base font-extrabold text-white uppercase tracking-wider">Agradecemos a Visita!</p>
+                  <p className="text-sm text-stone-300">
+                    O atendimento referente a este agendamento foi finalizado com sucesso.
+                  </p>
+                </div>
+              ) : (
+                <div className={`rounded-xl p-4 flex items-center justify-center gap-4 border ${os.status === 'confirmado' ? 'bg-green-50 border-green-200' : 'bg-stone-50 border-stone-200'}`}>
+                  <div className="text-center">
+                    <p className="text-sm font-bold text-stone-500 uppercase">
+                      {new Date(os.start_time).toLocaleDateString('pt-BR', { weekday: 'short', month: 'short', day: '2-digit' })}
+                    </p>
+                    <p className="text-3xl font-black text-[#1A1A1A]">
+                      {new Date(os.start_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                    {os.status === 'confirmado' && <p className="text-xs font-bold text-green-600 mt-1">✅ Presença confirmada</p>}
+                  </div>
+                </div>
+              )}
+
+              {os.description && (
+                <div className="mt-4 text-center">
+                  <p className="text-xs text-stone-500">{os.description}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+      </div>
+
+      {/* AGENDAMENTOS FUTUROS VINCULADOS À OS */}
+      {!isAppointment && appointments.length > 0 && (
+        <div className="px-4 pt-3 max-w-xl mx-auto">
+          {appointments.map((apt: any) => (
+            <div key={apt.id} className={`rounded-[24px] p-5 border-2 shadow-sm mb-3 ${apt.status === 'confirmado' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Próximo Agendamento</span>
+                {apt.status === 'confirmado' && <span className="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-md">✅ Confirmado</span>}
+              </div>
+              <div className="text-center mb-3">
+                <p className="text-sm font-bold text-stone-500 uppercase">
+                  {new Date(apt.start_time).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+                </p>
+                <p className="text-3xl font-black text-[#1A1A1A]">
+                  {new Date(apt.start_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+              {apt.description && <p className="text-xs text-stone-500 text-center mb-3">{apt.description}</p>}
+              {apt.status !== 'confirmado' && (
+                <button
+                  onClick={() => handleConfirmarPresenca(apt.token)}
+                  disabled={confirmando}
+                  className="w-full bg-[#1A1A1A] text-[#FACC15] font-extrabold py-3 rounded-2xl shadow-lg hover:bg-black transition flex items-center justify-center gap-2 disabled:opacity-70"
+                >
+                  {confirmando ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                  Confirmar Presença
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* AVISOS DE STATUS (Apenas OS) */}
+      {!isAppointment && os.status === "aguardando_peca" && (
+        <div className="px-4 pt-3 max-w-xl mx-auto animate-in zoom-in duration-300">
+          <div className="bg-orange-50 text-orange-800 p-5 rounded-[24px] text-center border-2 border-orange-200 shadow-sm">
+            <Package size={36} className="mx-auto mb-2 text-orange-400" />
+            <h3 className="text-lg font-bold">Aguardando Peças</h3>
+            <p className="text-xs mt-1 opacity-80">
+              Já encomendamos as peças necessárias. Assim que chegarem, iniciamos o serviço.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!isAppointment && os.status === "aprovado" && (
+        <div className="px-4 pt-3 max-w-xl mx-auto animate-in zoom-in">
+          <div className="bg-green-600 text-white p-5 rounded-[24px] text-center shadow-lg border-2 border-green-700">
+            <ShieldCheck size={36} className="mx-auto mb-2" />
+            <h3 className="text-lg font-bold">Aprovado!</h3>
+            <p className="text-xs opacity-90">Verificando estoque e fila...</p>
+          </div>
+        </div>
+      )}
+
+      {!isAppointment && os.status === "em_servico" && (
+        <div className="px-4 pt-3 max-w-xl mx-auto animate-in zoom-in">
+          <div className="bg-blue-600 text-white p-5 rounded-[24px] text-center shadow-lg border-2 border-blue-700">
+            <Wrench size={36} className="mx-auto mb-2" />
+            <h3 className="text-lg font-bold">Mãos à obra!</h3>
+            <p className="text-xs opacity-90">O mecânico está trabalhando no seu carro agora.</p>
+          </div>
+        </div>
+      )}
+
+      {!isAppointment && (os.status === "pronto" || os.status === "entregue") && (
+        <div className="px-4 pt-3 max-w-xl mx-auto animate-in zoom-in">
+          <div className="bg-[#1A1A1A] text-[#FACC15] p-5 rounded-[24px] text-center shadow-lg border-2 border-stone-700">
+            <CheckCircle size={36} className="mx-auto mb-2" />
+            <h3 className="text-lg font-bold">Pode vir buscar!</h3>
+            <p className="text-xs opacity-90">Seu veículo está pronto.</p>
+          </div>
+        </div>
+      )}
+
+      {/* 3. FINANCEIRO E FOTOS (Apenas OS) */}
+      {!isAppointment && (
+        <>
+          {/* LAUDO TÉCNICO (Novo) */}
+          {(os.description || os.defeitos_constatados || os.servicos_executados) && (
+            <div className="px-4 pt-3 max-w-xl mx-auto">
+              <div className="bg-white rounded-[24px] p-5 shadow-sm border-2 border-stone-300">
+                <h3 className="font-extrabold text-[#1A1A1A] mb-4 flex items-center gap-2 text-sm">
+                  <Wrench size={16} /> Relato e Laudo Técnico
+                </h3>
+
+                <div className="space-y-4">
+                  {os.description && (
+                    <div>
+                      <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider block mb-1">RELATO DO CLIENTE</span>
+                      <p className="text-sm text-stone-600 bg-[#F8F7F2] p-3 rounded-xl border border-stone-200">{os.description}</p>
+                    </div>
+                  )}
+                  {os.defeitos_constatados && (
+                    <div>
+                      <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider block mb-1">DEFEITOS CONSTATADOS PELA OFICINA</span>
+                      <p className="text-sm text-stone-600 bg-red-50 p-3 rounded-xl border border-red-100 whitespace-pre-wrap">{os.defeitos_constatados}</p>
+                    </div>
+                  )}
+                  {os.servicos_executados && (
+                    <div>
+                      <span className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider block mb-1">SERVIÇOS EXECUTADOS</span>
+                      <p className="text-sm text-stone-600 bg-green-50 p-3 rounded-xl border border-green-100 whitespace-pre-wrap">{os.servicos_executados}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="px-4 pt-3 max-w-xl mx-auto">
+            <div className="bg-white rounded-[24px] shadow-sm border-2 border-stone-300 overflow-hidden">
+              <button onClick={() => setDetalhesAbertos(!detalhesAbertos)} className="w-full p-5 flex items-center justify-between hover:bg-stone-50 transition">
+                <div>
+                  <p className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider">Valor Total</p>
+                  <p className="text-2xl font-extrabold text-[#1A1A1A]">R$ {Number(os.total).toFixed(2)}</p>
+                </div>
+                {detalhesAbertos ? <ChevronUp className="text-stone-400" /> : <ChevronDown className="text-stone-400" />}
+              </button>
+
+              {detalhesAbertos && (
+                <div className="px-5 pb-5 bg-stone-50 border-t-2 border-stone-300 pt-4 space-y-3 animate-in slide-in-from-top-2">
+                  {os.work_order_items?.map((item: any, idx: number) => (
+                    <div key={idx} className="flex justify-between text-sm">
+                      <span className="text-stone-600">{item.name}</span>
+                      <span className="font-bold text-[#1A1A1A]">R$ {Number(item.total_price).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  {(!os.work_order_items || os.work_order_items.length === 0) && <p className="text-xs text-stone-400 text-center">Itens não detalhados.</p>}
+                  <div className="border-t border-stone-200 my-2"></div>
+                  <p className="text-xs text-center text-stone-400">Orçamento válido por 7 dias.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 4. GALERIA DE FOTOS */}
+          <div className="px-4 pt-3 pb-4 max-w-xl mx-auto">
+            <h3 className="font-extrabold text-[#1A1A1A] ml-1 mb-3 flex items-center gap-2 text-sm">
+              <Camera size={16} /> Fotos e Evidências
+            </h3>
+
+            {Array.isArray(os.photos) && os.photos.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {os.photos.map((url: string, idx: number) => (
+                  <div
+                    key={idx}
+                    className="relative aspect-square bg-stone-200 rounded-[20px] overflow-hidden shadow-sm border-2 border-stone-300 cursor-pointer group hover:scale-[1.02] transition-transform"
+                    onClick={() => setFotoExpandida(url)}
+                  >
+                    <img
+                      src={url}
+                      alt={`Evidência ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white rounded-[20px] p-6 text-center border-2 border-dashed border-stone-300">
+                <Camera size={28} className="mx-auto text-stone-300 mb-2" />
+                <p className="text-xs text-stone-400 font-medium">Nenhuma foto disponível.</p>
+              </div>
+            )}
+          </div>
+
+          {/* RELATÓRIO DE SCANNER */}
+          {os.scanner_pdf && (
+            <div className="px-4 pt-3 max-w-xl mx-auto">
+              <a
+                href={os.scanner_pdf}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 p-4 bg-white rounded-[20px] shadow-sm border-2 border-stone-300 hover:border-blue-400 transition"
+              >
+                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                  <FileText size={20} className="text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-sm text-[#1A1A1A]">Relatório de Scanner</p>
+                  <p className="text-[10px] text-stone-400">Toque para baixar o PDF</p>
+                </div>
+                <Download size={18} className="text-stone-400" />
+              </a>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* BARRA FIXA INFERIOR */}
+      {!isAppointment && os.status === "orcamento" ? (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t-2 border-stone-300 flex flex-col gap-2 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] z-50 rounded-t-[24px] max-w-xl mx-auto">
+          <button
+            onClick={handleCliqueAprovar}
+            disabled={atualizando}
+            className="w-full bg-[#1A1A1A] text-[#FACC15] font-extrabold py-3.5 rounded-2xl shadow-lg hover:bg-black transition flex items-center justify-center gap-2 disabled:opacity-70"
+          >
+            {atualizando ? <Loader2 className="animate-spin" /> : <CheckCircle size={20} />}
+            {atualizando ? "Processando..." : "APROVAR ORÇAMENTO"}
+          </button>
+          <button
+            onClick={handleContato}
+            className="w-full bg-white text-[#1A1A1A] border-2 border-stone-300 font-bold py-2.5 rounded-2xl hover:bg-stone-50 transition flex items-center justify-center gap-2"
+          >
+            <MessageCircle size={18} /> Tenho uma dúvida
+          </button>
+        </div>
+      ) : !isAppointment ? (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t-2 border-stone-300 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] z-50 rounded-t-[24px] max-w-xl mx-auto">
+          <button
+            onClick={handleContato}
+            className="w-full bg-green-50 text-green-700 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 border-2 border-green-200"
+          >
+            <MessageCircle size={18} /> Falar com a Oficina
+          </button>
+        </div>
+      ) : isAppointment && os.status !== 'confirmado' && os.status !== 'cancelado' && os.status !== 'nao_compareceu' && os.status !== 'concluido' ? (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t-2 border-stone-300 flex flex-col gap-2 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] z-50 rounded-t-[24px] max-w-xl mx-auto">
+          <button
+            onClick={() => handleConfirmarPresenca()}
+            disabled={confirmando}
+            className="w-full bg-[#1A1A1A] text-[#FACC15] font-extrabold py-3.5 rounded-2xl shadow-lg hover:bg-black transition flex items-center justify-center gap-2 disabled:opacity-70"
+          >
+            {confirmando ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />}
+            {confirmando ? 'Confirmando...' : 'CONFIRMAR PRESENÇA'}
+          </button>
+          <button
+            onClick={handleContato}
+            className="w-full bg-white text-[#1A1A1A] border-2 border-stone-300 font-bold py-2.5 rounded-2xl hover:bg-stone-50 transition flex items-center justify-center gap-2"
+          >
+            <MessageCircle size={18} /> Tenho uma dúvida
+          </button>
+        </div>
+      ) : (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t-2 border-stone-300 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] z-50 rounded-t-[24px] max-w-xl mx-auto">
+          <button
+            onClick={handleContato}
+            className="w-full bg-green-50 text-green-700 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 border-2 border-green-200"
+          >
+            <MessageCircle size={18} /> Falar com a Oficina
+          </button>
+        </div>
+      )}
+
+      {/* DRAWER DE CONFIRMAÇÃO - Peça do Cliente */}
+      {drawerAberto && (
+        <div className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={() => setDrawerAberto(false)}>
+          <div
+            className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[28px] p-6 max-w-xl mx-auto shadow-2xl animate-in slide-in-from-bottom duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-stone-300 rounded-full mx-auto mb-5"></div>
+
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} className="text-yellow-600" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-[#1A1A1A] text-base">Confirmação de Aprovação</h3>
+                <p className="text-xs text-stone-500 mt-0.5">Leia com atenção antes de aprovar</p>
+              </div>
+            </div>
+
+            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl p-4 mb-5">
+              <p className="text-sm text-[#1A1A1A] leading-relaxed">
+                Você está aprovando o valor de{' '}
+                <strong className="text-lg">R$ {Number(os.total).toFixed(2)}</strong>.
+              </p>
+              <p className="text-sm text-stone-600 mt-2 leading-relaxed">
+                Os itens que você forneceu <strong>não têm garantia da oficina</strong> (CDC art. 40). A garantia se aplica apenas às peças e serviços fornecidos pela oficina.
+              </p>
+            </div>
+
+            <p className="text-[10px] text-stone-400 text-center mb-4">
+              Ao clicar em &quot;SIM&quot;, você concorda com os termos acima.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDrawerAberto(false)}
+                className="flex-1 bg-stone-100 text-stone-600 font-bold py-3.5 rounded-2xl border-2 border-stone-300 hover:bg-stone-200 transition"
+              >
+                VOLTAR
+              </button>
+              <button
+                onClick={handleAprovar}
+                disabled={atualizando}
+                className="flex-1 bg-[#1A1A1A] text-[#FACC15] font-extrabold py-3.5 rounded-2xl shadow-lg hover:bg-black transition flex items-center justify-center gap-2 disabled:opacity-70"
+              >
+                {atualizando ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                SIM
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE FOTO EXPANDIDA */}
+      {fotoExpandida && (
+        <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" onClick={() => setFotoExpandida(null)}>
+          <button className="absolute top-4 right-4 text-white/70 hover:text-white p-2">
+            <X size={32} />
+          </button>
+          <img
+            src={fotoExpandida}
+            alt="Foto Expandida"
+            className="max-w-full max-h-[90vh] rounded-xl object-contain shadow-2xl"
+          />
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+export default function TelaCliente() {
+  return (
+    <Suspense fallback={<div className="h-screen bg-[#F8F7F2]"></div>}>
+      <ConteudoPortal />
+    </Suspense>
+  );
+}
+
+============================================================
+ARQUIVO: app\api\portal\os\route.ts
+============================================================
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/src/utils/supabase/admin'
+
+export async function GET(req: NextRequest) {
+    const token = req.nextUrl.searchParams.get('token')
+
+    if (!token) {
+        return NextResponse.json({ error: 'Token não informado.' }, { status: 400 })
+    }
+
+    try {
+        const supabase = createAdminClient()
+
+        // Buscar OS pelo public_token
+        const { data: os, error } = await supabase
+            .from('work_orders')
+            .select(`
+        *,
+        vehicles ( modelo, placa, cor, fabricante ),
+        clients ( nome, whatsapp ),
+        work_order_items ( name, total_price, peca_cliente )
+      `)
+            .eq('public_token', token)
+            .single()
+
+        if (error || !os) {
+            // Se não achou OS, tenta achar na tabela appointments
+            const { data: apt, error: aptError } = await supabase
+                .from('appointments')
+                .select(`
+                  *,
+                  vehicles ( modelo, placa, cor, fabricante ),
+                  clients ( nome, whatsapp )
+                `)
+                .eq('token', token)
+                .single()
+
+            if (aptError || !apt) {
+                return NextResponse.json({ error: 'Ordem de Serviço ou Agendamento não encontrado.' }, { status: 404 })
+            }
+
+            // Achou agendamento! Processa a logo/telefone da empresa baseada no apt
+            let logoUrl: string | null = null
+            let telefone: string | null = null
+
+            if (apt.organization_id) {
+                const { data: companyData } = await supabase
+                    .from('company_settings')
+                    .select('logo_url, telefone')
+                    .eq('organization_id', apt.organization_id)
+                    .limit(1)
+                    .single()
+
+                if (companyData) {
+                    logoUrl = companyData.logo_url || null
+                    telefone = companyData.telefone || null
+                }
+            }
+
+            return NextResponse.json({ os: apt, logoUrl, telefone, isAppointment: true })
+        }
+
+        // Buscar logo e telefone da empresa
+        let logoUrl: string | null = null
+        let telefone: string | null = null
+
+        if (os.organization_id) {
+            const { data: companyData } = await supabase
+                .from('company_settings')
+                .select('logo_url, telefone')
+                .eq('organization_id', os.organization_id)
+                .limit(1)
+                .single()
+
+            if (companyData) {
+                logoUrl = companyData.logo_url || null
+                telefone = companyData.telefone || null
+            }
+        }
+
+        // Buscar agendamentos futuros vinculados a esta OS
+        const { data: futureAppointments } = await supabase
+            .from('appointments')
+            .select('id, start_time, duration_minutes, type, status, description, token')
+            .eq('work_order_id', os.id)
+            .neq('status', 'cancelado')
+            .gte('start_time', new Date().toISOString())
+            .order('start_time', { ascending: true })
+
+        return NextResponse.json({ os, logoUrl, telefone, isAppointment: false, appointments: futureAppointments || [] })
+    } catch (err: any) {
+        console.error('[Portal OS] Erro:', err.message)
+        return NextResponse.json({ error: 'Erro interno.' }, { status: 500 })
+    }
+}
+
+
+============================================================
+ARQUIVO: app\api\portal\confirmar-presenca\route.ts
+============================================================
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/src/utils/supabase/admin'
+
+export async function POST(req: NextRequest) {
+    try {
+        const { token } = await req.json()
+
+        if (!token) {
+            return NextResponse.json({ error: 'Token não informado.' }, { status: 400 })
+        }
+
+        const supabase = createAdminClient()
+
+        // Buscar agendamento pelo token
+        const { data: apt, error: findError } = await supabase
+            .from('appointments')
+            .select('id, status')
+            .eq('token', token)
+            .single()
+
+        if (findError || !apt) {
+            return NextResponse.json({ error: 'Agendamento não encontrado.' }, { status: 404 })
+        }
+
+        if (apt.status === 'confirmado') {
+            return NextResponse.json({ message: 'Presença já confirmada.' })
+        }
+
+        if (apt.status === 'cancelado' || apt.status === 'nao_compareceu') {
+            return NextResponse.json({ error: 'Este agendamento foi cancelado.' }, { status: 400 })
+        }
+
+        // Atualizar status para confirmado
+        const { error: updateError } = await supabase
+            .from('appointments')
+            .update({ status: 'confirmado' })
+            .eq('id', apt.id)
+
+        if (updateError) throw updateError
+
+        return NextResponse.json({ message: 'Presença confirmada com sucesso!' })
+
+    } catch (err: any) {
+        console.error('[Portal Confirmar] Erro:', err.message)
+        return NextResponse.json({ error: 'Erro interno.' }, { status: 500 })
+    }
+}
+
+
+============================================================
+ARQUIVO: app\api\portal\aprovar\route.ts
+============================================================
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/src/utils/supabase/admin'
+
+export async function POST(req: NextRequest) {
+    try {
+        const body = await req.json()
+        const { token, aprovacao_ip, aprovacao_dispositivo, aprovacao_versao_hash } = body
+
+        if (!token) {
+            return NextResponse.json({ error: 'Token não informado.' }, { status: 400 })
+        }
+
+        const supabase = createAdminClient()
+
+        // Buscar OS pelo token para validar
+        const { data: os, error: fetchErr } = await supabase
+            .from('work_orders')
+            .select('id, status')
+            .eq('public_token', token)
+            .single()
+
+        if (fetchErr || !os) {
+            return NextResponse.json({ error: 'OS não encontrada.' }, { status: 404 })
+        }
+
+        if (os.status !== 'orcamento') {
+            return NextResponse.json({ error: 'Esta OS não está aguardando aprovação.' }, { status: 400 })
+        }
+
+        // Atualizar status para aprovado com metadados
+        const { error: updateErr } = await supabase
+            .from('work_orders')
+            .update({
+                status: 'aprovado',
+                aprovacao_ip: aprovacao_ip || 'desconhecido',
+                aprovacao_dispositivo: aprovacao_dispositivo || 'desconhecido',
+                aprovacao_timestamp: new Date().toISOString(),
+                aprovacao_versao_hash: aprovacao_versao_hash || null
+            })
+            .eq('id', os.id)
+
+        if (updateErr) {
+            throw updateErr
+        }
+
+        return NextResponse.json({ success: true })
+    } catch (err: any) {
+        console.error('[Portal Aprovar] Erro:', err.message)
+        return NextResponse.json({ error: 'Erro ao aprovar.' }, { status: 500 })
+    }
+}
+
+
+============================================================
+ARQUIVO: migration_appointments.sql
+============================================================
+
+-- ============================================================
+-- MIGRAÇÃO: Módulo de Agendamento
+-- Data: 2026-02-27
+-- ============================================================
+
+-- 1. Adicionar colunas em company_settings
+ALTER TABLE company_settings
+  ADD COLUMN IF NOT EXISTS scheduling_capacity INTEGER DEFAULT 3,
+  ADD COLUMN IF NOT EXISTS usa_agendamento BOOLEAN DEFAULT true;
+
+-- 2. Criar tabela de agendamentos
+CREATE TABLE IF NOT EXISTS appointments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  client_id UUID REFERENCES clients(id),
+  vehicle_id UUID REFERENCES vehicles(id),
+  work_order_id BIGINT REFERENCES work_orders(id),
+  type TEXT NOT NULL DEFAULT 'geral' CHECK (type IN ('avaliacao', 'retorno', 'geral')),
+  status TEXT NOT NULL DEFAULT 'agendado' CHECK (status IN ('agendado', 'em_atendimento', 'concluido', 'cancelado', 'nao_compareceu')),
+  description TEXT,
+  start_time TIMESTAMPTZ NOT NULL,
+  duration_minutes INTEGER DEFAULT 60,
+  token UUID DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 3. Índices
+CREATE INDEX IF NOT EXISTS idx_appointments_org ON appointments(organization_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_start ON appointments(start_time);
+CREATE INDEX IF NOT EXISTS idx_appointments_token ON appointments(token);
+CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
+
+-- 4. RLS
+ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "tenant_select_appointments" ON appointments
+  FOR SELECT USING (organization_id = get_my_organization_id());
+
+CREATE POLICY "tenant_insert_appointments" ON appointments
+  FOR INSERT WITH CHECK (organization_id = get_my_organization_id());
+
+CREATE POLICY "tenant_update_appointments" ON appointments
+  FOR UPDATE USING (organization_id = get_my_organization_id());
+
+CREATE POLICY "tenant_delete_appointments" ON appointments
+  FOR DELETE USING (organization_id = get_my_organization_id());
+
+-- 5. Acesso público via token (para portal do cliente)
+CREATE POLICY "public_select_by_token" ON appointments
+  FOR SELECT USING (true);
+-- Nota: O acesso público será filtrado pela API route usando o token.
+
+-- ============================================================
+-- MIGRAÇÃO CONCLUÍDA!
+-- ============================================================
+
+
+============================================================
+ARQUIVO: migration_add_confirmado_status.sql
+============================================================
+
+-- Adicionar 'confirmado' ao CHECK constraint da coluna status em appointments
+ALTER TABLE appointments DROP CONSTRAINT IF EXISTS appointments_status_check;
+ALTER TABLE appointments ADD CONSTRAINT appointments_status_check 
+  CHECK (status IN ('agendado', 'confirmado', 'em_atendimento', 'concluido', 'cancelado', 'nao_compareceu'));
+
+
+============================================================
+ARQUIVO: migration_add_alerta_adiado_ate.sql
+============================================================
+
+-- Criação do campo alerta_adiado_ate na tabela appointments
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS alerta_adiado_ate TIMESTAMPTZ;
+
+
+============================================================
+ARQUIVO: migration_add_type_ja_tem_os.sql
+============================================================
+
+-- ============================================================
+-- MIGRAÇÃO: Adicionar tipo 'ja_tem_os' no constraint de type
+-- Data: 2026-02-28
+-- ============================================================
+
+-- Remove constraint antiga do type
+ALTER TABLE appointments DROP CONSTRAINT IF EXISTS appointments_type_check;
+
+-- Recria com o novo valor incluído
+ALTER TABLE appointments ADD CONSTRAINT appointments_type_check
+  CHECK (type IN ('avaliacao', 'retorno', 'geral', 'ja_tem_os'));
+
+
