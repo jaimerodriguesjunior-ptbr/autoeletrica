@@ -47,6 +47,7 @@ type CompanySettings = {
   created_at?: string;
   usa_fiscal?: boolean;
   usa_caixa?: boolean;
+  usa_agendamento?: boolean;
   logo_url?: string;
 };
 
@@ -84,7 +85,7 @@ export default function Configuracoes() {
     telefone: "", email_contato: "",
     csc_token_production: "", csc_id_production: "",
     csc_token_homologation: "", csc_id_homologation: "",
-    nfse_login: "", nfse_password: "", usa_fiscal: true, usa_caixa: true,
+    nfse_login: "", nfse_password: "", usa_fiscal: true, usa_caixa: true, usa_agendamento: true,
     logo_url: ""
   });
   const [certFile, setCertFile] = useState<File | null>(null);
@@ -95,6 +96,34 @@ export default function Configuracoes() {
     fetchUsers();
     fetchCompany();
   }, []);
+
+  // AUTO-PREENCHIMENTO ENDEREÇO (Legado)
+  useEffect(() => {
+    // Apenas monta se pelo menos uma parte existir
+    const parts = [
+      company.logradouro,
+      company.numero,
+      company.bairro,
+      company.cidade,
+      company.uf,
+      company.cep
+    ].filter(p => typeof p === 'string' && p.trim() !== "");
+
+    // Na ordem: Logradouro, número, bairro, cidade, estado e cep
+    const novoEndereco = parts.join(', ');
+
+    // Somente atualiza se houver diferença, evitando loop
+    if (company.endereco !== novoEndereco && (parts.length > 0 || company.endereco)) {
+      setCompany(prev => ({ ...prev, endereco: novoEndereco }));
+    }
+  }, [
+    company.logradouro,
+    company.numero,
+    company.bairro,
+    company.cidade,
+    company.uf,
+    company.cep
+  ]);
 
   // --- FUNÇÕES DE BUSCA ---
   const fetchUsers = async () => {
@@ -153,7 +182,7 @@ export default function Configuracoes() {
     fetchUsers();
   };
 
-  const handleToggleModule = async (module: 'usa_fiscal' | 'usa_caixa', value: boolean) => {
+  const handleToggleModule = async (module: 'usa_fiscal' | 'usa_caixa' | 'usa_agendamento', value: boolean) => {
     setCompany(prev => ({ ...prev, [module]: value }));
     updateProfile({ [module]: value }); // Atualiza o Profile global p/ o Sidebar reagir na hora
     if (!profile?.organization_id) return;
@@ -200,7 +229,8 @@ export default function Configuracoes() {
         nfse_password: company.nfse_password,
         usa_fiscal: company.usa_fiscal !== undefined ? company.usa_fiscal : true,
         usa_caixa: company.usa_caixa !== undefined ? company.usa_caixa : true,
-        logo_url: company.logo_url
+        logo_url: company.logo_url,
+        endereco: company.endereco
       });
 
       if (!result.success) throw new Error(result.error);
@@ -744,6 +774,23 @@ export default function Configuracoes() {
                 className="hidden"
                 checked={company.usa_caixa ?? true}
                 onChange={(e) => handleToggleModule('usa_caixa', e.target.checked)}
+              />
+            </label>
+
+            {/* Toggle Uso do Agendamento */}
+            <label className="flex items-center justify-between p-5 bg-stone-50 border border-stone-200 rounded-3xl cursor-pointer hover:bg-stone-100 transition shadow-sm group">
+              <div>
+                <p className="font-bold text-[#1A1A1A]">Módulo de Agendamento</p>
+                <p className="text-sm text-stone-500">Permite agendar avaliações, retornos e serviços. Controla a Agenda no menu e no Dashboard.</p>
+              </div>
+              <div className={`w-14 h-8 rounded-full p-1 transition-colors duration-200 ease-in-out shrink-0 ${(company.usa_agendamento ?? true) ? 'bg-green-500' : 'bg-stone-300 group-hover:bg-stone-400'}`}>
+                <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${(company.usa_agendamento ?? true) ? 'translate-x-6' : 'translate-x-0'}`} />
+              </div>
+              <input
+                type="checkbox"
+                className="hidden"
+                checked={company.usa_agendamento ?? true}
+                onChange={(e) => handleToggleModule('usa_agendamento', e.target.checked)}
               />
             </label>
 

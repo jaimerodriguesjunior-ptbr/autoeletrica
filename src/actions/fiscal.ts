@@ -29,6 +29,7 @@ type CompanyData = {
     usa_fiscal?: boolean;
     usa_caixa?: boolean;
     logo_url?: string;
+    endereco?: string;
 };
 
 export async function registerCompanyInNuvemFiscal(data: CompanyData) {
@@ -99,7 +100,8 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
             nfse_login: data.nfse_login,
             usa_fiscal: data.usa_fiscal !== undefined ? data.usa_fiscal : true,
             usa_caixa: data.usa_caixa !== undefined ? data.usa_caixa : true,
-            logo_url: data.logo_url
+            logo_url: data.logo_url,
+            endereco: data.endereco
         };
 
         if (!isPlaceholder(data.csc_token_production)) upsertData.csc_token_production = data.csc_token_production;
@@ -275,7 +277,7 @@ export async function getCompanySettings() {
     return company;
 }
 
-export async function toggleCompanyModule(module: 'usa_fiscal' | 'usa_caixa', value: boolean) {
+export async function toggleCompanyModule(module: 'usa_fiscal' | 'usa_caixa' | 'usa_agendamento', value: boolean) {
     const supabase = createClient();
 
     // Validar autenticação

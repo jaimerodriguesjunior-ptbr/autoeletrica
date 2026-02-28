@@ -15,9 +15,11 @@ import {
   Settings,
   FileText,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  CalendarDays
 } from "lucide-react";
 import { useAuth } from "../../src/contexts/AuthContext";
+import { GlobalAppointmentAlert } from "../../src/components/GlobalAppointmentAlert";
 
 export default function AdminLayout({
   children,
@@ -47,11 +49,13 @@ export default function AdminLayout({
     { name: "Notas Fiscais", category: "Gestão Corporativa", icon: FileText, path: "/fiscal", restricted: true },
 
     { name: "IA", category: "Visão Geral", icon: Sparkles, path: "/ia", restricted: true },
+    { name: "Agenda", category: "Atendimento", icon: CalendarDays, path: "/agendamentos", restricted: false, module: 'usa_agendamento' as const },
   ];
 
   const isOwner = profile?.cargo === 'owner';
   const usa_fiscal = profile?.usa_fiscal !== false;
   const usa_caixa = profile?.usa_caixa !== false;
+  const usa_agendamento = profile?.usa_agendamento !== false;
 
   const logoSrc = profile?.logo_url || '/logo.svg';
 
@@ -59,6 +63,7 @@ export default function AdminLayout({
   const menuItems = allMenuItems.filter(item => {
     if (item.path === "/fiscal" && !usa_fiscal) return false;
     if (item.path === "/financeiro" && !usa_caixa) return false;
+    if (item.path === "/agendamentos" && !usa_agendamento) return false;
     if (isOwner) return true;
     return !item.restricted;
   });
@@ -212,7 +217,9 @@ export default function AdminLayout({
       </aside>
 
       {/* ÁREA DE CONTEÚDO */}
-      <main className="flex-1 min-w-0 h-screen overflow-y-auto">
+      <main className="flex-1 min-w-0 h-screen overflow-y-auto flex flex-col">
+        <GlobalAppointmentAlert />
+
         <header className="sticky top-0 z-30 bg-[#F8F7F2]/95 backdrop-blur-md px-6 py-4 lg:hidden flex justify-between items-center shadow-sm">
           <button
             onClick={() => setSidebarOpen(true)}
@@ -223,7 +230,7 @@ export default function AdminLayout({
           <span className="font-extrabold text-[#1A1A1A] tracking-wider uppercase text-sm">Oficina Pro</span>
         </header>
 
-        <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 lg:pb-24 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full pb-32 lg:pb-24 animate-in fade-in slide-in-from-bottom-4 duration-700">
           {children}
         </div>
       </main>

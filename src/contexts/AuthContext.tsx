@@ -17,6 +17,7 @@ type UserProfile = {
   ativo: boolean | null;
   usa_fiscal?: boolean;
   usa_caixa?: boolean;
+  usa_agendamento?: boolean;
   nome_fantasia?: string;
   logo_url?: string;
 };

@@ -332,7 +332,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </Link>
-                )
+                );
               })
             )}
           </div>

@@ -34,8 +34,8 @@ export default function Login() {
     }
   }, [user]);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (e?: React.FormEvent | React.MouseEvent) => {
+    e?.preventDefault();
     setError("");
     setLoading(true);
 
@@ -143,7 +143,7 @@ export default function Login() {
               Centro<br />Automotivo
             </span>
           </div>
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} method="post" className="space-y-4">
             {error && (
               <div className={`p-4 rounded-2xl flex items-center gap-3 text-sm border ${error.includes("suspenso") ? "bg-red-500/20 border-red-500 text-red-200" : "bg-yellow-500/10 border-yellow-500/20 text-yellow-200"}`}>
                 {error.includes("suspenso") ? <Ban size={18} /> : <AlertCircle size={18} />}
@@ -186,7 +186,10 @@ export default function Login() {
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowPassword(!showPassword);
+                  }}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white transition"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
@@ -195,7 +198,8 @@ export default function Login() {
             </div>
 
             <button
-              type="submit"
+              type="button"
+              onClick={handleLogin}
               disabled={loading}
               className="w-full bg-[#FACC15] hover:bg-[#ffe03d] text-[#1A1A1A] font-bold py-4 rounded-2xl shadow-lg shadow-yellow-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >

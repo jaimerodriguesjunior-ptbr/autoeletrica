@@ -22,8 +22,9 @@ import {
     Thermometer,
     Fuel,
     Eye,
+    UserCheck,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
@@ -53,6 +54,7 @@ type OSItem = {
     tipo: "peca" | "servico";
     qtd: number;
     semEstoque?: boolean;
+    pecaCliente?: boolean;
 };
 
 type VeiculoConfirmado = {
@@ -64,6 +66,8 @@ type VeiculoConfirmado = {
 
 export default function NovaOS() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const appointmentToken = searchParams.get('appointment_token');
     const supabase = createClient();
     const { profile, loading: authLoading } = useAuth();
 
@@ -347,27 +351,42 @@ export default function NovaOS() {
         setSaving(true);
 
         try {
-            const total = itens.reduce((acc, item) => acc + item.valor * item.qtd, 0);
+            const total = itens.reduce((acc, item) => item.pecaCliente ? acc : acc + item.valor * item.qtd, 0);
+
+            const insertPayload: any = {
+                organization_id: profile?.organization_id,
+                client_id: clienteSelecionado.id,
+                vehicle_id: veiculoConfirmado.id,
+                status: "orcamento",
+                description: defeito,
+                total: total,
+                previsao_entrega: previsaoEntrega || null,
+                odometro: odometro || null,
+                nivel_combustivel: nivelCombustivel || null,
+                temperatura_motor: temperaturaMotor || null,
+                painel_obs: painelObs || null,
+            };
+
+            // Herdar token do agendamento (consistência do portal)
+            if (appointmentToken) {
+                insertPayload.public_token = appointmentToken;
+            }
 
             const { data: osData, error: osError } = await supabase
                 .from("work_orders")
-                .insert({
-                    organization_id: profile?.organization_id,
-                    client_id: clienteSelecionado.id,
-                    vehicle_id: veiculoConfirmado.id,
-                    status: "orcamento",
-                    description: defeito,
-                    total: total,
-                    previsao_entrega: previsaoEntrega || null,
-                    odometro: odometro || null,
-                    nivel_combustivel: nivelCombustivel || null,
-                    temperatura_motor: temperaturaMotor || null,
-                    painel_obs: painelObs || null,
-                })
+                .insert(insertPayload)
                 .select()
                 .single();
 
             if (osError) throw osError;
+
+            // Vincular agendamento à OS criada
+            if (appointmentToken) {
+                await supabase
+                    .from('appointments')
+                    .update({ work_order_id: osData.id })
+                    .eq('token', appointmentToken);
+            }
 
             await supabase
                 .from("vehicles")
@@ -384,11 +403,30 @@ export default function NovaOS() {
                     name: item.nome,
                     quantity: item.qtd,
                     unit_price: item.valor,
-                    total_price: item.valor * item.qtd,
+                    total_price: item.pecaCliente ? 0 : item.valor * item.qtd,
+                    peca_cliente: item.pecaCliente || false,
                 }));
 
                 const { error: itemsError } = await supabase.from("work_order_items").insert(itensParaSalvar);
                 if (itemsError) throw itemsError;
+
+                // Baixar do estoque as peças que não são do cliente
+                for (const item of itens) {
+                    if (item.tipo === "peca" && item.db_id && !item.pecaCliente) {
+                        const { data: prodData } = await supabase
+                            .from('products')
+                            .select('estoque_atual')
+                            .eq('id', item.db_id)
+                            .single();
+
+                        if (prodData) {
+                            await supabase
+                                .from('products')
+                                .update({ estoque_atual: (prodData.estoque_atual || 0) - item.qtd })
+                                .eq('id', item.db_id);
+                        }
+                    }
+                }
             }
 
             // Upload foto do painel (se houver)
@@ -502,7 +540,13 @@ export default function NovaOS() {
 
     const removerItem = (id: string | number) => setItens(itens.filter((item) => item.id !== id));
 
-    const total = itens.reduce((acc, item) => acc + item.valor * item.qtd, 0);
+    const total = itens.reduce((acc, item) => item.pecaCliente ? acc : acc + item.valor * item.qtd, 0);
+
+    const togglePecaCliente = (id: string | number) => {
+        setItens(prev => prev.map(item =>
+            item.id === id ? { ...item, pecaCliente: !item.pecaCliente } : item
+        ));
+    };
 
     const selecionarCliente = (c: Client) => {
         setClienteSelecionado(c);
@@ -717,322 +761,345 @@ export default function NovaOS() {
                         </div>
                     </div>
 
-                    {/* CHECKLIST DO VEÍCULO (Dados do Painel) */}
-                    <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm space-y-4">
-                        <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
-                            <ArrowRight size={18} className="text-[#FACC15]" /> Checklist do Veículo
-                        </h3>
+                    {clienteSelecionado && (
+                        <>
+                            {/* CHECKLIST DO VEÍCULO (Dados do Painel) */}
+                            <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm space-y-4">
+                                <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                                    <ArrowRight size={18} className="text-[#FACC15]" /> Checklist do Veículo
+                                </h3>
 
-                        {/* Input oculto para câmera do painel */}
-                        <input type="file" ref={painelInputRef} accept="image/*" className="hidden" onChange={handleFotoPainel} />
+                                {/* Input oculto para câmera do painel */}
+                                <input type="file" ref={painelInputRef} accept="image/*" className="hidden" onChange={handleFotoPainel} />
 
-                        {/* Odômetro com câmera */}
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
-                                <Gauge size={12} /> ODÔMETRO (KM)
-                            </label>
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    value={odometro}
-                                    onChange={(e) => setOdometro(e.target.value.replace(/\D/g, ''))}
-                                    placeholder="Ex: 45230"
-                                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] pr-14"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (painelInputRef.current) painelInputRef.current.value = '';
-                                        painelInputRef.current?.click();
-                                    }}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-stone-200 hover:border-[#FACC15] text-stone-400 hover:text-[#FACC15] transition"
-                                >
-                                    {analisandoPainel ? (
-                                        <Loader2 size={18} className="animate-spin" />
-                                    ) : painelFotoPreview ? (
-                                        <div className="relative w-full h-full">
-                                            <Image src={painelFotoPreview} alt="Painel" fill className="object-cover rounded-lg" />
-                                        </div>
-                                    ) : (
-                                        <Camera size={18} />
-                                    )}
-                                </button>
-                            </div>
-                            {analisandoPainel && (
-                                <p className="text-xs text-[#FACC15] font-bold ml-2 animate-pulse flex items-center gap-1">
-                                    <Eye size={12} /> IA analisando o painel...
-                                </p>
-                            )}
-                        </div>
-
-                        {/* Nível de Combustível */}
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
-                                <Fuel size={12} /> NÍVEL DE COMBUSTÍVEL
-                            </label>
-                            <div className="flex gap-2">
-                                {[
-                                    { val: 'vazio', label: 'Vazio' },
-                                    { val: '1/4', label: '¼' },
-                                    { val: '1/2', label: '½' },
-                                    { val: '3/4', label: '¾' },
-                                    { val: 'cheio', label: 'Cheio' },
-                                ].map((opt) => (
-                                    <button
-                                        key={opt.val}
-                                        type="button"
-                                        onClick={() => setNivelCombustivel(opt.val)}
-                                        className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition border-2 ${nivelCombustivel === opt.val
-                                            ? 'bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A] shadow-md'
-                                            : 'bg-[#F8F7F2] text-stone-500 border-stone-300 hover:border-[#FACC15]'
-                                            }`}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Temperatura */}
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
-                                <Thermometer size={12} /> TEMPERATURA DO MOTOR
-                            </label>
-                            <div className="flex gap-2">
-                                {[
-                                    { val: 'normal', label: 'Normal', color: 'bg-green-100 text-green-700 border-green-300' },
-                                    { val: 'elevada', label: 'Elevada', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
-                                    { val: 'critica', label: 'Crítica', color: 'bg-red-100 text-red-700 border-red-300' },
-                                ].map((opt) => (
-                                    <button
-                                        key={opt.val}
-                                        type="button"
-                                        onClick={() => setTemperaturaMotor(opt.val)}
-                                        className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition border-2 ${temperaturaMotor === opt.val
-                                            ? `${opt.color} shadow-md scale-105`
-                                            : 'bg-[#F8F7F2] text-stone-500 border-stone-300 hover:border-[#FACC15]'
-                                            }`}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Observações */}
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
-                                <AlertCircle size={12} /> OBSERVAÇÕES DO PAINEL
-                            </label>
-                            <textarea
-                                rows={3}
-                                value={painelObs}
-                                onChange={(e) => setPainelObs(e.target.value)}
-                                placeholder="Luzes acesas, barulhos, ou observações da inspeção..."
-                                className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none resize-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] text-sm"
-                            ></textarea>
-                        </div>
-                    </div>
-
-                    {/* Fotos */}
-                    <div className="space-y-2">
-                        <h3 className="font-bold text-[#1A1A1A] ml-2 flex items-center gap-2">
-                            <Camera size={18} /> Fotos e Evidências
-                        </h3>
-                        <div className="flex gap-4 overflow-x-auto pb-4 snap-x scrollbar-hide">
-                            <button
-                                onClick={abrirCameraEvidencia}
-                                className="flex-none w-32 h-32 bg-white rounded-3xl border-2 border-dashed border-stone-200 flex flex-col items-center justify-center gap-2 text-stone-400 hover:border-[#FACC15] hover:text-[#FACC15] transition snap-start"
-                            >
-                                <Camera size={24} />
-                                <span className="text-xs font-bold">Adicionar</span>
-                            </button>
-                            {fotosEvidencia.map((foto, index) => (
-                                <div
-                                    key={index}
-                                    className="flex-none w-32 h-32 bg-stone-100 rounded-3xl relative overflow-hidden snap-center border border-stone-100 group"
-                                >
-                                    <Image src={foto} alt={`Evidência ${index}`} fill className="object-cover" />
-                                    <button
-                                        onClick={() => removerFotoEvidencia(index)}
-                                        className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition"
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* CARD 1: RELATO (Defeito) */}
-                    <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
-                        <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
-                                <ArrowRight size={18} className="text-[#FACC15]" /> Reclamação do cliente/Problema
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (isListening) {
-                                        recognitionRef.current?.stop();
-                                        return;
-                                    }
-                                    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-                                    if (!SpeechRecognition) {
-                                        alert("Seu navegador não suporta reconhecimento de voz. Use o Google Chrome.");
-                                        return;
-                                    }
-                                    const recognition: ISpeechRecognition = new SpeechRecognition();
-                                    recognition.lang = "pt-BR";
-                                    recognition.interimResults = false;
-                                    recognition.continuous = true;
-                                    recognitionRef.current = recognition;
-                                    recognition.onresult = (event: any) => {
-                                        let transcript = "";
-                                        for (let i = event.resultIndex; i < event.results.length; i++) {
-                                            if (event.results[i].isFinal) {
-                                                transcript += event.results[i][0].transcript;
-                                            }
-                                        }
-                                        if (transcript) {
-                                            setDefeito((prev) => prev ? prev + " " + transcript : transcript);
-                                        }
-                                    };
-                                    recognition.onend = () => setIsListening(false);
-                                    recognition.onerror = () => setIsListening(false);
-                                    recognition.start();
-                                    setIsListening(true);
-                                }}
-                                className={`p-2.5 rounded-full transition-all duration-200 ${isListening
-                                    ? "bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse"
-                                    : "bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]"
-                                    }`}
-                                title={isListening ? "Parar gravação" : "Falar o problema"}
-                            >
-                                <Mic size={18} />
-                            </button>
-                        </div>
-                        {isListening && (
-                            <div className="flex items-center gap-2 mb-2 animate-pulse">
-                                <span className="w-2 h-2 bg-red-500 rounded-full" />
-                                <span className="text-xs font-bold text-red-500">Estou ouvindo... fale o problema do veículo</span>
-                            </div>
-                        )}
-                        <textarea
-                            rows={3}
-                            value={defeito}
-                            onChange={(e) => setDefeito(e.target.value)}
-                            placeholder="Descreva o defeito ou serviço..."
-                            className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none resize-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
-                        ></textarea>
-                    </div>
-
-                    {/* CARD 2: ITENS */}
-                    <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm space-y-4">
-                        <div className="flex justify-between items-center">
-                            <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
-                                <ArrowRight size={18} className="text-[#FACC15]" /> Itens do Orçamento
-                            </h3>
-                            <button
-                                onClick={() => setModalItemAberto(true)}
-                                className="text-xs font-bold bg-[#F8F7F2] text-[#1A1A1A] px-3 py-2 rounded-full flex items-center gap-1 hover:bg-[#FACC15] transition"
-                            >
-                                <Plus size={14} /> Adicionar
-                            </button>
-                        </div>
-
-                        <div className="space-y-2">
-                            {itens.map((item) => (
-                                <div key={item.id} className="flex justify-between items-center p-3 bg-[#F8F7F2] rounded-2xl">
-                                    <div>
-                                        <p className="font-bold text-sm text-[#1A1A1A]">{item.nome}</p>
-                                        <p className="text-[10px] text-stone-500 uppercase font-bold">
-                                            {item.tipo}
-                                        </p>
-                                    </div>
-
-                                    {/* CONTROLE DE QUANTIDADE */}
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center bg-white rounded-lg px-1">
-                                            <button
-                                                onClick={() => alterarQuantidade(item.id, -1)}
-                                                className="p-1 hover:text-red-500"
-                                            >
-                                                <Minus size={14} />
-                                            </button>
-                                            <span className="text-xs font-bold w-6 text-center">{item.qtd}</span>
-                                            <button
-                                                onClick={() => alterarQuantidade(item.id, 1)}
-                                                className="p-1 hover:text-green-500"
-                                            >
-                                                <Plus size={14} />
-                                            </button>
-                                        </div>
-
-                                        <div className="flex flex-col items-end">
-                                            <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-stone-200 focus-within:border-[#FACC15] focus-within:ring-1 focus-within:ring-[#FACC15] shadow-sm">
-                                                <span className="text-xs text-stone-400 font-bold">R$</span>
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    min="0"
-                                                    value={item.valor}
-                                                    onChange={(e) => {
-                                                        const val = parseFloat(e.target.value);
-                                                        setItens(prev => prev.map(i => i.id === item.id ? { ...i, valor: isNaN(val) ? 0 : val } : i));
-                                                    }}
-                                                    className="w-16 text-right font-bold text-[#1A1A1A] outline-none text-sm bg-transparent"
-                                                />
-                                            </div>
-                                            {item.qtd > 1 && (
-                                                <span className="text-[10px] text-stone-400 font-bold mt-1">Total: R$ {((item.valor || 0) * item.qtd).toFixed(2)}</span>
+                                {/* Odômetro com câmera */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                                        <Gauge size={12} /> ODÔMETRO (KM)
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={odometro}
+                                            onChange={(e) => setOdometro(e.target.value.replace(/\D/g, ''))}
+                                            placeholder="Ex: 45230"
+                                            className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] pr-14"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (painelInputRef.current) painelInputRef.current.value = '';
+                                                painelInputRef.current?.click();
+                                            }}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-stone-200 hover:border-[#FACC15] text-stone-400 hover:text-[#FACC15] transition"
+                                        >
+                                            {analisandoPainel ? (
+                                                <Loader2 size={18} className="animate-spin" />
+                                            ) : painelFotoPreview ? (
+                                                <div className="relative w-full h-full">
+                                                    <Image src={painelFotoPreview} alt="Painel" fill className="object-cover rounded-lg" />
+                                                </div>
+                                            ) : (
+                                                <Camera size={18} />
                                             )}
-                                        </div>
-
-                                        <button onClick={() => removerItem(item.id)} className="text-stone-300 hover:text-red-500 pl-2 border-l border-stone-200">
-                                            <Trash2 size={16} />
                                         </button>
                                     </div>
+                                    {analisandoPainel && (
+                                        <p className="text-xs text-[#FACC15] font-bold ml-2 animate-pulse flex items-center gap-1">
+                                            <Eye size={12} /> IA analisando o painel...
+                                        </p>
+                                    )}
                                 </div>
-                            ))}
-                            {itens.length === 0 && (
-                                <p className="text-center text-stone-400 text-sm py-6 border-2 border-dashed border-stone-100 rounded-2xl">
-                                    Nenhum item adicionado.
-                                </p>
-                            )}
-                        </div>
 
-                        <div className="flex justify-between items-center pt-2">
-                            <p className="text-stone-500 font-bold text-sm">Total Estimado</p>
-                            <p className="text-2xl font-bold text-[#1A1A1A]">R$ {total.toFixed(2)}</p>
-                        </div>
-                    </div>
+                                {/* Nível de Combustível */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                                        <Fuel size={12} /> NÍVEL DE COMBUSTÍVEL
+                                    </label>
+                                    <div className="flex gap-2">
+                                        {[
+                                            { val: 'vazio', label: 'Vazio' },
+                                            { val: '1/4', label: '¼' },
+                                            { val: '1/2', label: '½' },
+                                            { val: '3/4', label: '¾' },
+                                            { val: 'cheio', label: 'Cheio' },
+                                        ].map((opt) => (
+                                            <button
+                                                key={opt.val}
+                                                type="button"
+                                                onClick={() => setNivelCombustivel(opt.val)}
+                                                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition border-2 ${nivelCombustivel === opt.val
+                                                    ? 'bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A] shadow-md'
+                                                    : 'bg-[#F8F7F2] text-stone-500 border-stone-300 hover:border-[#FACC15]'
+                                                    }`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
 
-                    {/* CARD 3: PREVISÃO (Último passo, separado) */}
-                    <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
-                        <label className="text-xs font-bold text-stone-400 mb-2 flex items-center gap-1">
-                            <Calendar size={14} /> Previsão de Entrega (Opcional)
-                        </label>
-                        <input
-                            type="date"
-                            value={previsaoEntrega}
-                            onChange={(e) => setPrevisaoEntrega(e.target.value)}
-                            className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
-                        />
-                    </div>
+                                {/* Temperatura */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                                        <Thermometer size={12} /> TEMPERATURA DO MOTOR
+                                    </label>
+                                    <div className="flex gap-2">
+                                        {[
+                                            { val: 'normal', label: 'Normal', color: 'bg-green-100 text-green-700 border-green-300' },
+                                            { val: 'elevada', label: 'Elevada', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+                                            { val: 'critica', label: 'Crítica', color: 'bg-red-100 text-red-700 border-red-300' },
+                                        ].map((opt) => (
+                                            <button
+                                                key={opt.val}
+                                                type="button"
+                                                onClick={() => setTemperaturaMotor(opt.val)}
+                                                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition border-2 ${temperaturaMotor === opt.val
+                                                    ? `${opt.color} shadow-md scale-105`
+                                                    : 'bg-[#F8F7F2] text-stone-500 border-stone-300 hover:border-[#FACC15]'
+                                                    }`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
 
-                    {/* Botão Final */}
-                    <div className="pt-4">
-                        <button
-                            onClick={handleFinalizarOS}
-                            disabled={saving}
-                            className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-full shadow-lg hover:scale-105 transition flex items-center justify-center gap-2 disabled:opacity-70"
-                        >
-                            {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-                            Iniciar Ordem de Serviço (OS)
-                        </button>
-                    </div>
+                                {/* Observações */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                                        <AlertCircle size={12} /> OBSERVAÇÕES DO PAINEL
+                                    </label>
+                                    <textarea
+                                        rows={3}
+                                        value={painelObs}
+                                        onChange={(e) => setPainelObs(e.target.value)}
+                                        placeholder="Luzes acesas, barulhos, ou observações da inspeção..."
+                                        className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none resize-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] text-sm"
+                                    ></textarea>
+                                </div>
+                            </div>
+
+                            {/* Fotos */}
+                            <div className="space-y-2">
+                                <h3 className="font-bold text-[#1A1A1A] ml-2 flex items-center gap-2">
+                                    <Camera size={18} /> Fotos e Evidências
+                                </h3>
+                                <div className="flex gap-4 overflow-x-auto pb-4 snap-x scrollbar-hide">
+                                    <button
+                                        onClick={abrirCameraEvidencia}
+                                        className="flex-none w-32 h-32 bg-white rounded-3xl border-2 border-dashed border-stone-200 flex flex-col items-center justify-center gap-2 text-stone-400 hover:border-[#FACC15] hover:text-[#FACC15] transition snap-start"
+                                    >
+                                        <Camera size={24} />
+                                        <span className="text-xs font-bold">Adicionar</span>
+                                    </button>
+                                    {fotosEvidencia.map((foto, index) => (
+                                        <div
+                                            key={index}
+                                            className="flex-none w-32 h-32 bg-stone-100 rounded-3xl relative overflow-hidden snap-center border border-stone-100 group"
+                                        >
+                                            <Image src={foto} alt={`Evidência ${index}`} fill className="object-cover" />
+                                            <button
+                                                onClick={() => removerFotoEvidencia(index)}
+                                                className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* CARD 1: RELATO (Defeito) */}
+                            <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                                        <ArrowRight size={18} className="text-[#FACC15]" /> Reclamação do cliente/Problema
+                                    </h3>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (isListening) {
+                                                recognitionRef.current?.stop();
+                                                return;
+                                            }
+                                            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                                            if (!SpeechRecognition) {
+                                                alert("Seu navegador não suporta reconhecimento de voz. Use o Google Chrome.");
+                                                return;
+                                            }
+                                            const recognition: ISpeechRecognition = new SpeechRecognition();
+                                            recognition.lang = "pt-BR";
+                                            recognition.interimResults = false;
+                                            recognition.continuous = true;
+                                            recognitionRef.current = recognition;
+                                            recognition.onresult = (event: any) => {
+                                                let transcript = "";
+                                                for (let i = event.resultIndex; i < event.results.length; i++) {
+                                                    if (event.results[i].isFinal) {
+                                                        transcript += event.results[i][0].transcript;
+                                                    }
+                                                }
+                                                if (transcript) {
+                                                    setDefeito((prev) => prev ? prev + " " + transcript : transcript);
+                                                }
+                                            };
+                                            recognition.onend = () => setIsListening(false);
+                                            recognition.onerror = () => setIsListening(false);
+                                            recognition.start();
+                                            setIsListening(true);
+                                        }}
+                                        className={`p-2.5 rounded-full transition-all duration-200 ${isListening
+                                            ? "bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse"
+                                            : "bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]"
+                                            }`}
+                                        title={isListening ? "Parar gravação" : "Falar o problema"}
+                                    >
+                                        <Mic size={18} />
+                                    </button>
+                                </div>
+                                {isListening && (
+                                    <div className="flex items-center gap-2 mb-2 animate-pulse">
+                                        <span className="w-2 h-2 bg-red-500 rounded-full" />
+                                        <span className="text-xs font-bold text-red-500">Estou ouvindo... fale o problema do veículo</span>
+                                    </div>
+                                )}
+                                <textarea
+                                    rows={3}
+                                    value={defeito}
+                                    onChange={(e) => setDefeito(e.target.value)}
+                                    placeholder="Descreva o defeito ou serviço..."
+                                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none resize-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                                ></textarea>
+                            </div>
+
+                            {/* CARD 2: ITENS */}
+                            <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                                        <ArrowRight size={18} className="text-[#FACC15]" /> Itens do Orçamento
+                                    </h3>
+                                    <button
+                                        onClick={() => setModalItemAberto(true)}
+                                        className="text-xs font-bold bg-[#F8F7F2] text-[#1A1A1A] px-3 py-2 rounded-full flex items-center gap-1 hover:bg-[#FACC15] transition"
+                                    >
+                                        <Plus size={14} /> Adicionar
+                                    </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {itens.map((item) => (
+                                        <div key={item.id} className={`p-3 rounded-2xl ${item.pecaCliente ? 'bg-yellow-50 border-2 border-yellow-200' : 'bg-[#F8F7F2]'}`}>
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <p className={`font-bold text-sm text-[#1A1A1A] ${item.pecaCliente ? 'line-through opacity-60' : ''}`}>{item.nome}</p>
+                                                    <p className="text-[10px] text-stone-500 uppercase font-bold">
+                                                        {item.tipo}
+                                                    </p>
+                                                </div>
+
+                                                {/* CONTROLE DE QUANTIDADE */}
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex items-center bg-white rounded-lg px-1">
+                                                        <button
+                                                            onClick={() => alterarQuantidade(item.id, -1)}
+                                                            className="p-1 hover:text-red-500"
+                                                        >
+                                                            <Minus size={14} />
+                                                        </button>
+                                                        <span className="text-xs font-bold w-6 text-center">{item.qtd}</span>
+                                                        <button
+                                                            onClick={() => alterarQuantidade(item.id, 1)}
+                                                            className="p-1 hover:text-green-500"
+                                                        >
+                                                            <Plus size={14} />
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="flex flex-col items-end">
+                                                        <div className={`flex items-center gap-1 bg-white px-2 py-1 rounded-lg border focus-within:border-[#FACC15] focus-within:ring-1 focus-within:ring-[#FACC15] shadow-sm ${item.pecaCliente ? 'border-yellow-200 opacity-60' : 'border-stone-200'}`}>
+                                                            <span className="text-xs text-stone-400 font-bold">R$</span>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                min="0"
+                                                                value={item.valor}
+                                                                disabled={item.pecaCliente}
+                                                                onChange={(e) => {
+                                                                    const val = parseFloat(e.target.value);
+                                                                    setItens(prev => prev.map(i => i.id === item.id ? { ...i, valor: isNaN(val) ? 0 : val } : i));
+                                                                }}
+                                                                className={`w-16 text-right font-bold outline-none text-sm bg-transparent ${item.pecaCliente ? 'text-stone-400 line-through' : 'text-[#1A1A1A]'}`}
+                                                            />
+                                                        </div>
+                                                        {item.qtd > 1 && (
+                                                            <span className={`text-[10px] font-bold mt-1 ${item.pecaCliente ? 'text-stone-300 line-through' : 'text-stone-400'}`}>
+                                                                Total: R$ {((item.valor || 0) * item.qtd).toFixed(2)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <button onClick={() => removerItem(item.id)} className="text-stone-300 hover:text-red-500 pl-2 border-l border-stone-200">
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Botão Peça do Cliente */}
+                                            {item.tipo === "peca" && (
+                                                <button
+                                                    onClick={() => togglePecaCliente(item.id)}
+                                                    className={`mt-2 flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition ${item.pecaCliente
+                                                        ? 'bg-yellow-400 text-[#1A1A1A]'
+                                                        : 'bg-stone-200 text-stone-500 hover:bg-yellow-100 hover:text-yellow-700'
+                                                        }`}
+                                                >
+                                                    <UserCheck size={12} />
+                                                    {item.pecaCliente ? 'PEÇA DO CLIENTE ✓' : 'Peça do cliente?'}
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {itens.length === 0 && (
+                                        <p className="text-center text-stone-400 text-sm py-6 border-2 border-dashed border-stone-100 rounded-2xl">
+                                            Nenhum item adicionado.
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="flex justify-between items-center pt-2">
+                                    <p className="text-stone-500 font-bold text-sm">Total Estimado</p>
+                                    <p className="text-2xl font-bold text-[#1A1A1A]">R$ {total.toFixed(2)}</p>
+                                </div>
+                            </div>
+
+                            {/* CARD 3: PREVISÃO (Último passo, separado) */}
+                            <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
+                                <label className="text-xs font-bold text-stone-400 mb-2 flex items-center gap-1">
+                                    <Calendar size={14} /> Previsão de Entrega (Opcional)
+                                </label>
+                                <input
+                                    type="date"
+                                    value={previsaoEntrega}
+                                    onChange={(e) => setPrevisaoEntrega(e.target.value)}
+                                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                                />
+                            </div>
+
+                            {/* Botão Final */}
+                            <div className="pt-4">
+                                <button
+                                    onClick={handleFinalizarOS}
+                                    disabled={saving}
+                                    className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-full shadow-lg hover:scale-105 transition flex items-center justify-center gap-2 disabled:opacity-70"
+                                >
+                                    {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+                                    Iniciar Ordem de Serviço (OS)
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
             )}
 
@@ -1069,7 +1136,10 @@ export default function NovaOS() {
                                         ))}
                                 </div>
                                 <button
-                                    onClick={() => setModalClienteView("cadastrar")}
+                                    onClick={() => {
+                                        setModalClienteView("cadastrar");
+                                        setNovoNomeCliente(termoBuscaCliente);
+                                    }}
                                     className="w-full py-3 border-2 border-dashed border-stone-200 rounded-xl text-stone-500 font-bold hover:border-[#FACC15]"
                                 >
                                     Cadastrar Novo

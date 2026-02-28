@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  ArrowLeft, CheckCircle, Clock, Wrench, Package,
+  ArrowLeft, CheckCircle, Clock, Wrench, Package, Save,
   CheckSquare, MessageCircle, User, Car, Loader2, DollarSign,
   Plus, X, Calendar, CreditCard, Trash2, Printer, Camera, UserCheck, ShieldCheck,
   Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download, Search, AlertTriangle
@@ -40,6 +40,7 @@ type WorkOrderFull = {
     whatsapp: string | null;
   } | null;
   vehicles: {
+    id: string;
     modelo: string;
     placa: string;
     fabricante: string | null;
@@ -55,6 +56,16 @@ type WorkOrderFull = {
   painel_obs?: string | null;
   painel_foto?: string | null;
   scanner_pdf?: string | null;
+  defeitos_constatados?: string | null;
+  servicos_executados?: string | null;
+  appointments?: {
+    id: string;
+    type: string;
+    status: string;
+    description: string;
+    start_time: string;
+    duration_minutes: number;
+  }[];
 };
 
 type CatalogItem = { id: string; nome: string; price?: number; preco_venda?: number; estoque_atual?: number };
@@ -69,6 +80,11 @@ export default function DetalhesOS() {
   const [os, setOs] = useState<WorkOrderFull | null>(null);
   const [updating, setUpdating] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  // Laudo Técnico (Novos Campos)
+  const [defeitosConstatados, setDefeitosConstatados] = useState("");
+  const [servicosExecutados, setServicosExecutados] = useState("");
+  const [salvandoLaudo, setSalvandoLaudo] = useState(false);
 
   // Previsão de Entrega
   const [previsao, setPrevisao] = useState("");
@@ -105,6 +121,17 @@ export default function DetalhesOS() {
   const dtcTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [checklistAberto, setChecklistAberto] = useState(false);
 
+  // Novo Agendamento
+  const [modalAgendamentoAberto, setModalAgendamentoAberto] = useState(false);
+  const [formAgendamento, setFormAgendamento] = useState({
+    data: new Date().toISOString().split('T')[0],
+    hora: '09:00',
+    tipo: 'ja_tem_os',
+    duracao: 60,
+    desc: ''
+  });
+  const [salvandoAgendamento, setSalvandoAgendamento] = useState(false);
+
   // 1. Busca Dados da OS
   const fetchOS = useCallback(async () => {
     try {
@@ -113,8 +140,9 @@ export default function DetalhesOS() {
         .select(`
           *,
           clients ( id, nome, whatsapp ),
-          vehicles ( modelo, placa, fabricante ),
-          work_order_items ( id, name, unit_price, quantity, total_price, tipo, product_id, peca_cliente )
+          vehicles ( id, modelo, placa, fabricante ),
+          work_order_items ( id, name, unit_price, quantity, total_price, tipo, product_id, peca_cliente ),
+          appointments ( id, type, status, description, start_time, duration_minutes )
         `)
         .eq('id', id)
         .single();
@@ -128,6 +156,8 @@ export default function DetalhesOS() {
         if (data.previsao_entrega) {
           setPrevisao(new Date(data.previsao_entrega).toISOString().split('T')[0]);
         }
+        setDefeitosConstatados(data.defeitos_constatados || "");
+        setServicosExecutados(data.servicos_executados || "");
       }
 
     } catch (error) {
@@ -336,6 +366,26 @@ export default function DetalhesOS() {
     }
   };
 
+  const handleSalvarLaudo = async () => {
+    if (!os) return;
+    setSalvandoLaudo(true);
+    try {
+      const { error } = await supabase
+        .from('work_orders')
+        .update({
+          defeitos_constatados: defeitosConstatados,
+          servicos_executados: servicosExecutados
+        })
+        .eq('id', os.id);
+      if (error) throw error;
+      setOs({ ...os, defeitos_constatados: defeitosConstatados, servicos_executados: servicosExecutados });
+      alert("Laudo atualizado com sucesso!");
+    } catch (err: any) {
+      alert("Erro ao salvar laudo: " + err.message);
+    } finally {
+      setSalvandoLaudo(false);
+    }
+  };
 
   const handleStatusChange = async (novoStatus: string) => {
     if (!os) return;
@@ -472,7 +522,7 @@ export default function DetalhesOS() {
     setUpdating(true);
     try {
       for (const item of os.work_order_items) {
-        if (item.tipo === "peca" && item.product_id) {
+        if (item.tipo === "peca" && item.product_id && !item.peca_cliente) {
           const { data: prodData } = await supabase
             .from('products')
             .select('estoque_atual')
@@ -500,6 +550,50 @@ export default function DetalhesOS() {
 
     } catch (error: any) {
       alert("Erro ao cancelar OS: " + error.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleExcluirOS = async () => {
+    if (!os) return;
+    if (!confirm("🚨 PERIGO: Isso apagará permanentemente esta OS e todos os seus registros (fotos, itens, diagnósticos). Esta ação não pode ser desfeita. Continuar?")) return;
+
+    setUpdating(true);
+    try {
+      // 1. Devolver estoque das peças (que não são do cliente)
+      for (const item of os.work_order_items || []) {
+        if (item.tipo === "peca" && item.product_id && !item.peca_cliente) {
+          const { data: prodData } = await supabase
+            .from('products')
+            .select('estoque_atual')
+            .eq('id', item.product_id)
+            .single();
+
+          if (prodData) {
+            await supabase
+              .from('products')
+              .update({ estoque_atual: (prodData.estoque_atual || 0) + item.quantity })
+              .eq('id', item.product_id);
+          }
+        }
+      }
+
+      // 2. Apagar a OS (as foreign keys 'on delete cascade' devem cuidar do resto, mas garantimos os itens)
+      await supabase.from('work_order_items').delete().eq('work_order_id', os.id);
+
+      const { error } = await supabase
+        .from('work_orders')
+        .delete()
+        .eq('id', os.id);
+
+      if (error) throw error;
+
+      alert("OS Excluída permanentemente.");
+      router.push("/os");
+
+    } catch (error: any) {
+      alert("Erro ao excluir OS: " + error.message);
     } finally {
       setUpdating(false);
     }
@@ -651,6 +745,39 @@ export default function DetalhesOS() {
     }
   };
 
+  const handleSalvarAgendamento = async () => {
+    if (!os || !profile?.organization_id || !formAgendamento.data || !formAgendamento.hora) return;
+    setSalvandoAgendamento(true);
+    try {
+      const startTime = new Date(`${formAgendamento.data}T${formAgendamento.hora}:00`);
+
+      if (startTime < new Date()) {
+        return alert("Não é possível agendar para um horário no passado.");
+      }
+
+      const { error } = await supabase.from('appointments').insert({
+        organization_id: profile.organization_id,
+        client_id: os.clients?.id || null,
+        vehicle_id: os.vehicles?.id || null,
+        work_order_id: os.id,
+        type: formAgendamento.tipo,
+        description: formAgendamento.desc,
+        start_time: startTime.toISOString(),
+        duration_minutes: formAgendamento.duracao
+      });
+
+      if (error) throw error;
+      alert("Agendamento criado com sucesso!");
+      setModalAgendamentoAberto(false);
+      setFormAgendamento({ data: new Date().toISOString().split('T')[0], hora: "09:00", duracao: 60, tipo: "ja_tem_os", desc: "" });
+      fetchOS(); // Atualiza a lista
+    } catch (e: any) {
+      alert("Erro ao criar agendamento: " + e.message);
+    } finally {
+      setSalvandoAgendamento(false);
+    }
+  };
+
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   const getStatusColor = (stepStatus: string) => {
@@ -711,9 +838,17 @@ export default function DetalhesOS() {
         </div>
 
         <div className="flex gap-2">
+          {profile?.usa_agendamento !== false && (
+            <button
+              onClick={() => setModalAgendamentoAberto(true)}
+              className="bg-[#1A1A1A] text-[#FACC15] px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-black transition"
+            >
+              <Calendar size={18} /> + Reagendar
+            </button>
+          )}
+
           {/* BOTÃO DE IMPRESSÃO (NOVO) */}
           <Link href={`/imprimir/os/${os.id}`} target="_blank">
-
             <button className="bg-white border border-stone-200 text-[#1A1A1A] px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-stone-50 transition">
               <Printer size={18} /> Imprimir
             </button>
@@ -724,6 +859,14 @@ export default function DetalhesOS() {
             className="bg-green-100 text-green-700 px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-green-200 transition"
           >
             <MessageCircle size={18} /> Falar com Cliente
+          </button>
+
+          <button
+            onClick={handleExcluirOS}
+            title="Excluir Permanentemente"
+            className="w-12 h-12 bg-red-50 text-red-500 rounded-full flex items-center justify-center hover:bg-red-500 hover:text-white transition shadow-sm"
+          >
+            <Trash2 size={20} />
           </button>
         </div>
       </div>
@@ -818,11 +961,51 @@ export default function DetalhesOS() {
 
           <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
             <h3 className="font-bold text-[#1A1A1A] mb-2 text-sm flex items-center gap-2">
-              <MessageCircle size={16} /> Relato / Defeito
+              <MessageCircle size={16} /> Relato / Defeito Informado Pelo Cliente
             </h3>
             <p className="text-stone-600 text-sm bg-[#F8F7F2] p-4 rounded-2xl border border-stone-100">
               {os.description || "Nenhuma descrição informada."}
             </p>
+          </div>
+
+          {/* LAUDO TÉCNICO E SERVIÇOS EXECUTADOS */}
+          <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm mt-6">
+            <h3 className="font-bold text-[#1A1A1A] mb-4 text-sm flex items-center gap-2">
+              <Wrench size={16} /> Laudo Técnico (Defeitos e Serviços Realizados)
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">DEFEITOS CONSTATADOS PELA OFICINA</label>
+                <textarea
+                  value={defeitosConstatados}
+                  onChange={e => setDefeitosConstatados(e.target.value)}
+                  placeholder="Descreva aqui o que foi encontrado de problema após a avaliação..."
+                  rows={3}
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 border border-stone-200 outline-none focus:border-[#FACC15] text-sm resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">SERVIÇOS EXECUTADOS</label>
+                <textarea
+                  value={servicosExecutados}
+                  onChange={e => setServicosExecutados(e.target.value)}
+                  placeholder="Descreva aqui o que foi feito para a resolução do problema..."
+                  rows={3}
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 border border-stone-200 outline-none focus:border-[#FACC15] text-sm resize-none"
+                />
+              </div>
+
+              <button
+                onClick={handleSalvarLaudo}
+                disabled={salvandoLaudo}
+                className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-black transition disabled:opacity-50"
+              >
+                {salvandoLaudo ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                Salvar Laudo Técnico
+              </button>
+            </div>
           </div>
 
 
@@ -1197,7 +1380,81 @@ export default function DetalhesOS() {
           </div>
         </div>
 
+        {/* REMOVIDO: 4. AGENDAMENTOS (AGORA É BOTÃO NO HEADER) */}
+
       </div>
+
+      {/* MODAL NOVO AGENDAMENTO DA OS */}
+      {modalAgendamentoAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-[#1A1A1A]">Novo Agendamento</h2>
+              <button onClick={() => setModalAgendamentoAberto(false)} className="text-stone-400 hover:text-red-500 transition"><X /></button>
+            </div>
+
+            <p className="text-xs text-stone-500">
+              Este agendamento será vinculado ao veículo <strong className="text-[#1A1A1A]">{os.vehicles?.modelo}</strong> da OS <strong className="text-[#1A1A1A]">#{os.id.toString().slice(0, 4)}</strong>.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">DATA</label>
+                <input
+                  type="date"
+                  value={formAgendamento.data}
+                  onChange={e => setFormAgendamento({ ...formAgendamento, data: e.target.value })}
+                  className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] font-bold text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">HORA</label>
+                <input
+                  type="time"
+                  value={formAgendamento.hora}
+                  onChange={e => setFormAgendamento({ ...formAgendamento, hora: e.target.value })}
+                  className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] font-bold text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">DURAÇÃO</label>
+              <select
+                value={formAgendamento.duracao}
+                onChange={e => setFormAgendamento({ ...formAgendamento, duracao: Number(e.target.value) })}
+                className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] font-bold text-sm"
+              >
+                <option value={30}>30 min</option>
+                <option value={60}>1 hora</option>
+                <option value={120}>2 horas</option>
+                <option value={240}>Meio Dia (4h)</option>
+                <option value={480}>Dia Todo (8h)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">DESCRIÇÃO (Opcional)</label>
+              <textarea
+                value={formAgendamento.desc}
+                onChange={e => setFormAgendamento({ ...formAgendamento, desc: e.target.value })}
+                placeholder="Ex: Instalar farol que estava aguardando chegar"
+                rows={2}
+                className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] text-sm resize-none"
+              />
+            </div>
+
+            <button
+              onClick={handleSalvarAgendamento}
+              disabled={salvandoAgendamento}
+              className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 hover:bg-black transition disabled:opacity-50 mt-2"
+            >
+              {salvandoAgendamento ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
+              Confirmar Agendamento
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MODAL ADICIONAR ITEM */}
       {modalAberto && (

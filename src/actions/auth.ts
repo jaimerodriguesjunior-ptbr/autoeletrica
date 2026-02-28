@@ -33,19 +33,21 @@ export async function getProfileServerAction() {
     // Busca configurações da empresa (se houver) para gerenciar módulos
     let usa_fiscal = true;
     let usa_caixa = true;
+    let usa_agendamento = true;
     let nome_fantasia = "";
     let logo_url = "";
 
     if (profile.organization_id) {
       const { data: company } = await supabaseAdmin
         .from('company_settings')
-        .select('usa_fiscal, usa_caixa, nome_fantasia, logo_url')
+        .select('*')
         .eq('organization_id', profile.organization_id)
         .single()
 
       if (company) {
         usa_fiscal = company.usa_fiscal !== undefined ? company.usa_fiscal : true;
         usa_caixa = company.usa_caixa !== undefined ? company.usa_caixa : true;
+        usa_agendamento = company.usa_agendamento !== undefined ? company.usa_agendamento : true;
         nome_fantasia = company.nome_fantasia || "";
         logo_url = company.logo_url || "";
       }
@@ -57,6 +59,7 @@ export async function getProfileServerAction() {
         ...profile,
         usa_fiscal,
         usa_caixa,
+        usa_agendamento,
         nome_fantasia,
         logo_url
       }
