@@ -1,0 +1,133 @@
+# Mapa da Implementação de Agendamento
+
+## Objetivo
+Este pacote documenta a implementação de agendamento com dois fluxos:
+1. Agendamento sem OS prévia (`avaliacao`).
+2. Agendamento com OS já existente (`ja_tem_os`).
+
+Também cobre:
+- Alertas internos para equipe.
+- Ações por botões (adiar alerta, reagendar, abrir OS, confirmar presença).
+- Portal do cliente com acesso por token.
+- Vinculação agendamento <-> OS.
+
+---
+
+## Visão Geral dos Fluxos
+
+## 1) Criação de Agendamento (Admin)
+Arquivo principal: `app/(admin)/agendamentos/page.tsx`
+
+- Tipos:
+  - `avaliacao`: pode usar cliente cadastrado ou dados avulsos na descrição.
+  - `ja_tem_os`: busca uma OS existente e herda cliente/veículo.
+- Campos principais persistidos em `appointments`:
+  - `organization_id`, `client_id`, `vehicle_id`, `work_order_id`
+  - `type`, `status`, `description`
+  - `start_time`, `duration_minutes`
+  - `token` (acesso portal)
+
+---
+
+## 2) Alertas Globais para Equipe
+Arquivos:
+- `src/components/GlobalAppointmentAlert.tsx`
+- `app/api/agendamentos/alertas/route.ts`
+- `app/api/agendamentos/alertas/adiar/route.ts`
+
+- Banner global no layout admin exibe agendamentos do dia em janela de alerta.
+- Ações no banner:
+  - **Avisar +15m**: grava `alerta_adiado_ate`.
+  - **Reagendar**: abre modal e altera data/hora.
+  - **Abrir OS**: envia para `/atendimento/nova-os?appointment_token=...`.
+
+---
+
+## 3) Reagendamento
+Arquivos:
+- `app/(admin)/agendamentos/_components/RescheduleModal.tsx`
+- `app/(admin)/agendamentos/_components/MonthCalendarPopover.tsx`
+
+- Modal atualiza `appointments.start_time`.
+- Ao reagendar, status volta para `agendado`.
+
+---
+
+## 4) Abrir OS a partir do Agendamento
+Arquivo: `app/(admin)/atendimento/nova-os/page.tsx`
+
+- Lê `appointment_token` da URL.
+- Ao finalizar OS:
+  - cria `work_orders`.
+  - herda `public_token` da OS com o token do agendamento.
+  - atualiza `appointments.work_order_id` para vincular a OS criada.
+
+---
+
+## 5) Agendamentos dentro da Tela de Detalhes da OS
+Arquivo: `app/(admin)/os/detalhes/[id]/page.tsx`
+
+- Permite criar novos agendamentos vinculados à OS (`work_order_id`).
+- Exibe link de acompanhamento para cliente usando token público.
+
+---
+
+## 6) Portal do Cliente por Token
+Arquivos:
+- `app/acompanhar/page.tsx`
+- `app/api/portal/os/route.ts`
+- `app/api/portal/confirmar-presenca/route.ts`
+- `app/api/portal/aprovar/route.ts`
+
+Com `?token=...`:
+- API tenta buscar primeiro `work_orders.public_token`.
+- Se não achar, busca `appointments.token`.
+- Se for agendamento:
+  - mostra card de horário/status.
+  - permite **Confirmar Presença** (status -> `confirmado`).
+- Se for OS:
+  - mostra progresso, orçamento, itens e ações de aprovação.
+
+---
+
+## Modelo de Dados / Migrações
+Arquivos:
+- `migration_appointments.sql`
+- `migration_add_confirmado_status.sql`
+- `migration_add_alerta_adiado_ate.sql`
+
+Campos importantes em `appointments`:
+- `type`, `status`, `token`, `work_order_id`, `start_time`, `duration_minutes`
+- `alerta_adiado_ate` para soneca de alerta
+- RLS e políticas de acesso
+
+---
+
+## Regras de Negócio Relevantes
+
+- Token é usado como chave de entrada no portal.
+- Agendamento pode existir sem OS.
+- Quando OS é criada a partir do agendamento, existe vínculo via `work_order_id`.
+- Confirmação de presença é ação do cliente no portal.
+- Equipe opera ações operacionais via banner/listagem (adiar, reagendar, cancelar, concluir).
+
+---
+
+## Pontos de Atenção para Revisão Técnica
+
+- Consistência entre tipos aceitos no front e constraints SQL.
+- Evitar duplicação de OS no fluxo de “Abrir OS”.
+- Garantir existência e cobertura de rotas API usadas por botões.
+- Revisar políticas RLS públicas por token para menor exposição possível.
+- Validar consistência de vínculo `vehicle_id` (ID real vs placa).
+
+---
+
+## Perguntas sugeridas para o NotebookLM
+
+1. Quais são todos os caminhos possíveis do token entre agendamento, OS e portal?
+2. Em quais cenários um agendamento continua aparecendo no alerta mesmo após abrir OS?
+3. Existem inconsistências entre constraints SQL e valores enviados pelo front?
+4. Quais botões dependem de rotas API que podem estar ausentes?
+5. Onde há risco de duplicação de registro (OS/agendamento)?
+6. Quais mudanças mínimas deixam o fluxo “com OS / sem OS” mais robusto?
