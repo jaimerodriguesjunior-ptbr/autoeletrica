@@ -16,6 +16,9 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export const metadata: Metadata = {
   title: "Autoelétrica Pro",
   description: "Sistema de Gestão Inteligente",

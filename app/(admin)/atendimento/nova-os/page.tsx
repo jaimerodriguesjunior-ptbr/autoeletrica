@@ -127,6 +127,10 @@ export default function NovaOS() {
     const [modalItemAberto, setModalItemAberto] = useState(false);
     const [abaItem, setAbaItem] = useState<"pecas" | "servicos">("pecas");
 
+    // Edição de Item
+    const [itemEditando, setItemEditando] = useState<OSItem | null>(null);
+    const [modalEditarItemAberto, setModalEditarItemAberto] = useState(false);
+
     // Filtros e Inputs Modais
     const [termoBuscaItem, setTermoBuscaItem] = useState("");
     const [termoBuscaCliente, setTermoBuscaCliente] = useState("");
@@ -999,46 +1003,23 @@ export default function NovaOS() {
                                                     </p>
                                                 </div>
 
-                                                {/* CONTROLE DE QUANTIDADE */}
+                                                {/* INFORMAÇÕES DO ITEM E BOTÃO EDITAR */}
                                                 <div className="flex items-center gap-3">
-                                                    <div className="flex items-center bg-white rounded-lg px-1">
-                                                        <button
-                                                            onClick={() => alterarQuantidade(item.id, -1)}
-                                                            className="p-1 hover:text-red-500"
-                                                        >
-                                                            <Minus size={14} />
-                                                        </button>
-                                                        <span className="text-xs font-bold w-6 text-center">{item.qtd}</span>
-                                                        <button
-                                                            onClick={() => alterarQuantidade(item.id, 1)}
-                                                            className="p-1 hover:text-green-500"
-                                                        >
-                                                            <Plus size={14} />
-                                                        </button>
-                                                    </div>
-
-                                                    <div className="flex flex-col items-end">
-                                                        <div className={`flex items-center gap-1 bg-white px-2 py-1 rounded-lg border focus-within:border-[#FACC15] focus-within:ring-1 focus-within:ring-[#FACC15] shadow-sm ${item.pecaCliente ? 'border-yellow-200 opacity-60' : 'border-stone-200'}`}>
-                                                            <span className="text-xs text-stone-400 font-bold">R$</span>
-                                                            <input
-                                                                type="number"
-                                                                step="0.01"
-                                                                min="0"
-                                                                value={item.valor}
-                                                                disabled={item.pecaCliente}
-                                                                onChange={(e) => {
-                                                                    const val = parseFloat(e.target.value);
-                                                                    setItens(prev => prev.map(i => i.id === item.id ? { ...i, valor: isNaN(val) ? 0 : val } : i));
-                                                                }}
-                                                                className={`w-16 text-right font-bold outline-none text-sm bg-transparent ${item.pecaCliente ? 'text-stone-400 line-through' : 'text-[#1A1A1A]'}`}
-                                                            />
-                                                        </div>
-                                                        {item.qtd > 1 && (
-                                                            <span className={`text-[10px] font-bold mt-1 ${item.pecaCliente ? 'text-stone-300 line-through' : 'text-stone-400'}`}>
-                                                                Total: R$ {((item.valor || 0) * item.qtd).toFixed(2)}
-                                                            </span>
-                                                        )}
-                                                    </div>
+                                                    <button
+                                                        onClick={() => {
+                                                            setItemEditando(item);
+                                                            setModalEditarItemAberto(true);
+                                                        }}
+                                                        className="text-right mr-2 p-2 rounded-xl hover:bg-stone-200/50 transition cursor-pointer"
+                                                        title="Clique para editar"
+                                                    >
+                                                        <p className={`font-bold text-[#1A1A1A] ${item.pecaCliente ? 'text-stone-400 line-through' : ''}`}>
+                                                            R$ {((item.valor || 0) * item.qtd).toFixed(2)}
+                                                        </p>
+                                                        <p className="text-[10px] text-stone-500">
+                                                            {item.qtd}x R$ {(item.valor || 0).toFixed(2)}
+                                                        </p>
+                                                    </button>
 
                                                     <button onClick={() => removerItem(item.id)} className="text-stone-300 hover:text-red-500 pl-2 border-l border-stone-200">
                                                         <Trash2 size={16} />
@@ -1244,6 +1225,72 @@ export default function NovaOS() {
                                         </button>
                                     ))}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL EDITAR ITEM */}
+            {modalEditarItemAberto && itemEditando && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-6">
+                        <div className="flex justify-between items-center">
+                            <h2 className="font-bold text-lg text-[#1A1A1A]">Editar Item</h2>
+                            <button onClick={() => { setModalEditarItemAberto(false); setItemEditando(null); }}>
+                                <X size={20} className="text-stone-400" />
+                            </button>
+                        </div>
+
+                        <div>
+                            <p className="font-bold text-sm text-[#1A1A1A]">{itemEditando.nome}</p>
+                            <p className="text-xs text-stone-500 uppercase">{itemEditando.tipo}</p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-stone-400 ml-1">QUANTIDADE</label>
+                                <div className="flex items-center justify-between bg-[#F8F7F2] rounded-2xl p-2 border-2 border-stone-300">
+                                    <button
+                                        onClick={() => setItemEditando(prev => prev ? { ...prev, qtd: Math.max(1, prev.qtd - 1) } : prev)}
+                                        className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
+                                    >
+                                        <Minus size={20} />
+                                    </button>
+                                    <span className="font-bold text-2xl">{itemEditando.qtd}</span>
+                                    <button
+                                        onClick={() => setItemEditando(prev => prev ? { ...prev, qtd: prev.qtd + 1 } : prev)}
+                                        className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
+                                    >
+                                        <Plus size={20} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-bold text-stone-400 ml-1">VALOR UNITÁRIO (R$)</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={itemEditando.valor}
+                                    onChange={(e) => {
+                                        const val = parseFloat(e.target.value);
+                                        setItemEditando(prev => prev ? { ...prev, valor: isNaN(val) ? 0 : val } : prev);
+                                    }}
+                                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl text-center text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                setItens(prev => prev.map(i => i.id === itemEditando.id ? itemEditando : i));
+                                setModalEditarItemAberto(false);
+                                setItemEditando(null);
+                            }}
+                            className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-xl shadow-md hover:scale-105 transition flex items-center justify-center gap-2"
+                        >
+                            <Save size={18} /> Salvar Alterações
+                        </button>
                     </div>
                 </div>
             )}

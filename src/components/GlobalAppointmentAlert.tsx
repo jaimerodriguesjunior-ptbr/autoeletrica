@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Clock, AlertTriangle, AlertCircle, Calendar, ArrowRight, Loader2, ChevronLeft, ChevronRight, Check, Eye } from "lucide-react";
+import { Clock, AlertTriangle, AlertCircle, Calendar, ArrowRight, Loader2, ChevronLeft, ChevronRight, Check, Eye, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RescheduleModal } from "../../app/(admin)/agendamentos/_components/RescheduleModal";
@@ -93,7 +93,7 @@ export function GlobalAppointmentAlert() {
     };
 
     const naoCompareceu = async () => {
-        if (!confirm("Marcar cliente como não compareceu?")) return;
+        if (!confirm("Marcar cliente como n\u00e3o compareceu?")) return;
         setIsFinishing(true);
         try {
             // Importa supabase config via API route manual e atualiza
@@ -105,6 +105,23 @@ export function GlobalAppointmentAlert() {
             if (res.ok) fetchAlertas();
         } catch (e) {
             alert("Erro");
+        } finally {
+            setIsFinishing(false);
+        }
+    };
+
+    const cancelarAgendamento = async () => {
+        if (!confirm("Deseja realmente cancelar este agendamento?")) return;
+        setIsFinishing(true);
+        try {
+            const res = await fetch(`/api/agendamentos/${currentApt.id}/status`, {
+                method: 'PATCH',
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: 'cancelado' })
+            });
+            if (res.ok) fetchAlertas();
+        } catch (e) {
+            alert("Erro ao cancelar");
         } finally {
             setIsFinishing(false);
         }
@@ -165,6 +182,15 @@ export function GlobalAppointmentAlert() {
 
                 {/* Botoes de Controle */}
                 <div className="flex flex-1 md:flex-none gap-2">
+                    <button
+                        onClick={cancelarAgendamento}
+                        disabled={isFinishing}
+                        className="flex-1 md:flex-none px-3 py-2.5 md:py-2 bg-black/20 text-white rounded-xl text-xs font-bold hover:bg-black/30 transition-colors relative z-50 cursor-pointer text-center flex items-center justify-center gap-1"
+                    >
+                        {isFinishing ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                        Cancelar
+                    </button>
+
                     <button
                         onClick={() => adiarAlerta(15)}
                         disabled={isSnoozing}

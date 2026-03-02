@@ -7,8 +7,8 @@ import Image from "next/image";
 import {
   ArrowLeft, CheckCircle, Clock, Wrench, Package, Save,
   CheckSquare, MessageCircle, User, Car, Loader2, DollarSign,
-  Plus, X, Calendar, CreditCard, Trash2, Printer, Camera, UserCheck, ShieldCheck,
-  Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download, Search, AlertTriangle
+  Plus, Minus, X, Calendar, CreditCard, Trash2, Printer, Camera, UserCheck, ShieldCheck,
+  Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download, Search, AlertTriangle, Mic
 } from "lucide-react";
 import { createClient } from "../../../../../src/lib/supabase";
 import { useAuth } from "../../../../../src/contexts/AuthContext";
@@ -89,6 +89,63 @@ export default function DetalhesOS() {
   // Previsão de Entrega
   const [previsao, setPrevisao] = useState("");
 
+  // Speech Recognition (Laudo)
+  const recognitionDefeitosRef = useRef<any>(null);
+  const recognitionServicosRef = useRef<any>(null);
+  const [isListeningDefeitos, setIsListeningDefeitos] = useState(false);
+  const [isListeningServicos, setIsListeningServicos] = useState(false);
+
+  const startSpeech = (target: 'defeitos' | 'servicos') => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Seu navegador n\u00e3o suporta reconhecimento de voz. Use o Google Chrome.');
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-BR';
+    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.onresult = (event: any) => {
+      let transcript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          transcript += event.results[i][0].transcript;
+        }
+      }
+      if (transcript) {
+        if (target === 'defeitos') {
+          setDefeitosConstatados(prev => prev ? prev + ' ' + transcript : transcript);
+        } else {
+          setServicosExecutados(prev => prev ? prev + ' ' + transcript : transcript);
+        }
+      }
+    };
+    recognition.onend = () => {
+      if (target === 'defeitos') setIsListeningDefeitos(false);
+      else setIsListeningServicos(false);
+    };
+    recognition.onerror = () => {
+      if (target === 'defeitos') setIsListeningDefeitos(false);
+      else setIsListeningServicos(false);
+    };
+    if (target === 'defeitos') {
+      recognitionDefeitosRef.current = recognition;
+      setIsListeningDefeitos(true);
+    } else {
+      recognitionServicosRef.current = recognition;
+      setIsListeningServicos(true);
+    }
+    recognition.start();
+  };
+
+  const stopSpeech = (target: 'defeitos' | 'servicos') => {
+    if (target === 'defeitos') {
+      recognitionDefeitosRef.current?.stop();
+    } else {
+      recognitionServicosRef.current?.stop();
+    }
+  };
+
   // Estados para Adicionar Item
   const [listaProdutos, setListaProdutos] = useState<CatalogItem[]>([]);
   const [listaServicos, setListaServicos] = useState<CatalogItem[]>([]);
@@ -96,6 +153,10 @@ export default function DetalhesOS() {
   const [abaItem, setAbaItem] = useState<"pecas" | "servicos">("pecas");
   const [termoBusca, setTermoBusca] = useState("");
   const [adicionandoItem, setAdicionandoItem] = useState(false);
+
+  // Edição de Item (modal)
+  const [itemEditando, setItemEditando] = useState<WorkOrderItem | null>(null);
+  const [modalEditarItemAberto, setModalEditarItemAberto] = useState(false);
 
   // Scanner PDF
   const scannerInputRef = useRef<HTMLInputElement>(null);
@@ -515,6 +576,38 @@ export default function DetalhesOS() {
     }
   };
 
+  const handleAtualizarPrecoItem = async (item: WorkOrderItem, novoPreco: number) => {
+    if (!os) return;
+    setUpdating(true);
+    try {
+      const novoTotalPrice = novoPreco * item.quantity;
+
+      await supabase
+        .from('work_order_items')
+        .update({ unit_price: novoPreco, total_price: novoTotalPrice })
+        .eq('id', item.id);
+
+      const itensAtualizados = os.work_order_items.map(i =>
+        i.id === item.id ? { ...i, unit_price: novoPreco, total_price: novoTotalPrice } : i
+      );
+
+      const novoTotalOS = itensAtualizados.reduce((acc, i) =>
+        i.peca_cliente ? acc : acc + i.total_price, 0
+      );
+
+      await supabase
+        .from('work_orders')
+        .update({ total: novoTotalOS })
+        .eq('id', os.id);
+
+      fetchOS();
+    } catch (error: any) {
+      alert("Erro ao atualizar preço: " + error.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const handleCancelarOS = async () => {
     if (!os) return;
     if (!confirm("ATENÇÃO: Isso irá cancelar a OS e devolver todas as peças ao estoque. Continuar?")) return;
@@ -837,28 +930,28 @@ export default function DetalhesOS() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto pb-2 md:pb-0">
           {profile?.usa_agendamento !== false && (
             <button
               onClick={() => setModalAgendamentoAberto(true)}
-              className="bg-[#1A1A1A] text-[#FACC15] px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-black transition"
+              className="bg-[#1A1A1A] text-[#FACC15] px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-black transition flex-1 md:flex-none"
             >
-              <Calendar size={18} /> + Reagendar
+              <Calendar size={18} /> <span className="hidden md:inline">+ Reagendar</span>
             </button>
           )}
 
           {/* BOTÃO DE IMPRESSÃO (NOVO) */}
-          <Link href={`/imprimir/os/${os.id}`} target="_blank">
-            <button className="bg-white border border-stone-200 text-[#1A1A1A] px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-stone-50 transition">
+          <Link href={`/imprimir/os/${os.id}`} target="_blank" className="hidden md:block">
+            <button className="bg-white border border-stone-200 text-[#1A1A1A] px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-stone-50 transition whitespace-nowrap">
               <Printer size={18} /> Imprimir
             </button>
           </Link>
 
           <button
             onClick={handleWhatsapp}
-            className="bg-green-100 text-green-700 px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-green-200 transition"
+            className="bg-green-100 text-green-700 px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-green-200 transition flex-1 md:flex-none"
           >
-            <MessageCircle size={18} /> Falar com Cliente
+            <MessageCircle size={18} /> <span className="hidden md:inline">Cliente</span>
           </button>
 
           <button
@@ -976,22 +1069,60 @@ export default function DetalhesOS() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">DEFEITOS CONSTATADOS PELA OFICINA</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold text-stone-400 ml-1">DEFEITOS CONSTATADOS PELA OFICINA</label>
+                  <button
+                    type="button"
+                    onClick={() => isListeningDefeitos ? stopSpeech('defeitos') : startSpeech('defeitos')}
+                    className={`p-2 rounded-full transition-all duration-200 ${isListeningDefeitos
+                      ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse'
+                      : 'bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]'
+                      }`}
+                    title={isListeningDefeitos ? 'Parar grava\u00e7\u00e3o' : 'Ditar defeitos'}
+                  >
+                    <Mic size={14} />
+                  </button>
+                </div>
+                {isListeningDefeitos && (
+                  <div className="flex items-center gap-2 mb-2 animate-pulse">
+                    <span className="w-2 h-2 bg-red-500 rounded-full" />
+                    <span className="text-xs font-bold text-red-500">Ouvindo... dite os defeitos encontrados</span>
+                  </div>
+                )}
                 <textarea
                   value={defeitosConstatados}
                   onChange={e => setDefeitosConstatados(e.target.value)}
-                  placeholder="Descreva aqui o que foi encontrado de problema após a avaliação..."
+                  placeholder="Descreva aqui o que foi encontrado de problema ap\u00f3s a avalia\u00e7\u00e3o..."
                   rows={3}
                   className="w-full bg-[#F8F7F2] rounded-2xl p-4 border border-stone-200 outline-none focus:border-[#FACC15] text-sm resize-none"
                 />
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">SERVIÇOS EXECUTADOS</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold text-stone-400 ml-1">SERVI\u00c7OS EXECUTADOS</label>
+                  <button
+                    type="button"
+                    onClick={() => isListeningServicos ? stopSpeech('servicos') : startSpeech('servicos')}
+                    className={`p-2 rounded-full transition-all duration-200 ${isListeningServicos
+                      ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse'
+                      : 'bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]'
+                      }`}
+                    title={isListeningServicos ? 'Parar grava\u00e7\u00e3o' : 'Ditar servi\u00e7os'}
+                  >
+                    <Mic size={14} />
+                  </button>
+                </div>
+                {isListeningServicos && (
+                  <div className="flex items-center gap-2 mb-2 animate-pulse">
+                    <span className="w-2 h-2 bg-red-500 rounded-full" />
+                    <span className="text-xs font-bold text-red-500">Ouvindo... dite os servi\u00e7os realizados</span>
+                  </div>
+                )}
                 <textarea
                   value={servicosExecutados}
                   onChange={e => setServicosExecutados(e.target.value)}
-                  placeholder="Descreva aqui o que foi feito para a resolução do problema..."
+                  placeholder="Descreva aqui o que foi feito para a resolu\u00e7\u00e3o do problema..."
                   rows={3}
                   className="w-full bg-[#F8F7F2] rounded-2xl p-4 border border-stone-200 outline-none focus:border-[#FACC15] text-sm resize-none"
                 />
@@ -1142,12 +1273,32 @@ export default function DetalhesOS() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className={`text-stone-600 font-medium ${item.peca_cliente ? 'line-through opacity-60' : ''}`}>{item.name}</p>
-                      <p className="text-[10px] text-stone-400">{item.quantity}x {formatCurrency(item.unit_price)}</p>
+                      <p className="text-[10px] text-stone-400">
+                        {item.quantity}x R$ {(item.unit_price || 0).toFixed(2)}
+                      </p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className={`font-bold ${item.peca_cliente ? 'text-stone-400 line-through' : 'text-[#1A1A1A]'}`}>{formatCurrency(item.total_price)}</span>
+                      {os.status !== 'cancelado' && os.status !== 'entregue' ? (
+                        <button
+                          onClick={() => {
+                            setItemEditando(item);
+                            setModalEditarItemAberto(true);
+                          }}
+                          className="text-right p-2 rounded-xl hover:bg-stone-200/50 transition cursor-pointer"
+                          title="Clique para editar"
+                        >
+                          <p className={`font-bold text-[#1A1A1A] ${item.peca_cliente ? 'text-stone-400 line-through' : ''}`}>
+                            {formatCurrency((item.unit_price || 0) * item.quantity)}
+                          </p>
+                        </button>
+                      ) : (
+                        <div className="text-right p-2">
+                          <p className={`font-bold text-[#1A1A1A] ${item.peca_cliente ? 'text-stone-400 line-through' : ''}`}>
+                            {formatCurrency((item.unit_price || 0) * item.quantity)}
+                          </p>
+                        </div>
+                      )}
 
-                      {/* BOTÃO PEÇA DO CLIENTE E BOTÃO REMOVER SOMENTE SE A OS NÃO ESTIVER ENTREGUE/CANCELADA */}
                       {os.status !== 'cancelado' && os.status !== 'entregue' && (
                         <>
                           {item.tipo === 'peca' && (
@@ -1656,6 +1807,100 @@ export default function DetalhesOS() {
               className="w-full bg-stone-100 text-stone-600 font-bold py-3 rounded-2xl border-2 border-stone-300 hover:bg-stone-200 transition"
             >
               Fechar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDITAR ITEM */}
+      {modalEditarItemAberto && itemEditando && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="font-bold text-lg text-[#1A1A1A]">Editar Item</h2>
+              <button onClick={() => { setModalEditarItemAberto(false); setItemEditando(null); }}>
+                <X size={20} className="text-stone-400" />
+              </button>
+            </div>
+
+            <div>
+              <p className="font-bold text-sm text-[#1A1A1A]">{itemEditando.name}</p>
+              <p className="text-xs text-stone-500 uppercase">{itemEditando.tipo}</p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-1">QUANTIDADE</label>
+                <div className="flex items-center justify-between bg-[#F8F7F2] rounded-2xl p-2 border-2 border-stone-300">
+                  <button
+                    onClick={() => setItemEditando(prev => prev ? { ...prev, quantity: Math.max(1, prev.quantity - 1) } : prev)}
+                    className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
+                  >
+                    <Minus size={20} />
+                  </button>
+                  <span className="font-bold text-2xl">{itemEditando.quantity}</span>
+                  <button
+                    onClick={() => setItemEditando(prev => prev ? { ...prev, quantity: prev.quantity + 1 } : prev)}
+                    className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
+                  >
+                    <Plus size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-1">VALOR UNITÁRIO (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={itemEditando.unit_price}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setItemEditando(prev => prev ? { ...prev, unit_price: isNaN(val) ? 0 : val } : prev);
+                  }}
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl text-center text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                />
+              </div>
+
+              <div className="bg-stone-50 rounded-2xl p-3 text-center">
+                <p className="text-xs text-stone-400 font-bold">TOTAL DO ITEM</p>
+                <p className="text-xl font-bold text-[#1A1A1A]">{formatCurrency((itemEditando.unit_price || 0) * itemEditando.quantity)}</p>
+              </div>
+            </div>
+
+            <button
+              onClick={async () => {
+                if (!os) return;
+                setUpdating(true);
+                try {
+                  const novoTotalPrice = itemEditando.unit_price * itemEditando.quantity;
+                  await supabase
+                    .from('work_order_items')
+                    .update({ unit_price: itemEditando.unit_price, quantity: itemEditando.quantity, total_price: novoTotalPrice })
+                    .eq('id', itemEditando.id);
+
+                  const itensAtualizados = os.work_order_items.map(i =>
+                    i.id === itemEditando.id ? { ...i, unit_price: itemEditando.unit_price, quantity: itemEditando.quantity, total_price: novoTotalPrice } : i
+                  );
+                  const novoTotalOS = itensAtualizados.reduce((acc, i) =>
+                    i.peca_cliente ? acc : acc + i.total_price, 0
+                  );
+                  await supabase.from('work_orders').update({ total: novoTotalOS }).eq('id', os.id);
+
+                  fetchOS();
+                  setModalEditarItemAberto(false);
+                  setItemEditando(null);
+                } catch (error: any) {
+                  alert('Erro ao atualizar item: ' + error.message);
+                } finally {
+                  setUpdating(false);
+                }
+              }}
+              disabled={updating}
+              className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-xl shadow-md hover:scale-105 transition flex items-center justify-center gap-2 disabled:opacity-70"
+            >
+              {updating ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Salvar Alterações
             </button>
           </div>
         </div>
