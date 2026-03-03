@@ -198,8 +198,7 @@ export default function Login() {
             </div>
 
             <button
-              type="button"
-              onClick={handleLogin}
+              type="submit"
               disabled={loading}
               className="w-full bg-[#FACC15] hover:bg-[#ffe03d] text-[#1A1A1A] font-bold py-4 rounded-2xl shadow-lg shadow-yellow-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
@@ -220,52 +219,54 @@ export default function Login() {
       </div>
 
       {/* --- MODAL ESQUECI A SENHA --- */}
-      {forgotOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl relative">
-            <button onClick={() => setForgotOpen(false)} className="absolute top-4 right-4 text-stone-400 hover:text-red-500"><X /></button>
+      {
+        forgotOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl relative">
+              <button onClick={() => setForgotOpen(false)} className="absolute top-4 right-4 text-stone-400 hover:text-red-500"><X /></button>
 
-            <h3 className="text-xl font-bold text-[#1A1A1A] mb-2">Recuperar Acesso</h3>
-            <p className="text-stone-500 text-sm mb-4">Informe seu e-mail para localizarmos seu cadastro.</p>
+              <h3 className="text-xl font-bold text-[#1A1A1A] mb-2">Recuperar Acesso</h3>
+              <p className="text-stone-500 text-sm mb-4">Informe seu e-mail para localizarmos seu cadastro.</p>
 
-            {!recoverStatus.type ? (
-              <form onSubmit={handleRecover} className="space-y-4">
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
-                  <input
-                    type="email"
-                    value={recoverEmail}
-                    onChange={(e) => setRecoverEmail(e.target.value)}
-                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15]"
-                    placeholder="seu@email.com"
-                    autoFocus
-                    required
-                  />
-                </div>
-                <button disabled={loadingRecover} className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3 rounded-2xl flex justify-center gap-2 hover:scale-105 transition">
-                  {loadingRecover ? <Loader2 className="animate-spin" /> : <ArrowRight />} Consultar
-                </button>
-              </form>
-            ) : (
-              <div className={`p-4 rounded-2xl border flex flex-col items-center text-center gap-2 animate-in zoom-in 
+              {!recoverStatus.type ? (
+                <form onSubmit={handleRecover} className="space-y-4">
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                    <input
+                      type="email"
+                      value={recoverEmail}
+                      onChange={(e) => setRecoverEmail(e.target.value)}
+                      className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium text-[#1A1A1A] outline-none focus:ring-2 focus:ring-[#FACC15]"
+                      placeholder="seu@email.com"
+                      autoFocus
+                      required
+                    />
+                  </div>
+                  <button disabled={loadingRecover} className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3 rounded-2xl flex justify-center gap-2 hover:scale-105 transition">
+                    {loadingRecover ? <Loader2 className="animate-spin" /> : <ArrowRight />} Consultar
+                  </button>
+                </form>
+              ) : (
+                <div className={`p-4 rounded-2xl border flex flex-col items-center text-center gap-2 animate-in zoom-in 
                         ${recoverStatus.type === 'success' ? 'bg-green-50 border-green-100 text-green-800' :
-                  recoverStatus.type === 'info' ? 'bg-blue-50 border-blue-100 text-blue-800' : 'bg-red-50 border-red-100 text-red-800'}`}
-              >
-                {recoverStatus.type === 'success' && <CheckCircle size={32} className="text-green-600" />}
-                {recoverStatus.type === 'info' && <Info size={32} className="text-blue-600" />}
-                {recoverStatus.type === 'error' && <AlertCircle size={32} className="text-red-500" />}
+                    recoverStatus.type === 'info' ? 'bg-blue-50 border-blue-100 text-blue-800' : 'bg-red-50 border-red-100 text-red-800'}`}
+                >
+                  {recoverStatus.type === 'success' && <CheckCircle size={32} className="text-green-600" />}
+                  {recoverStatus.type === 'info' && <Info size={32} className="text-blue-600" />}
+                  {recoverStatus.type === 'error' && <AlertCircle size={32} className="text-red-500" />}
 
-                <p className="font-bold text-sm">{recoverStatus.msg}</p>
+                  <p className="font-bold text-sm">{recoverStatus.msg}</p>
 
-                <button onClick={() => setForgotOpen(false)} className="text-xs underline mt-2 opacity-70 hover:opacity-100">
-                  Fechar
-                </button>
-              </div>
-            )}
+                  <button onClick={() => setForgotOpen(false)} className="text-xs underline mt-2 opacity-70 hover:opacity-100">
+                    Fechar
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-    </div>
+    </div >
   );
 }

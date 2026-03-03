@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Clock, AlertTriangle, AlertCircle, Calendar, ArrowRight, Loader2, ChevronLeft, ChevronRight, Check, Eye, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -25,6 +25,9 @@ export function GlobalAppointmentAlert() {
     const [isSnoozing, setIsSnoozing] = useState(false);
     const [isFinishing, setIsFinishing] = useState(false);
     const [rescheduleData, setRescheduleData] = useState<{ id: string, start_time: string } | null>(null);
+    const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+    const [notificationSupported, setNotificationSupported] = useState(false);
+    const alertedKeysRef = useRef<Set<string>>(new Set());
     const router = useRouter();
 
     const fetchAlertas = useCallback(async () => {
@@ -37,7 +40,7 @@ export function GlobalAppointmentAlert() {
             const data = await res.json();
             console.log("[GlobalAlert] Resposta da API:", data);
 
-            // Ordenar por horário
+            // Ordenar por horario
             const sorted = (data || []).sort((a: Apto, b: Apto) =>
                 new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
             );
@@ -57,6 +60,87 @@ export function GlobalAppointmentAlert() {
         const interval = setInterval(fetchAlertas, 60000);
         return () => clearInterval(interval);
     }, [fetchAlertas]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const supported = "Notification" in window;
+        setNotificationSupported(supported);
+        if (supported) {
+            setNotificationPermission(window.Notification.permission);
+        }
+    }, []);
+
+    const requestNotificationPermission = async () => {
+        if (typeof window === "undefined" || !("Notification" in window)) return;
+        try {
+            const permission = await window.Notification.requestPermission();
+            setNotificationPermission(permission);
+        } catch (e) {
+            console.error("Falha ao solicitar permissao de notificacao", e);
+        }
+    };
+
+    useEffect(() => {
+        const playSound = () => {
+            if (typeof window === "undefined" || typeof window.AudioContext === "undefined") return;
+            try {
+                const ctx = new window.AudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(880, ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(660, ctx.currentTime + 0.22);
+                gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.26);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.28);
+                osc.onended = () => void ctx.close();
+            } catch (e) {
+                console.error("Falha ao tocar alerta sonoro", e);
+            }
+        };
+
+        const sendNotification = (apt: Apto) => {
+            if (typeof window === "undefined" || !("Notification" in window)) return;
+            if (window.Notification.permission !== "granted") return;
+            const timeObj = new Date(apt.start_time);
+            const hora = timeObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+            const nomeParaNotificacao =
+                apt.clients?.nome || (apt.description && apt.description.match(/Nome:\s*([A-Za-zÀ-ÿ\s]+)/i)?.[1]) || "Cliente";
+            try {
+                new window.Notification("Agendamento em alerta", { body: `${nomeParaNotificacao} - ${hora}`, tag: apt.id });
+            } catch (e) {
+                console.error("Falha ao enviar notificacao", e);
+            }
+        };
+
+        const validKeys = new Set<string>();
+        let hasNewAlerts = false;
+
+        agendamentos.forEach((apt) => {
+            const key = `${apt.id}:${apt.start_time}`;
+            validKeys.add(key);
+
+            if (!alertedKeysRef.current.has(key)) {
+                alertedKeysRef.current.add(key);
+                hasNewAlerts = true;
+                sendNotification(apt);
+            }
+        });
+
+        for (const key of alertedKeysRef.current) {
+            if (!validKeys.has(key)) {
+                alertedKeysRef.current.delete(key);
+            }
+        }
+
+        if (hasNewAlerts) {
+            playSound();
+        }
+    }, [agendamentos]);
 
     if (agendamentos.length === 0) return null;
 
@@ -93,18 +177,22 @@ export function GlobalAppointmentAlert() {
     };
 
     const naoCompareceu = async () => {
-        if (!confirm("Marcar cliente como n\u00e3o compareceu?")) return;
+        if (!confirm("Marcar cliente como não compareceu?")) return;
         setIsFinishing(true);
         try {
-            // Importa supabase config via API route manual e atualiza
             const res = await fetch(`/api/agendamentos/${currentApt.id}/status`, {
-                method: 'PATCH',
+                method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ status: 'nao_compareceu' })
+                body: JSON.stringify({ status: "nao_compareceu" }),
             });
-            if (res.ok) fetchAlertas();
-        } catch (e) {
-            alert("Erro");
+            if (res.ok) {
+                fetchAlertas();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(`Erro do servidor: ${err.error || res.statusText}`);
+            }
+        } catch (e: any) {
+            alert(`Erro de conexão: ${e.message}`);
         } finally {
             setIsFinishing(false);
         }
@@ -114,14 +202,17 @@ export function GlobalAppointmentAlert() {
         if (!confirm("Deseja realmente cancelar este agendamento?")) return;
         setIsFinishing(true);
         try {
-            const res = await fetch(`/api/agendamentos/${currentApt.id}/status`, {
-                method: 'PATCH',
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ status: 'cancelado' })
+            const res = await fetch(`/api/agendamentos/${currentApt.id}`, {
+                method: "DELETE",
             });
-            if (res.ok) fetchAlertas();
-        } catch (e) {
-            alert("Erro ao cancelar");
+            if (res.ok) {
+                fetchAlertas();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(`Erro ao cancelar: ${err.error || res.statusText}`);
+            }
+        } catch (e: any) {
+            alert(`Erro de conexão ao cancelar: ${e.message}`);
         } finally {
             setIsFinishing(false);
         }
@@ -129,30 +220,34 @@ export function GlobalAppointmentAlert() {
 
     const isProximo = alertType === "proximo";
     const isAtrasado = alertType === "atrasado";
-
-    const nomeCliente = currentApt.clients?.nome || (currentApt.description && currentApt.description.match(/Nome:\s*([A-Za-zÀ-ÿ\s]+)/i)?.[1]) || "Cliente";
+    const nomeCliente =
+        currentApt.clients?.nome || (currentApt.description && currentApt.description.match(/Nome:\s*([A-Za-zÀ-ÿ\s]+)/i)?.[1]) || "Cliente";
 
     return (
-        <div className={`relative w-full text-white shadow-md border-b flex flex-col md:flex-row items-start md:items-center justify-between px-4 md:px-6 py-4 md:py-3 transition-colors duration-300 gap-4 md:gap-0
-      ${isProximo ? 'bg-blue-600 border-blue-700' : isAtrasado ? 'bg-red-600 border-red-700' : 'bg-[#FACC15] text-[#1A1A1A] border-yellow-500'}
-    `}>
-
+        <div
+            className={`relative w-full text-white shadow-md border-b flex flex-col md:flex-row items-start md:items-center justify-between px-4 md:px-6 py-4 md:py-3 transition-colors duration-300 gap-4 md:gap-0
+      ${isProximo ? "bg-blue-600 border-blue-700" : isAtrasado ? "bg-red-600 border-red-700" : "bg-[#FACC15] text-[#1A1A1A] border-yellow-500"}
+    `}
+        >
             {/* Esquerda: Status Text + Info */}
             <div className="flex items-start md:items-center gap-3 md:gap-4 w-full md:w-auto">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isProximo ? 'bg-blue-500' : isAtrasado ? 'bg-red-500' : 'bg-yellow-400'}`}>
-                    {isProximo ? <Clock size={20} className={isProximo ? "text-white" : "text-[#1A1A1A]"} /> :
-                        isAtrasado ? <AlertTriangle size={20} className="text-white" /> :
-                            <AlertCircle size={20} className="text-[#1A1A1A]" />}
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isProximo ? "bg-blue-500" : isAtrasado ? "bg-red-500" : "bg-yellow-400"}`}>
+                    {isProximo ? (
+                        <Clock size={20} className={isProximo ? "text-white" : "text-[#1A1A1A]"} />
+                    ) : isAtrasado ? (
+                        <AlertTriangle size={20} className="text-white" />
+                    ) : (
+                        <AlertCircle size={20} className="text-[#1A1A1A]" />
+                    )}
                 </div>
 
                 <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1 md:mb-0">
                         <p className={`text-xs font-bold uppercase tracking-wider ${isProximo ? "text-blue-200" : isAtrasado ? "text-red-200" : "text-yellow-800"}`}>
-                            {isProximo ? `Previsto em ${Math.abs(diffMinutos)} min` :
-                                isAtrasado ? `ATRASADO (${diffMinutos}m)` : "Na Loja"}
+                            {isProximo ? `Previsto em ${Math.abs(diffMinutos)} min` : isAtrasado ? `ATRASADO (${diffMinutos}m)` : "Na Loja"}
                         </p>
                         <p className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded ${isProximo ? "bg-blue-700 text-blue-100" : isAtrasado ? "bg-red-700 text-red-100" : "bg-yellow-500 text-yellow-900"}`}>
-                            {aptTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            {aptTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                         </p>
                     </div>
 
@@ -161,27 +256,42 @@ export function GlobalAppointmentAlert() {
                         {currentApt.vehicles && <span className="font-normal opacity-80 ml-2">({currentApt.vehicles.modelo})</span>}
                     </h3>
 
-                    <p className="text-sm opacity-90 truncate max-w-full md:max-w-[400px]">
-                        {currentApt.description || currentApt.type.replace('_', ' ')}
-                    </p>
+                    <p className="text-sm opacity-90 truncate max-w-full md:max-w-[400px]">{currentApt.description || currentApt.type.replace("_", " ")}</p>
                 </div>
             </div>
 
-            {/* Direita: Ações */}
+            {/* Direita: Acoes */}
             <div className="flex flex-wrap items-center gap-2 md:gap-3 w-full md:w-auto">
                 {/* Carrossel Controller */}
                 {agendamentos.length > 1 && (
-                    <div className={`flex items-center border rounded-lg overflow-hidden mr-0 md:mr-2 w-full md:w-auto justify-between md:justify-start mb-2 md:mb-0
-            ${isProximo ? 'border-blue-500 bg-blue-700/50' : isAtrasado ? 'border-red-500 bg-red-700/50' : 'border-yellow-600 bg-yellow-500/50'}
-          `}>
-                        <button disabled={currentIndex === 0} onClick={prevApt} className="p-2 md:p-1 hover:bg-black/10 disabled:opacity-30"><ChevronLeft size={16} /></button>
-                        <span className="text-xs font-bold px-4 md:px-2 whitespace-nowrap">{currentIndex + 1} de {agendamentos.length}</span>
-                        <button disabled={currentIndex === agendamentos.length - 1} onClick={nextApt} className="p-2 md:p-1 hover:bg-black/10 disabled:opacity-30"><ChevronRight size={16} /></button>
+                    <div
+                        className={`flex items-center border rounded-lg overflow-hidden mr-0 md:mr-2 w-full md:w-auto justify-between md:justify-start mb-2 md:mb-0
+            ${isProximo ? "border-blue-500 bg-blue-700/50" : isAtrasado ? "border-red-500 bg-red-700/50" : "border-yellow-600 bg-yellow-500/50"}
+          `}
+                    >
+                        <button disabled={currentIndex === 0} onClick={prevApt} className="p-2 md:p-1 hover:bg-black/10 disabled:opacity-30">
+                            <ChevronLeft size={16} />
+                        </button>
+                        <span className="text-xs font-bold px-4 md:px-2 whitespace-nowrap">
+                            {currentIndex + 1} de {agendamentos.length}
+                        </span>
+                        <button disabled={currentIndex === agendamentos.length - 1} onClick={nextApt} className="p-2 md:p-1 hover:bg-black/10 disabled:opacity-30">
+                            <ChevronRight size={16} />
+                        </button>
                     </div>
                 )}
 
                 {/* Botoes de Controle */}
                 <div className="flex flex-1 md:flex-none gap-2">
+                    {notificationSupported && notificationPermission !== "granted" && (
+                        <button
+                            onClick={requestNotificationPermission}
+                            className="flex-1 md:flex-none px-3 py-2.5 md:py-2 bg-black/20 text-white rounded-xl text-xs font-bold hover:bg-black/30 transition-colors relative z-50 cursor-pointer text-center"
+                        >
+                            Ativar notificacoes
+                        </button>
+                    )}
+
                     <button
                         onClick={cancelarAgendamento}
                         disabled={isFinishing}
@@ -195,7 +305,7 @@ export function GlobalAppointmentAlert() {
                         onClick={() => adiarAlerta(15)}
                         disabled={isSnoozing}
                         className={`flex-1 md:flex-none px-3 py-2.5 md:py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-opacity hover:opacity-80
-                   ${isAtrasado ? 'bg-red-700 text-white' : isProximo ? 'bg-blue-700 text-white' : 'bg-yellow-600 text-yellow-50'}
+                   ${isAtrasado ? "bg-red-700 text-white" : isProximo ? "bg-blue-700 text-white" : "bg-yellow-600 text-yellow-50"}
                  `}
                     >
                         {isSnoozing ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
@@ -216,7 +326,7 @@ export function GlobalAppointmentAlert() {
                     <Link
                         href={`/atendimento/nova-os?appointment_token=${currentApt.token}`}
                         className={`w-full md:w-auto px-4 py-2.5 md:py-2 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm hover:-translate-y-0.5 transition-transform mt-1 md:mt-0
-                 ${isProximo || isAtrasado ? 'bg-white text-[#1A1A1A]' : 'bg-[#1A1A1A] text-[#FACC15]'}
+                 ${isProximo || isAtrasado ? "bg-white text-[#1A1A1A]" : "bg-[#1A1A1A] text-[#FACC15]"}
                `}
                     >
                         <Check size={16} /> ABRIR OS
@@ -227,7 +337,7 @@ export function GlobalAppointmentAlert() {
                     <Link
                         href={`/os/detalhes/${currentApt.work_order_id}`}
                         className={`w-full md:w-auto px-4 py-2.5 md:py-2 rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm hover:-translate-y-0.5 transition-transform mt-1 md:mt-0
-                 ${isProximo || isAtrasado ? 'bg-white text-[#1A1A1A]' : 'bg-[#1A1A1A] text-[#FACC15]'}
+                 ${isProximo || isAtrasado ? "bg-white text-[#1A1A1A]" : "bg-[#1A1A1A] text-[#FACC15]"}
                `}
                     >
                         <Eye size={16} /> VER OS

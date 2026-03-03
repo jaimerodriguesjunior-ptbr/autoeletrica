@@ -239,7 +239,6 @@ export default function ImportarXML() {
                     xml_content: rawXml,
                     numero: notaInfo.nNF,
                     serie: '1', // Assumindo 1 se não tiver
-                    valores_total: notaInfo.total, // Ops, nome da coluna é valor_total? Verificar script. Script diz valor_total.
                     valor_total: notaInfo.total,
                     emitente_nome: notaInfo.emitente,
                     emitente_cnpj: notaInfo.emitenteCNPJ,
@@ -265,7 +264,8 @@ export default function ImportarXML() {
                     type: 'expense',
                     category: 'Estoque / Compras',
                     date: new Date().toISOString().split('T')[0],
-                    status: 'pending' // Fica pendente pra ele confirmar pagamento depois
+                    status: 'pending',
+                    payment_method: 'boleto' // Padrão para compras de fornecedor até que seja pago
                 });
             }
 

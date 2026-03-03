@@ -721,6 +721,7 @@ export default function DetalhesOS() {
             type: 'income',
             category: 'Serviços',
             status: 'pending',
+            payment_method: formaPagamento,
             date: dataVencimento.toISOString().split('T')[0]
           });
         }
@@ -734,6 +735,7 @@ export default function DetalhesOS() {
           type: 'income',
           category: 'Serviços',
           status: 'pending',
+          payment_method: formaPagamento,
           date: dataCheque
         });
 
@@ -746,6 +748,7 @@ export default function DetalhesOS() {
           type: 'income',
           category: 'Serviços',
           status: 'paid',
+          payment_method: formaPagamento,
           date: hoje.toISOString().split('T')[0]
         });
       }

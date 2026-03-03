@@ -83,10 +83,13 @@ export default function AgendamentosPage() {
 
     const fetchAppointments = async () => {
         setLoading(true);
-        const dayStr = selectedDate.toISOString().split("T")[0];
-        const nextDay = new Date(selectedDate);
-        nextDay.setDate(nextDay.getDate() + 1);
-        const nextDayStr = nextDay.toISOString().split("T")[0];
+        const year = selectedDate.getFullYear();
+        const month = selectedDate.getMonth();
+        const date = selectedDate.getDate();
+
+        // Limites exatos do dia no timezone local convertidos para UTC (ISO)
+        const inicioDoDiaIso = new Date(year, month, date, 0, 0, 0).toISOString();
+        const fimDoDiaIso = new Date(year, month, date, 23, 59, 59, 999).toISOString();
 
         const { data } = await supabase
             .from("appointments")
@@ -96,8 +99,8 @@ export default function AgendamentosPage() {
         vehicles (modelo, placa)
       `)
             .eq("organization_id", profile!.organization_id)
-            .gte("start_time", dayStr)
-            .lt("start_time", nextDayStr)
+            .gte("start_time", inicioDoDiaIso)
+            .lte("start_time", fimDoDiaIso)
             .neq("status", "cancelado")
             .order("start_time", { ascending: true });
 
@@ -403,12 +406,12 @@ export default function AgendamentosPage() {
             {/* HEATMAP */}
             <div className="bg-white rounded-[24px] p-6 border-2 border-stone-300 shadow-sm">
                 <h3 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-4">Ocupação por Horário</h3>
-                <div ref={heatmapScrollRef} className="flex gap-1.5 overflow-x-auto pb-2 scroll-smooth hide-scrollbar">
+                <div ref={heatmapScrollRef} className="flex gap-1.5 overflow-x-auto pt-2 pb-4 px-2 -mx-2 scroll-smooth hide-scrollbar">
                     {heatmapData.map(slot => (
                         <div
                             key={slot.hour}
                             data-hour={slot.hour}
-                            className={`flex-1 min-w-[50px] rounded-xl p-2 text-center border transition ${getHeatColor(slot.count)} ${isToday && slot.hour === new Date().getHours() ? 'ring-2 ring-[#1A1A1A] ring-offset-1' : ''}`}
+                            className={`flex-1 min-w-[50px] rounded-xl py-3 px-2 text-center border transition ${getHeatColor(slot.count)} ${isToday && slot.hour === new Date().getHours() ? 'ring-2 ring-[#1A1A1A] ring-offset-2 relative z-10' : ''}`}
                         >
                             <p className="text-[10px] font-bold opacity-70">{formatHour(slot.hour)}</p>
                             <p className="text-lg font-extrabold">{slot.count}</p>

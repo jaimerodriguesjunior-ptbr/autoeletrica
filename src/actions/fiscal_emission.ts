@@ -1286,18 +1286,33 @@ export async function consultarNFSe(invoiceId: string) {
 
 
 
-        await supabase
+        const updatePayload: Record<string, any> = {
+            status: novoStatus,
+            numero: result.numero,
+            serie: result.serie,
+            chave_acesso: result.chave || result.codigo_verificacao,
+            xml_url: result.xml_url, // Verificar se a API retorna direto ou em objeto aninhado
+            pdf_url: result.pdf_url || result.link_url,
+            error_message: errorMessage
+        };
 
+        // Se a nota foi autorizada e tem xml_url, baixar e salvar o XML localmente
+        // Isso garante que o ZIP de fechamento mensal tenha os XMLs sem depender da Nuvem Fiscal
+        if (novoStatus === 'authorized' && result.xml_url && !invoice.xml_content) {
+            try {
+                const xmlResponse = await fetch(result.xml_url);
+                if (xmlResponse.ok) {
+                    updatePayload.xml_content = await xmlResponse.text();
+                    console.log(`[NFSe] XML salvo localmente para nota ${result.numero || invoiceId}`);
+                }
+            } catch (xmlErr) {
+                console.warn('[NFSe] Não foi possível baixar o XML agora. Será tentado no próximo fechamento.', xmlErr);
+            }
+        }
+
+        await supabase
             .from("fiscal_invoices")
-            .update({
-                status: novoStatus,
-                numero: result.numero,
-                serie: result.serie,
-                chave_acesso: result.chave || result.codigo_verificacao,
-                xml_url: result.xml_url, // Verificar se a API retorna direto ou em objeto aninhado
-                pdf_url: result.pdf_url || result.link_url,
-                error_message: errorMessage
-            })
+            .update(updatePayload)
             .eq("id", invoiceId);
 
 

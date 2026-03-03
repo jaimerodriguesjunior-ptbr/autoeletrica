@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   ArrowUpRight, ArrowDownRight, Wallet,
   Wrench, ShoppingCart, Zap, X, Save, Loader2, Trash2, Calendar,
-  CheckCircle2, Clock, Filter
+  CheckCircle2, Clock, Filter, FileText, FileArchive
 } from "lucide-react";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
@@ -349,6 +350,13 @@ export default function Financeiro() {
               <button onClick={abrirModalDespesa} className="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2">
                 <ArrowDownRight size={20} /> Registrar Despesa
               </button>
+              {profile?.usa_fiscal && (
+                <Link href="/financeiro/fechamento" className="block w-full">
+                  <button className="w-full py-4 bg-[#1A1A1A] hover:bg-black text-[#FACC15] rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2 border-b-4 border-stone-800">
+                    <FileArchive size={20} /> Fechamento p/ Contador
+                  </button>
+                </Link>
+              )}
             </div>
           </div>
         </div>

@@ -1,0 +1,24 @@
+
+--- company_settings ---
+id, organization_id, nome_fantasia, razao_social, cnpj, endereco, telefone, email_contato, created_at, cpf_cnpj, inscricao_estadual, inscricao_municipal, regime_tributario, logradouro, numero, complemento, bairro, codigo_municipio_ibge, cidade, uf, cep, csc_token_production, csc_id_production, csc_token_homologation, csc_id_homologation, certificado_vencimento, certificado_thumbprint, nfse_login, nfse_password, usa_fiscal, usa_caixa, logo_url, scheduling_capacity, usa_agendamento
+
+--- clients ---
+id, organization_id, nome, cpf_cnpj, whatsapp, email, endereco, created_at
+
+--- vehicles ---
+id, organization_id, client_id, placa, modelo, fabricante, ano, cor, obs, created_at
+
+--- products ---
+id, organization_id, nome, marca, codigo_ref, localizacao, estoque_atual, estoque_min, custo_reposicao, custo_contabil, preco_venda, created_at, ncm, cfop, unidade, ean, data_ultima_compra
+
+--- services ---
+id, organization_id, nome, price, created_at, codigo_servico, aliquota_iss
+
+--- work_orders ---
+id, organization_id, client_id, vehicle_id, status, description, total, public_token, previsao_entrega, photos, created_at, updated_at, aprovacao_ip, aprovacao_dispositivo, aprovacao_timestamp, aprovacao_versao_hash, odometro, nivel_combustivel, temperatura_motor, painel_obs, painel_foto, scanner_pdf, defeitos_constatados, servicos_executados
+
+--- work_order_items ---
+id, organization_id, work_order_id, product_id, service_id, tipo, name, quantity, unit_price, total_price, created_at, peca_cliente
+
+--- transactions ---
+id, organization_id, work_order_id, description, amount, type, category, status, date, created_at

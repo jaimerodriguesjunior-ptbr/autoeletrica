@@ -248,7 +248,12 @@ export default function FiscalDashboard() {
             </div>
 
             {/* AÇÕES */}
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-4">
+                <Link href="/financeiro/fechamento">
+                    <button className="bg-white border-2 border-stone-200 hover:border-stone-400 text-stone-600 px-6 py-3 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 transition hover:scale-105">
+                        <FileText size={20} /> Fechamento Mensal
+                    </button>
+                </Link>
                 <Link href={`/fiscal/emitir?env=${environment}`}>
                     <button className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-6 py-3 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105">
                         <Plus size={20} /> Nova Nota
