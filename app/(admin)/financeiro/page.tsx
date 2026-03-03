@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowUpRight, ArrowDownRight, Wallet,
   Wrench, ShoppingCart, Zap, X, Save, Loader2, Trash2, Calendar,
-  CheckCircle2, Clock, Filter, FileText, FileArchive
+  CheckCircle2, Clock, Filter, FileText, FileArchive, PieChart
 } from "lucide-react";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
@@ -354,6 +354,13 @@ export default function Financeiro() {
                 <Link href="/financeiro/fechamento" className="block w-full">
                   <button className="w-full py-4 bg-[#1A1A1A] hover:bg-black text-[#FACC15] rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2 border-b-4 border-stone-800">
                     <FileArchive size={20} /> Fechamento p/ Contador
+                  </button>
+                </Link>
+              )}
+              {profile?.cargo === 'owner' && (
+                <Link href="/financeiro/relatorios" className="block w-full">
+                  <button className="w-full py-4 bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 rounded-2xl font-bold shadow-sm transition flex items-center justify-center gap-2">
+                    <PieChart size={20} className="text-stone-400" /> Relatórios Detalhados
                   </button>
                 </Link>
               )}

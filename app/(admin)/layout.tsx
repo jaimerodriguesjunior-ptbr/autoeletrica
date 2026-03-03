@@ -16,7 +16,8 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
-  CalendarDays
+  CalendarDays,
+  PieChart
 } from "lucide-react";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { GlobalAppointmentAlert } from "../../src/components/GlobalAppointmentAlert";
@@ -48,8 +49,8 @@ export default function AdminLayout({
     { name: "Caixa", category: "Gestão Corporativa", icon: Wallet, path: "/financeiro", restricted: true },
     { name: "Notas Fiscais", category: "Gestão Corporativa", icon: FileText, path: "/fiscal", restricted: true },
 
-    { name: "IA", category: "Visão Geral", icon: Sparkles, path: "/ia", restricted: true },
     { name: "Agenda", category: "Atendimento", icon: CalendarDays, path: "/agendamentos", restricted: false, module: 'usa_agendamento' as const },
+    { name: "IA", category: "Visão Geral", icon: Sparkles, path: "/ia", restricted: true },
   ];
 
   const isOwner = profile?.cargo === 'owner';
@@ -70,7 +71,7 @@ export default function AdminLayout({
 
   // Menu filtrado (apenas para a barra inferior mobile)
   const bottomMenuItems = menuItems.filter(item =>
-    ["/atendimento", "/clientes", "/estoque"].includes(item.path)
+    ["/atendimento", "/clientes", "/estoque", "/agendamentos"].includes(item.path)
   );
 
   if (loading || !user) return <div className="min-h-screen bg-[#E7E5E4]"></div>;
@@ -129,7 +130,7 @@ export default function AdminLayout({
         <div className="flex-1 overflow-y-auto no-scrollbar pb-6 px-4">
           <nav className="space-y-1.5 flex flex-col items-stretch">
             {menuItems.map((item) => {
-              const isActive = pathname === item.path || pathname.startsWith(item.path + "/");
+              const isActive = pathname === item.path || (pathname.startsWith(item.path + "/") && !(item.path === '/financeiro' && pathname.startsWith('/financeiro/relatorios')));
               return (
                 <Link
                   key={item.path}
@@ -169,17 +170,34 @@ export default function AdminLayout({
             {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
 
-          {/* CONFIGURAÇÕES */}
+          {/* RELATÓRIOS E CONFIGURAÇÕES */}
           {isOwner && (
-            <Link href="/configuracoes" onClick={() => setSidebarOpen(false)} title={isCollapsed ? "Configurações" : undefined}>
-              <div className={`
-                flex items-center gap-3 py-3 mb-4 rounded-2xl text-stone-500 hover:bg-[#1A1A1A]/5 hover:text-[#1A1A1A] font-medium transition-all cursor-pointer
-                ${isCollapsed ? 'justify-center px-0 w-12 h-12 mx-auto' : 'px-4'}
-              `}>
-                <Settings size={20} />
-                {!isCollapsed && <span>Configurações</span>}
-              </div>
-            </Link>
+            <>
+              <Link href="/financeiro/relatorios" onClick={() => setSidebarOpen(false)} title={isCollapsed ? "Relatórios" : undefined}>
+                <div className={`
+                  flex items-center gap-3 py-3 mb-1 rounded-2xl transition-all cursor-pointer
+                  ${isCollapsed ? 'justify-center px-0 w-12 h-12 mx-auto' : 'px-4'}
+                  ${pathname.startsWith('/financeiro/relatorios')
+                    ? "bg-[#1A1A1A] text-white shadow-xl shadow-[#1A1A1A]/20 font-bold"
+                    : "text-stone-500 hover:bg-[#1A1A1A]/5 hover:text-[#1A1A1A] font-medium"}
+                `}>
+                  <PieChart size={20} className={pathname.startsWith('/financeiro/relatorios') ? "text-[#FACC15]" : ""} />
+                  {!isCollapsed && <span>Relatórios</span>}
+                </div>
+              </Link>
+              <Link href="/configuracoes" onClick={() => setSidebarOpen(false)} title={isCollapsed ? "Configurações" : undefined}>
+                <div className={`
+                  flex items-center gap-3 py-3 mb-4 rounded-2xl transition-all cursor-pointer
+                  ${isCollapsed ? 'justify-center px-0 w-12 h-12 mx-auto' : 'px-4'}
+                  ${pathname.startsWith('/configuracoes')
+                    ? "bg-[#1A1A1A] text-white shadow-xl shadow-[#1A1A1A]/20 font-bold"
+                    : "text-stone-500 hover:bg-[#1A1A1A]/5 hover:text-[#1A1A1A] font-medium"}
+                `}>
+                  <Settings size={20} className={pathname.startsWith('/configuracoes') ? "text-[#FACC15]" : ""} />
+                  {!isCollapsed && <span>Configurações</span>}
+                </div>
+              </Link>
+            </>
           )}
 
           {/* PERFIL DO USUÁRIO */}
@@ -227,7 +245,8 @@ export default function AdminLayout({
           >
             <Menu size={24} />
           </button>
-          <span className="font-extrabold text-[#1A1A1A] tracking-wider uppercase text-sm">Oficina Pro</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoSrc} alt={profile?.nome_fantasia || "Logo"} className="h-8 object-contain" onError={(e) => { e.currentTarget.src = '/logo.svg'; }} />
         </header>
 
         <div className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full pb-32 lg:pb-24 animate-in fade-in slide-in-from-bottom-4 duration-700">

@@ -68,6 +68,7 @@ BEGIN
             COALESCE(SUM(valor_total) FILTER (WHERE direction = 'entry'), 0) as entradas_valor
         FROM fiscal_invoices
         WHERE organization_id = p_organization_id
+        AND COALESCE(environment, 'production') != 'homologation'
         AND (
             (data_emissao >= v_start_date AND data_emissao < v_end_date)
             OR 
