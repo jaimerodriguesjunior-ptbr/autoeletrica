@@ -1081,7 +1081,7 @@ export default function DetalhesOS() {
                       ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse'
                       : 'bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]'
                       }`}
-                    title={isListeningDefeitos ? 'Parar grava\u00e7\u00e3o' : 'Ditar defeitos'}
+                    title={isListeningDefeitos ? 'Parar gravação' : 'Ditar defeitos'}
                   >
                     <Mic size={14} />
                   </button>
@@ -1095,7 +1095,7 @@ export default function DetalhesOS() {
                 <textarea
                   value={defeitosConstatados}
                   onChange={e => setDefeitosConstatados(e.target.value)}
-                  placeholder="Descreva aqui o que foi encontrado de problema ap\u00f3s a avalia\u00e7\u00e3o..."
+                  placeholder="Descreva aqui o que foi encontrado de problema após a avaliação..."
                   rows={3}
                   className="w-full bg-[#F8F7F2] rounded-2xl p-4 border border-stone-200 outline-none focus:border-[#FACC15] text-sm resize-none"
                 />
@@ -1103,7 +1103,7 @@ export default function DetalhesOS() {
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-bold text-stone-400 ml-1">SERVI\u00c7OS EXECUTADOS</label>
+                  <label className="text-[10px] font-bold text-stone-400 ml-1">SERVIÇOS EXECUTADOS</label>
                   <button
                     type="button"
                     onClick={() => isListeningServicos ? stopSpeech('servicos') : startSpeech('servicos')}
@@ -1111,7 +1111,7 @@ export default function DetalhesOS() {
                       ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse'
                       : 'bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]'
                       }`}
-                    title={isListeningServicos ? 'Parar grava\u00e7\u00e3o' : 'Ditar servi\u00e7os'}
+                    title={isListeningServicos ? 'Parar gravação' : 'Ditar serviços'}
                   >
                     <Mic size={14} />
                   </button>
@@ -1119,13 +1119,13 @@ export default function DetalhesOS() {
                 {isListeningServicos && (
                   <div className="flex items-center gap-2 mb-2 animate-pulse">
                     <span className="w-2 h-2 bg-red-500 rounded-full" />
-                    <span className="text-xs font-bold text-red-500">Ouvindo... dite os servi\u00e7os realizados</span>
+                    <span className="text-xs font-bold text-red-500">Ouvindo... dite os serviços realizados</span>
                   </div>
                 )}
                 <textarea
                   value={servicosExecutados}
                   onChange={e => setServicosExecutados(e.target.value)}
-                  placeholder="Descreva aqui o que foi feito para a resolu\u00e7\u00e3o do problema..."
+                  placeholder="Descreva aqui o que foi feito para a resolução do problema..."
                   rows={3}
                   className="w-full bg-[#F8F7F2] rounded-2xl p-4 border border-stone-200 outline-none focus:border-[#FACC15] text-sm resize-none"
                 />
