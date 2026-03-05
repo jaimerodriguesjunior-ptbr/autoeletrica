@@ -15,12 +15,18 @@ import {
 } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 type ClosingData = {
     faturamento: {
         total_pecas: number;
         total_servicos: number;
     };
+    faturamento_por_cfop: {
+        cfop: string;
+        total: number;
+    }[];
     pagamentos: {
         metodo: string;
         total: number;
@@ -99,7 +105,7 @@ export default function FechamentoMensal() {
 
             if (!root) throw new Error("Erro ao criar pasta no ZIP");
 
-            // 1. Gerar Relatório CSV de Resumo
+            // 1. Gerar Relatório CSV de Resumo (Mantido como extra para importar no sistema)
             const csvContent = [
                 ["RELATORIO DE FECHAMENTO MENSAL"],
                 ["Periodo", `${MONTHS[month]} / ${year}`],
@@ -109,6 +115,9 @@ export default function FechamentoMensal() {
                 ["Venda de Pecas", data.faturamento.total_pecas.toFixed(2)],
                 ["Prestacao de Servicos", data.faturamento.total_servicos.toFixed(2)],
                 ["Total Bruto", (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
+                [""],
+                ["FATURAMENTO POR CFOP"],
+                ...data.faturamento_por_cfop.map(c => [c.cfop, c.total.toFixed(2)]),
                 [""],
                 ["MOVIMENTACAO FISCAL"],
                 ["NFS-e Emitidas (Servicos)", data.fiscal.autorizadas_nfse],
@@ -123,7 +132,60 @@ export default function FechamentoMensal() {
 
             root.file("Resumo_Fechamento.csv", "\ufeff" + csvContent);
 
-            // 2. Buscar XMLs de Saída (NFC-e) - Versão Simplificada (links ou conteúdo se disponível)
+            // 1.5 Gerar Relatório PDF em alta qualidade
+            const doc = new jsPDF();
+
+            doc.setFontSize(16);
+            doc.text("Relatório de Fechamento Mensal", 14, 20);
+
+            doc.setFontSize(10);
+            doc.text(`Período: ${MONTHS[month]} / ${year}`, 14, 28);
+            doc.text(`Empresa ID: ${profile.organization_id}`, 14, 34);
+
+            autoTable(doc, {
+                startY: 42,
+                head: [['Faturamento', 'Valor (R$)']],
+                body: [
+                    ['Venda de Peças (Produtos)', data.faturamento.total_pecas.toFixed(2)],
+                    ['Prestação de Serviços', data.faturamento.total_servicos.toFixed(2)],
+                    ['Total Bruto', (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
+                ]
+            });
+
+            autoTable(doc, {
+                startY: (doc as any).lastAutoTable.finalY + 10,
+                head: [['Faturamento por CFOP', 'Valor (R$)']],
+                body: data.faturamento_por_cfop.map(c => [
+                    c.cfop === '5933' ? '5933 (Serviço)' : c.cfop,
+                    c.total.toFixed(2)
+                ])
+            });
+
+            autoTable(doc, {
+                startY: (doc as any).lastAutoTable.finalY + 10,
+                head: [['Movimentação Fiscal', 'Quantidade/Valor']],
+                body: [
+                    ['NFS-e Emitidas (Serviços)', data.fiscal.autorizadas_nfse.toString()],
+                    ['NFC-e Emitidas (Peças)', data.fiscal.autorizadas_nfce.toString()],
+                    ['Canceladas (NFS-e + NFC-e)', (data.fiscal.canceladas_nfse + data.fiscal.canceladas_nfce).toString()],
+                    ['NFe Compras (Qtd)', data.fiscal.entradas_qtd.toString()],
+                    ['NFe Compras (Valor)', data.fiscal.entradas_valor.toFixed(2)]
+                ]
+            });
+
+            autoTable(doc, {
+                startY: (doc as any).lastAutoTable.finalY + 10,
+                head: [['Meios de Pagamento', 'Valor (R$)']],
+                body: data.pagamentos.map(p => [
+                    PAYMENT_METHOD_LABELS[p.metodo] || p.metodo,
+                    p.total.toFixed(2)
+                ])
+            });
+
+            const pdfBuffer = doc.output('arraybuffer');
+            root.file("Resumo_Fechamento.pdf", pdfBuffer);
+
+            // 2. Buscar XMLs de Saída (NFC-e / NFS-e) e Entrada (NFe)
             const startDate = new Date(year, month, 1).toISOString();
             const endDate = new Date(year, month + 1, 1).toISOString();
 
@@ -137,11 +199,14 @@ export default function FechamentoMensal() {
             if (fiscalFiles && fiscalFiles.length > 0) {
                 const outFolder = root.folder("XMLs_Saida_Vendas");
                 const inFolder = root.folder("XMLs_Entrada_Compras");
+                const cancelFolder = root.folder("XMLs_Cancelados");
 
                 fiscalFiles.forEach(doc => {
                     if (doc.xml_content) {
                         const fileName = `${doc.numero || doc.chave_acesso || 'doc'}.xml`;
-                        if (doc.direction === 'output' && outFolder) {
+                        if (doc.status === 'cancelled' && cancelFolder) {
+                            cancelFolder.file(`Cancelado_${fileName}`, doc.xml_content);
+                        } else if (doc.direction === 'output' && outFolder) {
                             outFolder.file(fileName, doc.xml_content);
                         } else if (doc.direction === 'entry' && inFolder) {
                             inFolder.file(fileName, doc.xml_content);
@@ -264,6 +329,37 @@ export default function FechamentoMensal() {
                                                 R$ {totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                             </td>
                                         </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Faturamento por CFOP */}
+                        <div className="bg-white border border-stone-200 rounded-lg shadow-sm overflow-hidden">
+                            <div className="bg-stone-50 px-5 py-3 border-b border-stone-200">
+                                <h3 className="text-sm font-bold text-stone-800 flex items-center gap-2">
+                                    <FileText size={16} className="text-stone-500" /> Faturamento por CFOP
+                                </h3>
+                            </div>
+                            <div className="p-0">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-white border-b border-stone-100 text-left text-xs uppercase text-stone-500 font-semibold tracking-wider">
+                                        <tr>
+                                            <th className="px-5 py-3">Código</th>
+                                            <th className="px-5 py-3 text-right">Valor Consolidado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-stone-100">
+                                        {data?.faturamento_por_cfop?.map((c, idx) => (
+                                            <tr key={idx} className="hover:bg-stone-50">
+                                                <td className="px-5 py-3 text-stone-700 font-medium">
+                                                    {c.cfop === '5933' ? '5933 (Serviço)' : c.cfop}
+                                                </td>
+                                                <td className="px-5 py-3 text-right font-bold text-stone-900">
+                                                    R$ {c.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                </td>
+                                            </tr>
+                                        ))}
                                     </tbody>
                                 </table>
                             </div>

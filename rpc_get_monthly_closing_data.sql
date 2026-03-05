@@ -35,6 +35,26 @@ BEGIN
             AND t.type = 'income'
         )
     ),
+    faturamento_por_cfop AS (
+        -- Agrupa faturamento por CFOP (ou 5933 para serviços)
+        SELECT 
+            COALESCE(p.cfop, CASE WHEN i.tipo = 'servico' THEN '5933' ELSE 'Outros' END) as cfop,
+            SUM(i.total_price) as total
+        FROM work_orders o
+        JOIN work_order_items i ON i.work_order_id = o.id
+        LEFT JOIN products p ON p.id = i.product_id::uuid
+        WHERE o.organization_id = p_organization_id
+        AND o.status IN ('entregue', 'finalizado')
+        AND (i.tipo = 'servico' OR NOT COALESCE(i.peca_cliente, false))
+        AND EXISTS (
+            SELECT 1 FROM transactions t 
+            WHERE t.work_order_id = o.id 
+            AND t.date >= v_start_date 
+            AND t.date < v_end_date
+            AND t.type = 'income'
+        )
+        GROUP BY 1
+    ),
     meios_pagamento AS (
         -- Agrupa recebimentos (entradas) por forma de pagamento
         SELECT 
@@ -77,6 +97,7 @@ BEGIN
     )
     SELECT jsonb_build_object(
         'faturamento', (SELECT jsonb_build_object('total_pecas', total_pecas, 'total_servicos', total_servicos) FROM pecas_servicos),
+        'faturamento_por_cfop', (SELECT COALESCE(jsonb_agg(jsonb_build_object('cfop', cfop, 'total', total)), '[]'::jsonb) FROM faturamento_por_cfop),
         'pagamentos', (SELECT COALESCE(jsonb_agg(jsonb_build_object('metodo', metodo, 'total', total)), '[]'::jsonb) FROM meios_pagamento),
         'fiscal', (SELECT jsonb_build_object(
             'autorizadas_nfse', autorizadas_nfse,

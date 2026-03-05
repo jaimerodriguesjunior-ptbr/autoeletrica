@@ -15,14 +15,12 @@ import {
     Loader2,
     AlertCircle,
     ArrowRight,
-    Minus,
     Calendar,
     Mic,
     Gauge,
     Thermometer,
     Fuel,
     Eye,
-    UserCheck,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
@@ -43,19 +41,6 @@ interface ISpeechRecognition extends EventTarget {
 
 // --- TIPOS ---
 type Client = { id: string; nome: string; whatsapp: string | null };
-type Product = { id: string; nome: string; preco_venda: number; estoque_atual: number };
-type Service = { id: string; nome: string; price: number };
-
-type OSItem = {
-    id: string | number;
-    db_id: string;
-    nome: string;
-    valor: number;
-    tipo: "peca" | "servico";
-    qtd: number;
-    semEstoque?: boolean;
-    pecaCliente?: boolean;
-};
 
 type VeiculoConfirmado = {
     id: string;
@@ -100,7 +85,6 @@ export default function NovaOS() {
 
     // Passo 2: OS
     const [defeito, setDefeito] = useState("");
-    const [previsaoEntrega, setPrevisaoEntrega] = useState("");
 
     // Passo 2: Dados do Painel
     const painelInputRef = useRef<HTMLInputElement>(null);
@@ -112,27 +96,15 @@ export default function NovaOS() {
     const [painelFotoPreview, setPainelFotoPreview] = useState<string | null>(null);
     const [painelFile, setPainelFile] = useState<File | null>(null);
 
-    const [itens, setItens] = useState<OSItem[]>([]);
-    const [fotosEvidencia, setFotosEvidencia] = useState<string[]>([]);
-
     // Dados do Banco
     const [listaClientes, setListaClientes] = useState<Client[]>([]);
-    const [listaProdutos, setListaProdutos] = useState<Product[]>([]);
-    const [listaServicos, setListaServicos] = useState<Service[]>([]);
 
     // Modais e Seleções
     const [clienteSelecionado, setClienteSelecionado] = useState<Client | null>(null);
     const [modalClienteAberto, setModalClienteAberto] = useState(false);
     const [modalClienteView, setModalClienteView] = useState<"buscar" | "cadastrar">("buscar");
-    const [modalItemAberto, setModalItemAberto] = useState(false);
-    const [abaItem, setAbaItem] = useState<"pecas" | "servicos">("pecas");
-
-    // Edição de Item
-    const [itemEditando, setItemEditando] = useState<OSItem | null>(null);
-    const [modalEditarItemAberto, setModalEditarItemAberto] = useState(false);
 
     // Filtros e Inputs Modais
-    const [termoBuscaItem, setTermoBuscaItem] = useState("");
     const [termoBuscaCliente, setTermoBuscaCliente] = useState("");
     const [novoNomeCliente, setNovoNomeCliente] = useState("");
     const [novoZapCliente, setNovoZapCliente] = useState("");
@@ -150,15 +122,11 @@ export default function NovaOS() {
 
     const fetchDadosIniciais = async () => {
         try {
-            const [clientsRes, productsRes, servicesRes] = await Promise.all([
+            const [clientsRes] = await Promise.all([
                 supabase.from("clients").select("id, nome, whatsapp").order("nome"),
-                supabase.from("products").select("id, nome, preco_venda, estoque_atual").order("nome"),
-                supabase.from("services").select("id, nome, price").order("nome"),
             ]);
 
             setListaClientes(clientsRes.data || []);
-            setListaProdutos(productsRes.data || []);
-            setListaServicos(servicesRes.data || []);
         } catch (error) {
             console.error("Erro ao carregar dados:", error);
         } finally {
@@ -176,17 +144,6 @@ export default function NovaOS() {
         setPlacaFoto(null);
     };
 
-    const abrirCameraEvidencia = () => evidenceInputRef.current?.click();
-    const handleFotoEvidencia = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            const novasFotos = Array.from(e.target.files).map((file) => URL.createObjectURL(file));
-            setFotosEvidencia([...fotosEvidencia, ...novasFotos]);
-        }
-    };
-    const removerFotoEvidencia = (index: number) => {
-        setFotosEvidencia(fotosEvidencia.filter((_, i) => i !== index));
-    };
-
     // --- RESET ---
     const resetarPasso1 = () => {
         setStep(1);
@@ -199,7 +156,6 @@ export default function NovaOS() {
         setObsVeiculoInput("");
         setVeiculoConfirmado(null);
         setClienteSelecionado(null);
-        setPrevisaoEntrega("");
         setOdometro("");
         setNivelCombustivel("");
         setTemperaturaMotor("");
@@ -355,16 +311,12 @@ export default function NovaOS() {
         setSaving(true);
 
         try {
-            const total = itens.reduce((acc, item) => item.pecaCliente ? acc : acc + item.valor * item.qtd, 0);
-
             const insertPayload: any = {
                 organization_id: profile?.organization_id,
                 client_id: clienteSelecionado.id,
                 vehicle_id: veiculoConfirmado.id,
                 status: "orcamento",
                 description: defeito,
-                total: total,
-                previsao_entrega: previsaoEntrega || null,
                 odometro: odometro || null,
                 nivel_combustivel: nivelCombustivel || null,
                 temperatura_motor: temperaturaMotor || null,
@@ -396,42 +348,6 @@ export default function NovaOS() {
                 .from("vehicles")
                 .update({ client_id: clienteSelecionado.id })
                 .eq("id", veiculoConfirmado.id);
-
-            if (itens.length > 0) {
-                const itensParaSalvar = itens.map((item) => ({
-                    work_order_id: osData.id,
-                    organization_id: profile?.organization_id,
-                    product_id: item.tipo === "peca" ? item.db_id : null,
-                    service_id: item.tipo === "servico" ? item.db_id : null,
-                    tipo: item.tipo,
-                    name: item.nome,
-                    quantity: item.qtd,
-                    unit_price: item.valor,
-                    total_price: item.pecaCliente ? 0 : item.valor * item.qtd,
-                    peca_cliente: item.pecaCliente || false,
-                }));
-
-                const { error: itemsError } = await supabase.from("work_order_items").insert(itensParaSalvar);
-                if (itemsError) throw itemsError;
-
-                // Baixar do estoque as peças que não são do cliente
-                for (const item of itens) {
-                    if (item.tipo === "peca" && item.db_id && !item.pecaCliente) {
-                        const { data: prodData } = await supabase
-                            .from('products')
-                            .select('estoque_atual')
-                            .eq('id', item.db_id)
-                            .single();
-
-                        if (prodData) {
-                            await supabase
-                                .from('products')
-                                .update({ estoque_atual: (prodData.estoque_atual || 0) - item.qtd })
-                                .eq('id', item.db_id);
-                        }
-                    }
-                }
-            }
 
             // Upload foto do painel (se houver)
             if (painelFile) {
@@ -505,53 +421,6 @@ export default function NovaOS() {
         }
     };
 
-    const selecionarItem = (item: any, tipo: "peca" | "servico") => {
-        const itemExistente = itens.find(i => i.db_id === item.id && i.tipo === tipo);
-
-        if (itemExistente) {
-            setItens(prev => prev.map(i =>
-                i.id === itemExistente.id ? { ...i, qtd: i.qtd + 1 } : i
-            ));
-        } else {
-            const semEstoque = tipo === "peca" && (item.estoque_atual || 0) <= 0;
-            const valorUnitario = item.price || item.preco_venda || 0;
-
-            setItens([
-                ...itens,
-                {
-                    id: Math.random(),
-                    db_id: item.id,
-                    nome: item.nome,
-                    valor: valorUnitario,
-                    tipo,
-                    qtd: 1,
-                    semEstoque
-                },
-            ]);
-        }
-        setModalItemAberto(false);
-    };
-
-    const alterarQuantidade = (id: string | number, delta: number) => {
-        setItens(prev => prev.map(item => {
-            if (item.id === id) {
-                const novaQtd = item.qtd + delta;
-                return novaQtd > 0 ? { ...item, qtd: novaQtd } : item;
-            }
-            return item;
-        }));
-    };
-
-    const removerItem = (id: string | number) => setItens(itens.filter((item) => item.id !== id));
-
-    const total = itens.reduce((acc, item) => item.pecaCliente ? acc : acc + item.valor * item.qtd, 0);
-
-    const togglePecaCliente = (id: string | number) => {
-        setItens(prev => prev.map(item =>
-            item.id === id ? { ...item, pecaCliente: !item.pecaCliente } : item
-        ));
-    };
-
     const selecionarCliente = (c: Client) => {
         setClienteSelecionado(c);
         setModalClienteAberto(false);
@@ -568,7 +437,6 @@ export default function NovaOS() {
         <div className="max-w-4xl mx-auto space-y-6 pb-32">
             {/* INPUTS ESCONDIDOS */}
             <input type="file" ref={fileInputRef} accept="image/*" capture="environment" className="hidden" onChange={handleFotoPlaca} />
-            <input type="file" ref={evidenceInputRef} accept="image/*" multiple className="hidden" onChange={handleFotoEvidencia} />
 
             {/* CABEÇALHO */}
             <div className="flex items-center gap-4">
@@ -885,36 +753,6 @@ export default function NovaOS() {
                                 </div>
                             </div>
 
-                            {/* Fotos */}
-                            <div className="space-y-2">
-                                <h3 className="font-bold text-[#1A1A1A] ml-2 flex items-center gap-2">
-                                    <Camera size={18} /> Fotos e Evidências
-                                </h3>
-                                <div className="flex gap-4 overflow-x-auto pb-4 snap-x scrollbar-hide">
-                                    <button
-                                        onClick={abrirCameraEvidencia}
-                                        className="flex-none w-32 h-32 bg-white rounded-3xl border-2 border-dashed border-stone-200 flex flex-col items-center justify-center gap-2 text-stone-400 hover:border-[#FACC15] hover:text-[#FACC15] transition snap-start"
-                                    >
-                                        <Camera size={24} />
-                                        <span className="text-xs font-bold">Adicionar</span>
-                                    </button>
-                                    {fotosEvidencia.map((foto, index) => (
-                                        <div
-                                            key={index}
-                                            className="flex-none w-32 h-32 bg-stone-100 rounded-3xl relative overflow-hidden snap-center border border-stone-100 group"
-                                        >
-                                            <Image src={foto} alt={`Evidência ${index}`} fill className="object-cover" />
-                                            <button
-                                                onClick={() => removerFotoEvidencia(index)}
-                                                className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition"
-                                            >
-                                                <X size={14} />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
                             {/* CARD 1: RELATO (Defeito) */}
                             <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
                                 <div className="flex items-center justify-between mb-2">
@@ -976,96 +814,6 @@ export default function NovaOS() {
                                     placeholder="Descreva o defeito ou serviço..."
                                     className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none resize-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                                 ></textarea>
-                            </div>
-
-                            {/* CARD 2: ITENS */}
-                            <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
-                                        <ArrowRight size={18} className="text-[#FACC15]" /> Itens do Orçamento
-                                    </h3>
-                                    <button
-                                        onClick={() => setModalItemAberto(true)}
-                                        className="text-xs font-bold bg-[#F8F7F2] text-[#1A1A1A] px-3 py-2 rounded-full flex items-center gap-1 hover:bg-[#FACC15] transition"
-                                    >
-                                        <Plus size={14} /> Adicionar
-                                    </button>
-                                </div>
-
-                                <div className="space-y-2">
-                                    {itens.map((item) => (
-                                        <div key={item.id} className={`p-3 rounded-2xl ${item.pecaCliente ? 'bg-yellow-50 border-2 border-yellow-200' : 'bg-[#F8F7F2]'}`}>
-                                            <div className="flex justify-between items-center">
-                                                <div>
-                                                    <p className={`font-bold text-sm text-[#1A1A1A] ${item.pecaCliente ? 'line-through opacity-60' : ''}`}>{item.nome}</p>
-                                                    <p className="text-[10px] text-stone-500 uppercase font-bold">
-                                                        {item.tipo}
-                                                    </p>
-                                                </div>
-
-                                                {/* INFORMAÇÕES DO ITEM E BOTÃO EDITAR */}
-                                                <div className="flex items-center gap-3">
-                                                    <button
-                                                        onClick={() => {
-                                                            setItemEditando(item);
-                                                            setModalEditarItemAberto(true);
-                                                        }}
-                                                        className="text-right mr-2 p-2 rounded-xl hover:bg-stone-200/50 transition cursor-pointer"
-                                                        title="Clique para editar"
-                                                    >
-                                                        <p className={`font-bold text-[#1A1A1A] ${item.pecaCliente ? 'text-stone-400 line-through' : ''}`}>
-                                                            R$ {((item.valor || 0) * item.qtd).toFixed(2)}
-                                                        </p>
-                                                        <p className="text-[10px] text-stone-500">
-                                                            {item.qtd}x R$ {(item.valor || 0).toFixed(2)}
-                                                        </p>
-                                                    </button>
-
-                                                    <button onClick={() => removerItem(item.id)} className="text-stone-300 hover:text-red-500 pl-2 border-l border-stone-200">
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {/* Botão Peça do Cliente */}
-                                            {item.tipo === "peca" && (
-                                                <button
-                                                    onClick={() => togglePecaCliente(item.id)}
-                                                    className={`mt-2 flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition ${item.pecaCliente
-                                                        ? 'bg-yellow-400 text-[#1A1A1A]'
-                                                        : 'bg-stone-200 text-stone-500 hover:bg-yellow-100 hover:text-yellow-700'
-                                                        }`}
-                                                >
-                                                    <UserCheck size={12} />
-                                                    {item.pecaCliente ? 'PEÇA DO CLIENTE ✓' : 'Peça do cliente?'}
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))}
-                                    {itens.length === 0 && (
-                                        <p className="text-center text-stone-400 text-sm py-6 border-2 border-dashed border-stone-100 rounded-2xl">
-                                            Nenhum item adicionado.
-                                        </p>
-                                    )}
-                                </div>
-
-                                <div className="flex justify-between items-center pt-2">
-                                    <p className="text-stone-500 font-bold text-sm">Total Estimado</p>
-                                    <p className="text-2xl font-bold text-[#1A1A1A]">R$ {total.toFixed(2)}</p>
-                                </div>
-                            </div>
-
-                            {/* CARD 3: PREVISÃO (Último passo, separado) */}
-                            <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
-                                <label className="text-xs font-bold text-stone-400 mb-2 flex items-center gap-1">
-                                    <Calendar size={14} /> Previsão de Entrega (Opcional)
-                                </label>
-                                <input
-                                    type="date"
-                                    value={previsaoEntrega}
-                                    onChange={(e) => setPrevisaoEntrega(e.target.value)}
-                                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
-                                />
                             </div>
 
                             {/* Botão Final */}
@@ -1156,141 +904,6 @@ export default function NovaOS() {
                                 </button>
                             </>
                         )}
-                    </div>
-                </div>
-            )}
-
-            {/* MODAL ITENS */}
-            {modalItemAberto && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl space-y-4 h-[500px] flex flex-col">
-                        <div className="flex justify-between items-center">
-                            <h2 className="font-bold text-lg">Adicionar Item</h2>
-                            <button onClick={() => setModalItemAberto(false)}>
-                                <X />
-                            </button>
-                        </div>
-                        <div className="flex bg-stone-200 p-1.5 rounded-2xl border-2 border-stone-300 shadow-inner gap-1">
-                            <button
-                                onClick={() => setAbaItem("pecas")}
-                                className={`flex-1 py-2 rounded-lg text-sm font-bold transition border-2 ${abaItem === "pecas" ? "bg-white shadow-md text-[#1A1A1A] border-stone-300" : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
-                                    }`}
-                            >
-                                Peças
-                            </button>
-                            <button
-                                onClick={() => setAbaItem("servicos")}
-                                className={`flex-1 py-2 rounded-lg text-sm font-bold transition border-2 ${abaItem === "servicos" ? "bg-white shadow-md text-[#1A1A1A] border-stone-300" : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
-                                    }`}
-                            >
-                                Serviços
-                            </button>
-                        </div>
-                        <input
-                            autoFocus
-                            placeholder="Buscar..."
-                            value={termoBuscaItem}
-                            onChange={(e) => setTermoBuscaItem(e.target.value)}
-                            className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
-                        />
-                        <div className="flex-1 overflow-auto space-y-2">
-                            {abaItem === "pecas" &&
-                                listaProdutos
-                                    .filter((p) => p.nome.toLowerCase().includes(termoBuscaItem.toLowerCase()))
-                                    .map((p) => (
-                                        <button
-                                            key={p.id}
-                                            onClick={() => selecionarItem(p, "peca")}
-                                            className="w-full flex justify-between p-3 hover:bg-stone-50 rounded-xl text-left"
-                                        >
-                                            <div>
-                                                <p className="font-bold">{p.nome}</p>
-                                                <p className="text-xs text-stone-400">Estoque: {p.estoque_atual}</p>
-                                            </div>
-                                            <span className="font-bold">R$ {p.preco_venda?.toFixed(2)}</span>
-                                        </button>
-                                    ))}
-
-                            {abaItem === "servicos" &&
-                                listaServicos
-                                    .filter((s) => s.nome.toLowerCase().includes(termoBuscaItem.toLowerCase()))
-                                    .map((s) => (
-                                        <button
-                                            key={s.id}
-                                            onClick={() => selecionarItem(s, "servico")}
-                                            className="w-full flex justify-between p-3 hover:bg-stone-50 rounded-xl text-left"
-                                        >
-                                            <p className="font-bold">{s.nome}</p>
-                                            <span className="font-bold">R$ {(s.price || 0).toFixed(2)}</span>
-                                        </button>
-                                    ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* MODAL EDITAR ITEM */}
-            {modalEditarItemAberto && itemEditando && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-6">
-                        <div className="flex justify-between items-center">
-                            <h2 className="font-bold text-lg text-[#1A1A1A]">Editar Item</h2>
-                            <button onClick={() => { setModalEditarItemAberto(false); setItemEditando(null); }}>
-                                <X size={20} className="text-stone-400" />
-                            </button>
-                        </div>
-
-                        <div>
-                            <p className="font-bold text-sm text-[#1A1A1A]">{itemEditando.nome}</p>
-                            <p className="text-xs text-stone-500 uppercase">{itemEditando.tipo}</p>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-xs font-bold text-stone-400 ml-1">QUANTIDADE</label>
-                                <div className="flex items-center justify-between bg-[#F8F7F2] rounded-2xl p-2 border-2 border-stone-300">
-                                    <button
-                                        onClick={() => setItemEditando(prev => prev ? { ...prev, qtd: Math.max(1, prev.qtd - 1) } : prev)}
-                                        className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
-                                    >
-                                        <Minus size={20} />
-                                    </button>
-                                    <span className="font-bold text-2xl">{itemEditando.qtd}</span>
-                                    <button
-                                        onClick={() => setItemEditando(prev => prev ? { ...prev, qtd: prev.qtd + 1 } : prev)}
-                                        className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
-                                    >
-                                        <Plus size={20} />
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="text-xs font-bold text-stone-400 ml-1">VALOR UNITÁRIO (R$)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    value={itemEditando.valor}
-                                    onChange={(e) => {
-                                        const val = parseFloat(e.target.value);
-                                        setItemEditando(prev => prev ? { ...prev, valor: isNaN(val) ? 0 : val } : prev);
-                                    }}
-                                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl text-center text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
-                                />
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={() => {
-                                setItens(prev => prev.map(i => i.id === itemEditando.id ? itemEditando : i));
-                                setModalEditarItemAberto(false);
-                                setItemEditando(null);
-                            }}
-                            className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-xl shadow-md hover:scale-105 transition flex items-center justify-center gap-2"
-                        >
-                            <Save size={18} /> Salvar Alterações
-                        </button>
                     </div>
                 </div>
             )}
