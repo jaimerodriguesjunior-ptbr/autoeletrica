@@ -20,6 +20,7 @@ import {
   Thermometer,
   Fuel,
   Eye,
+  User,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -591,34 +592,60 @@ export default function NovaOS() {
           </div>
 
           {/* Cliente */}
-          <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
-            <h3 className="font-bold text-[#1A1A1A] mb-3 flex items-center gap-2">
-              <ArrowRight size={18} className="text-[#FACC15]" /> Quem é o cliente?
-            </h3>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                readOnly
-                placeholder="Toque para selecionar..."
-                value={clienteSelecionado ? clienteSelecionado.nome : ""}
-                onClick={() => {
-                  setModalClienteAberto(true);
-                  setModalClienteView("buscar");
-                }}
-                className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none cursor-pointer border-2 border-stone-300 hover:border-[#FACC15] transition font-medium"
-              />
+          {clienteSelecionado ? (
+            <div className="bg-[#1A1A1A] text-[#FACC15] rounded-3xl p-4 flex items-center justify-between shadow-lg animate-in fade-in zoom-in-95 duration-300">
+              <div className="flex items-center gap-4">
+                <div className="p-2 bg-white/10 rounded-xl">
+                  <User size={24} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-white/60 font-bold uppercase tracking-wider">Cliente Selecionado</p>
+                  <div className="flex flex-col md:flex-row md:items-baseline gap-1 md:gap-2">
+                    <h3 className="text-lg font-bold truncate">{clienteSelecionado.nome}</h3>
+                    {clienteSelecionado.whatsapp && (
+                      <span className="text-xs font-medium text-white/80">
+                        {clienteSelecionado.whatsapp}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
               <button
-                onClick={() => {
-                  setModalClienteAberto(true);
-                  setModalClienteView("buscar");
-                }}
-                className={`w-14 rounded-2xl flex items-center justify-center transition shrink-0 ${clienteSelecionado ? "bg-green-100 text-green-700" : "bg-[#1A1A1A] text-white"
-                  }`}
+                onClick={() => setClienteSelecionado(null)}
+                className="text-xs font-bold underline hover:text-white transition-colors"
               >
-                {clienteSelecionado ? <CheckCircle size={24} /> : <Search size={20} />}
+                Trocar
               </button>
             </div>
-          </div>
+          ) : (
+            <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 animate-in fade-in slide-in-from-top-2 duration-300">
+              <h3 className="font-bold text-[#1A1A1A] mb-3 flex items-center gap-2">
+                <ArrowRight size={18} className="text-[#FACC15]" /> Quem é o cliente?
+              </h3>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  placeholder="Toque para selecionar ou cadastrar..."
+                  value=""
+                  onClick={() => {
+                    setModalClienteAberto(true);
+                    setModalClienteView("buscar");
+                  }}
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] outline-none cursor-pointer border-2 border-stone-300 hover:border-[#FACC15] transition font-medium"
+                />
+                <button
+                  onClick={() => {
+                    setModalClienteAberto(true);
+                    setModalClienteView("buscar");
+                  }}
+                  className="w-14 bg-[#1A1A1A] text-white rounded-2xl flex items-center justify-center transition shrink-0 hover:bg-black"
+                >
+                  <Search size={20} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {clienteSelecionado && (
             <>
