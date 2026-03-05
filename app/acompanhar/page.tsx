@@ -640,15 +640,20 @@ function ConteudoPortal() {
 
       {/* MODAL DE FOTO EXPANDIDA */}
       {fotoExpandida && (
-        <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in" onClick={() => setFotoExpandida(null)}>
-          <button className="absolute top-4 right-4 text-white/70 hover:text-white p-2">
-            <X size={32} />
+        <div
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300 cursor-zoom-out"
+          onClick={() => setFotoExpandida(null)}
+        >
+          <button className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors">
+            <X size={40} />
           </button>
-          <img
-            src={fotoExpandida}
-            alt="Foto Expandida"
-            className="max-w-full max-h-[90vh] rounded-xl object-contain shadow-2xl"
-          />
+          <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+            <img
+              src={fotoExpandida}
+              alt="Foto Expandida"
+              className="max-w-screen max-h-screen object-contain"
+            />
+          </div>
         </div>
       )}
 

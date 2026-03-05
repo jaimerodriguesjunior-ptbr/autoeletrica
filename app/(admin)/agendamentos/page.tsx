@@ -363,6 +363,33 @@ export default function AgendamentosPage() {
         window.open(`https://wa.me/55${number}?text=${encodeURIComponent(text)}`, "_blank");
     };
 
+    const handleAddWhatsapp = async (a: Appointment) => {
+        const number = prompt("Digite o número do WhatsApp com DDD (apenas números):");
+        if (!number) return;
+
+        const cleanNumber = number.replace(/\D/g, "");
+        if (cleanNumber.length < 10) {
+            alert("Número inválido. Digite com DDD (ex: 45999999999)");
+            return;
+        }
+
+        try {
+            const newDesc = a.description
+                ? `${a.description} | WhatsApp: ${cleanNumber}`
+                : `WhatsApp: ${cleanNumber}`;
+
+            const { error } = await supabase
+                .from("appointments")
+                .update({ description: newDesc })
+                .eq("id", a.id);
+
+            if (error) throw error;
+            fetchAppointments();
+        } catch (e: any) {
+            alert("Erro ao salvar número: " + e.message);
+        }
+    };
+
     return (
         <div className="space-y-6 pb-32">
 
@@ -487,15 +514,30 @@ export default function AgendamentosPage() {
                                         )}
 
                                         {/* WhatsApp */}
-                                        {(a.clients?.whatsapp || (a.description && /WhatsApp:\s*\d+/i.test(a.description))) && (
-                                            <button
-                                                onClick={() => handleWhatsapp(a)}
-                                                title="Enviar WhatsApp"
-                                                className="p-2 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition"
-                                            >
-                                                <MessageCircle size={16} />
-                                            </button>
-                                        )}
+                                        {(() => {
+                                            const hasWa = a.clients?.whatsapp || (a.description && /WhatsApp:\s*\d+/i.test(a.description));
+                                            if (hasWa) {
+                                                return (
+                                                    <button
+                                                        onClick={() => handleWhatsapp(a)}
+                                                        title="Enviar WhatsApp"
+                                                        className="p-2 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition"
+                                                    >
+                                                        <MessageCircle size={16} />
+                                                    </button>
+                                                );
+                                            } else {
+                                                return (
+                                                    <button
+                                                        onClick={() => handleAddWhatsapp(a)}
+                                                        title="Adicionar WhatsApp"
+                                                        className="p-2 bg-stone-100 text-stone-400 rounded-xl hover:bg-stone-200 hover:text-green-600 transition"
+                                                    >
+                                                        <MessageCircle size={16} />
+                                                    </button>
+                                                );
+                                            }
+                                        })()}
 
                                         {/* Nova OS (quando não tem OS vinculada) */}
                                         {!a.work_order_id && (

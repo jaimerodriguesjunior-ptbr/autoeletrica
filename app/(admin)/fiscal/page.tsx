@@ -135,8 +135,13 @@ export default function FiscalDashboard() {
 
     const handleWhatsApp = (invoice: Invoice) => {
         const phone = invoice.work_orders?.clients?.whatsapp?.replace(/\D/g, "");
-        const link = invoice.pdf_url || ""; // Link oficial (pode exigir login se for IPM, mas é o que temos)
-        const text = `Olá, segue o link da sua Nota Fiscal: ${link}`;
+
+        // Usar a nossa própria rota da API que baixa/exibe o PDF para evitar links externos quebrados
+        const baseUrl = window.location.origin;
+        const link = `${baseUrl}/api/fiscal/print/${invoice.id}?download=true`;
+
+        const tipoText = invoice.tipo_documento === 'NFSe' ? 'Nota Fiscal de Serviço (NFS-e)' : 'Nota Fiscal (NFC-e)';
+        const text = `Olá, segue o link para baixar a sua ${tipoText}:\n\n${link}`;
 
         // Se tiver telefone, abre direto. Se não, abre o WA para escolher contato.
         let url = `https://wa.me/?text=${encodeURIComponent(text)}`;
