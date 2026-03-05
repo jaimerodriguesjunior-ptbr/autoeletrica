@@ -146,6 +146,8 @@ export default function DetalhesOS() {
     }
   };
 
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+
   // Estados para Adicionar Item
   const [listaProdutos, setListaProdutos] = useState<CatalogItem[]>([]);
   const [listaServicos, setListaServicos] = useState<CatalogItem[]>([]);
@@ -1227,10 +1229,19 @@ export default function DetalhesOS() {
 
               {/* Lista de Fotos */}
               {os!.photos?.map((url, idx) => (
-                <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-stone-100 group">
-                  <Image src={url} alt="Foto OS" fill className="object-cover" />
+                <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-stone-100 group cursor-pointer hover:shadow-lg transition">
+                  <Image
+                    src={url}
+                    alt="Foto OS"
+                    fill
+                    className="object-cover"
+                    onClick={() => setSelectedPhoto(url)}
+                  />
                   <button
-                    onClick={() => handleRemoveImage(url)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveImage(url);
+                    }}
                     className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition shadow-sm z-10"
                   >
                     <X size={12} />
@@ -2113,6 +2124,32 @@ export default function DetalhesOS() {
             >
               {updating ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Salvar Alterações
             </button>
+          </div>
+        </div>
+      )}
+
+
+      {/* MODAL VISUALIZAÇÃO DE FOTO (LIGHTBOX) */}
+      {selectedPhoto && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300 cursor-zoom-out"
+          onClick={() => setSelectedPhoto(null)}
+        >
+          <button
+            className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors z-[110]"
+            onClick={() => setSelectedPhoto(null)}
+          >
+            <X size={40} />
+          </button>
+
+          <div className="relative w-full h-full flex items-center justify-center">
+            <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+              <img
+                src={selectedPhoto}
+                alt="Foto Carro Ampliada"
+                className="max-w-screen max-h-screen object-contain"
+              />
+            </div>
           </div>
         </div>
       )}
