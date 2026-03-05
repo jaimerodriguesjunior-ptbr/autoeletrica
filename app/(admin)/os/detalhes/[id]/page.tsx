@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  ArrowLeft, CheckCircle, Clock, Wrench, Package, Save,
+  ArrowLeft, ArrowRight, CheckCircle, Clock, Wrench, Package, Save,
   CheckSquare, MessageCircle, User, Car, Loader2, DollarSign,
   Plus, Minus, X, Calendar, CreditCard, Trash2, Printer, Camera, UserCheck, ShieldCheck,
-  Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download, Search, AlertTriangle, Mic
+  Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download, Search, AlertTriangle, Mic, AlertCircle
 } from "lucide-react";
 import { createClient } from "../../../../../src/lib/supabase";
 import { useAuth } from "../../../../../src/contexts/AuthContext";
@@ -149,14 +149,20 @@ export default function DetalhesOS() {
   // Estados para Adicionar Item
   const [listaProdutos, setListaProdutos] = useState<CatalogItem[]>([]);
   const [listaServicos, setListaServicos] = useState<CatalogItem[]>([]);
-  const [modalAberto, setModalAberto] = useState(false);
-  const [abaItem, setAbaItem] = useState<"pecas" | "servicos">("pecas");
   const [termoBusca, setTermoBusca] = useState("");
   const [adicionandoItem, setAdicionandoItem] = useState(false);
 
-  // Edição de Item (modal)
-  const [itemEditando, setItemEditando] = useState<WorkOrderItem | null>(null);
+  const [modalAdicionarTipo, setModalAdicionarTipo] = useState<'peca' | 'servico' | null>(null);
   const [modalEditarItemAberto, setModalEditarItemAberto] = useState(false);
+  const [itemEditando, setItemEditando] = useState<WorkOrderItem | null>(null);
+  const [novoValorItem, setNovoValorItem] = useState('');
+  const [novaQtdItem, setNovaQtdItem] = useState('');
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
+  // Cadastro Rápido de Item
+  const [modalCadastroRapidoTipo, setModalCadastroRapidoTipo] = useState<'peca' | 'servico' | null>(null);
+  const [nomeNovoItem, setNomeNovoItem] = useState("");
+  const [salvandoNovoItem, setSalvandoNovoItem] = useState(false);
 
   // Scanner PDF
   const scannerInputRef = useRef<HTMLInputElement>(null);
@@ -332,7 +338,7 @@ export default function DetalhesOS() {
   const handleAdicionarDtc = async () => {
     if (!dtcResultado || !os) return;
     // Verificar se já está salvo
-    if (dtcsSalvos.some(d => d.code === dtcResultado.code)) {
+    if (dtcsSalvos!.some(d => d.code === dtcResultado.code)) {
       alert('Este código já foi adicionado a esta OS.');
       return;
     }
@@ -340,7 +346,7 @@ export default function DetalhesOS() {
     try {
       const { error } = await supabase
         .from('work_order_dtc_codes')
-        .insert({ work_order_id: os.id, code: dtcResultado.code });
+        .insert({ work_order_id: os!.id, code: dtcResultado.code });
       if (error) throw error;
       setDtcBusca('');
       setDtcResultado(null);
@@ -378,7 +384,7 @@ export default function DetalhesOS() {
     try {
       const file = e.target.files[0];
       const fileExt = file.name.split('.').pop();
-      const fileName = `${os.id}/${Date.now()}.${fileExt}`;
+      const fileName = `${os!.id}/${Date.now()}.${fileExt}`;
 
       // 1. Upload para o bucket 'os-images'
       const { error: uploadError } = await supabase.storage
@@ -393,13 +399,13 @@ export default function DetalhesOS() {
       const newPhotoUrl = publicUrlData.publicUrl;
 
       // 3. Atualizar Banco
-      const currentPhotos = os.photos || [];
+      const currentPhotos = os!.photos || [];
       const updatedPhotos = [...currentPhotos, newPhotoUrl];
 
       const { error: dbError } = await supabase
         .from('work_orders')
         .update({ photos: updatedPhotos })
-        .eq('id', os.id);
+        .eq('id', os!.id);
       if (dbError) throw dbError;
 
       // 4. Atualizar Tela
@@ -415,10 +421,10 @@ export default function DetalhesOS() {
   const handleRemoveImage = async (photoUrl: string) => {
     if (!os || !confirm("Excluir esta foto?")) return;
     try {
-      const currentPhotos = os.photos || [];
-      const updatedPhotos = currentPhotos.filter((p) => p !== photoUrl);
+      const currentPhotos = os!.photos || [];
+      const updatedPhotos = currentPhotos!.filter((p) => p !== photoUrl);
 
-      const { error } = await supabase.from('work_orders').update({ photos: updatedPhotos }).eq('id', os.id);
+      const { error } = await supabase.from('work_orders').update({ photos: updatedPhotos }).eq('id', os!.id);
       if (error) throw error;
 
       setOs({ ...os, photos: updatedPhotos });
@@ -437,7 +443,7 @@ export default function DetalhesOS() {
           defeitos_constatados: defeitosConstatados,
           servicos_executados: servicosExecutados
         })
-        .eq('id', os.id);
+        .eq('id', os!.id);
       if (error) throw error;
       setOs({ ...os, defeitos_constatados: defeitosConstatados, servicos_executados: servicosExecutados });
       alert("Laudo atualizado com sucesso!");
@@ -455,7 +461,7 @@ export default function DetalhesOS() {
       const { error } = await supabase
         .from('work_orders')
         .update({ status: novoStatus })
-        .eq('id', os.id);
+        .eq('id', os!.id);
       if (error) throw error;
       setOs({ ...os, status: novoStatus });
     } catch (error: any) {
@@ -474,7 +480,7 @@ export default function DetalhesOS() {
       await supabase
         .from('work_orders')
         .update({ previsao_entrega: novaData || null })
-        .eq('id', os.id);
+        .eq('id', os!.id);
     } catch (error) {
       console.error("Erro ao salvar previsão", error);
     }
@@ -484,7 +490,7 @@ export default function DetalhesOS() {
   const handleRemoverItem = async (item: WorkOrderItem) => {
     if (!os) return;
 
-    if (os.status === 'cancelado' || os.status === 'entregue') {
+    if (os!.status === 'cancelado' || os!.status === 'entregue') {
       return alert("Não é possível remover itens de uma OS finalizada ou cancelada.");
     }
 
@@ -509,11 +515,11 @@ export default function DetalhesOS() {
 
       await supabase.from('work_order_items').delete().eq('id', item.id);
 
-      const novoTotal = item.peca_cliente ? (os.total || 0) : (os.total || 0) - item.total_price;
+      const novoTotal = item.peca_cliente ? (os!.total || 0) : (os!.total || 0) - item.total_price;
       await supabase
         .from('work_orders')
         .update({ total: novoTotal })
-        .eq('id', os.id);
+        .eq('id', os!.id);
 
       fetchOS();
       alert("Item removido e estoque atualizado.");
@@ -556,17 +562,17 @@ export default function DetalhesOS() {
       }
 
       // 3. Recalcular total da OS (excluindo peças do cliente)
-      const itensAtualizados = os.work_order_items.map(i =>
+      const itensAtualizados = os!.work_order_items.map(i =>
         i.id === item.id ? { ...i, peca_cliente: novoValor } : i
       );
-      const novoTotal = itensAtualizados.reduce((acc, i) =>
+      const novoTotal = itensAtualizados!.reduce((acc, i) =>
         i.peca_cliente ? acc : acc + i.total_price, 0
       );
 
       await supabase
         .from('work_orders')
         .update({ total: novoTotal })
-        .eq('id', os.id);
+        .eq('id', os!.id);
 
       fetchOS();
     } catch (error: any) {
@@ -587,18 +593,18 @@ export default function DetalhesOS() {
         .update({ unit_price: novoPreco, total_price: novoTotalPrice })
         .eq('id', item.id);
 
-      const itensAtualizados = os.work_order_items.map(i =>
+      const itensAtualizados = os!.work_order_items.map(i =>
         i.id === item.id ? { ...i, unit_price: novoPreco, total_price: novoTotalPrice } : i
       );
 
-      const novoTotalOS = itensAtualizados.reduce((acc, i) =>
+      const novoTotalOS = itensAtualizados!.reduce((acc, i) =>
         i.peca_cliente ? acc : acc + i.total_price, 0
       );
 
       await supabase
         .from('work_orders')
         .update({ total: novoTotalOS })
-        .eq('id', os.id);
+        .eq('id', os!.id);
 
       fetchOS();
     } catch (error: any) {
@@ -614,7 +620,7 @@ export default function DetalhesOS() {
 
     setUpdating(true);
     try {
-      for (const item of os.work_order_items) {
+      for (const item of os!.work_order_items) {
         if (item.tipo === "peca" && item.product_id && !item.peca_cliente) {
           const { data: prodData } = await supabase
             .from('products')
@@ -634,7 +640,7 @@ export default function DetalhesOS() {
       const { error } = await supabase
         .from('work_orders')
         .update({ status: 'cancelado' })
-        .eq('id', os.id);
+        .eq('id', os!.id);
 
       if (error) throw error;
 
@@ -655,7 +661,7 @@ export default function DetalhesOS() {
     setUpdating(true);
     try {
       // 1. Devolver estoque das peças (que não são do cliente)
-      for (const item of os.work_order_items || []) {
+      for (const item of os!.work_order_items || []) {
         if (item.tipo === "peca" && item.product_id && !item.peca_cliente) {
           const { data: prodData } = await supabase
             .from('products')
@@ -673,12 +679,12 @@ export default function DetalhesOS() {
       }
 
       // 2. Apagar a OS (as foreign keys 'on delete cascade' devem cuidar do resto, mas garantimos os itens)
-      await supabase.from('work_order_items').delete().eq('work_order_id', os.id);
+      await supabase.from('work_order_items').delete().eq('work_order_id', os!.id);
 
       const { error } = await supabase
         .from('work_orders')
         .delete()
-        .eq('id', os.id);
+        .eq('id', os!.id);
 
       if (error) throw error;
 
@@ -715,8 +721,8 @@ export default function DetalhesOS() {
 
           transacoesParaInserir.push({
             organization_id: profile.organization_id,
-            work_order_id: os.id,
-            description: `Recebimento OS #${os.id} - ${os.clients?.nome} (Parc ${i}/${parcelas})`,
+            work_order_id: os!.id,
+            description: `Recebimento OS #${os!.id} - ${os!.clients?.nome} (Parc ${i}/${parcelas})`,
             amount: valorParcela,
             type: 'income',
             category: 'Serviços',
@@ -729,8 +735,8 @@ export default function DetalhesOS() {
       } else if (formaPagamento === 'cheque_pre') {
         transacoesParaInserir.push({
           organization_id: profile.organization_id,
-          work_order_id: os.id,
-          description: `Recebimento OS #${os.id} - ${os.clients?.nome} (Cheque)`,
+          work_order_id: os!.id,
+          description: `Recebimento OS #${os!.id} - ${os!.clients?.nome} (Cheque)`,
           amount: valorTotal,
           type: 'income',
           category: 'Serviços',
@@ -742,8 +748,8 @@ export default function DetalhesOS() {
       } else {
         transacoesParaInserir.push({
           organization_id: profile.organization_id,
-          work_order_id: os.id,
-          description: `Recebimento OS #${os.id} - ${os.clients?.nome} (${formaPagamento})`,
+          work_order_id: os!.id,
+          description: `Recebimento OS #${os!.id} - ${os!.clients?.nome} (${formaPagamento})`,
           amount: valorTotal,
           type: 'income',
           category: 'Serviços',
@@ -759,7 +765,7 @@ export default function DetalhesOS() {
           status: 'entregue',
           total: valorTotal
         })
-        .eq('id', os.id);
+        .eq('id', os!.id);
 
       if (osError) throw osError;
 
@@ -792,7 +798,7 @@ export default function DetalhesOS() {
       const { error: itemError } = await supabase
         .from("work_order_items")
         .insert({
-          work_order_id: os.id,
+          work_order_id: os!.id,
           organization_id: profile.organization_id,
           product_id: tipo === "peca" ? item.id : null,
           service_id: tipo === "servico" ? item.id : null,
@@ -822,15 +828,16 @@ export default function DetalhesOS() {
         }
       }
 
-      const novoTotalOS = (os.total || 0) + totalItem;
+      const novoTotalOS = (os!.total || 0) + totalItem;
       const { error: osError } = await supabase
         .from("work_orders")
         .update({ total: novoTotalOS })
-        .eq("id", os.id);
+        .eq("id", os!.id);
 
       if (osError) throw osError;
 
-      setModalAberto(false);
+      setModalAdicionarTipo(null);
+      setTermoBusca("");
       fetchOS();
       alert("Item adicionado e estoque atualizado!");
 
@@ -838,6 +845,62 @@ export default function DetalhesOS() {
       alert("Erro ao adicionar item: " + error.message);
     } finally {
       setAdicionandoItem(false);
+    }
+  };
+
+  const handleCadastroRapido = async () => {
+    if (!profile?.organization_id) return;
+    if (!nomeNovoItem.trim()) {
+      alert("Por favor, digite o nome do item.");
+      return;
+    }
+
+    setSalvandoNovoItem(true);
+    try {
+      let insertedItem: any;
+
+      if (modalCadastroRapidoTipo === 'peca') {
+        const { data, error } = await supabase.from('products').insert({
+          organization_id: profile.organization_id,
+          nome: nomeNovoItem,
+          marca: 'Sem Marca', // Requisito mínimo sugerido por conveniência
+          codigo_ref: '', // Vazio
+          estoque_atual: 0,
+          estoque_min: 0,
+          custo_reposicao: 0,
+          custo_contabil: 0,
+          preco_venda: 0
+        }).select('id, nome, preco_venda, estoque_atual').single();
+
+        if (error) throw error;
+        insertedItem = data;
+        setListaProdutos(prev => [...prev, insertedItem as CatalogItem]);
+
+      } else {
+        const { data, error } = await supabase.from('services').insert({
+          organization_id: profile.organization_id,
+          nome: nomeNovoItem,
+          price: 0
+        }).select('id, nome, price').single();
+
+        if (error) throw error;
+        insertedItem = data;
+        setListaServicos(prev => [...prev, insertedItem as CatalogItem]);
+      }
+
+      const tipoLabel = modalCadastroRapidoTipo === 'peca' ? 'Peça' : 'Serviço';
+
+      setTermoBusca(insertedItem.nome);
+      setModalAdicionarTipo(modalCadastroRapidoTipo);
+      setModalCadastroRapidoTipo(null);
+      setNomeNovoItem("");
+
+      alert(`${tipoLabel} cadastrado com sucesso! Lembre-se de complementar as informações no painel principal mais tarde.`);
+
+    } catch (error: any) {
+      alert("Erro ao realizar cadastro rápido: " + error.message);
+    } finally {
+      setSalvandoNovoItem(false);
     }
   };
 
@@ -853,9 +916,9 @@ export default function DetalhesOS() {
 
       const { error } = await supabase.from('appointments').insert({
         organization_id: profile.organization_id,
-        client_id: os.clients?.id || null,
-        vehicle_id: os.vehicles?.id || null,
-        work_order_id: os.id,
+        client_id: os!.clients?.id || null,
+        vehicle_id: os!.vehicles?.id || null,
+        work_order_id: os!.id,
         type: formAgendamento.tipo,
         description: formAgendamento.desc,
         start_time: startTime.toISOString(),
@@ -878,7 +941,7 @@ export default function DetalhesOS() {
 
   const getStatusColor = (stepStatus: string) => {
     if (!os) return "";
-    const currentStatus = os.status;
+    const currentStatus = os!.status;
     const flow = ['orcamento', 'aprovado', 'aguardando_peca', 'em_servico', 'pronto', 'entregue'];
     const currentIndex = flow.indexOf(currentStatus);
     const stepIndex = flow.indexOf(stepStatus);
@@ -892,12 +955,12 @@ export default function DetalhesOS() {
 
   const handleWhatsapp = () => {
     if (os?.clients?.whatsapp) {
-      const number = os.clients.whatsapp.replace(/\D/g, '');
-      const osId = String(os.id);
+      const number = os!.clients.whatsapp.replace(/\D/g, '');
+      const osId = String(os!.id);
       const baseUrl = window.location.origin;
-      const trackingLink = `${baseUrl}/acompanhar?token=${os.public_token}`;
-      const message = `Olá ${os.clients.nome}, tudo bem? 👋\n\n` +
-        `Sobre o seu veículo: *${os.vehicles?.modelo}* (OS #${osId}).\n` +
+      const trackingLink = `${baseUrl}/acompanhar?token=${os!.public_token}`;
+      const message = `Olá ${os!.clients.nome}, tudo bem? 👋\n\n` +
+        `Sobre o seu veículo: *${os!.vehicles?.modelo}* (OS #${osId}).\n` +
         `Você pode acompanhar o status e o orçamento clicando aqui:\n\n` +
         `${trackingLink}`;
       window.open(`https://wa.me/55${number}?text=${encodeURIComponent(message)}`, '_blank');
@@ -905,6 +968,9 @@ export default function DetalhesOS() {
       alert("Cliente sem WhatsApp cadastrado.");
     }
   };
+
+  const osPecas = os?.work_order_items?.filter(item => item.tipo === 'peca') || [];
+  const osServicos = os?.work_order_items?.filter(item => item.tipo === 'servico') || [];
 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={40} /></div>;
   if (!os) return null;
@@ -922,13 +988,13 @@ export default function DetalhesOS() {
           </Link>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-[#1A1A1A]">OS #{String(os.id).slice(0, 4).toUpperCase()}</h1>
-              <span className={`text-xs font-bold px-2 py-1 rounded-md uppercase border ${os.status === 'cancelado' ? 'bg-red-100 text-red-600 border-red-200' : 'bg-stone-100 text-stone-600 border-stone-200'}`}>
-                {os.status.replace('_', ' ')}
+              <h1 className="text-2xl font-bold text-[#1A1A1A]">OS #{String(os!.id).slice(0, 4).toUpperCase()}</h1>
+              <span className={`text-xs font-bold px-2 py-1 rounded-md uppercase border ${os!.status === 'cancelado' ? 'bg-red-100 text-red-600 border-red-200' : 'bg-stone-100 text-stone-600 border-stone-200'}`}>
+                {os!.status.replace('_', ' ')}
               </span>
             </div>
             <p className="text-stone-500 text-xs flex items-center gap-2 mt-1">
-              <Car size={12} /> {os.vehicles?.modelo} <span className="text-stone-300">|</span> <span className="font-mono">{os.vehicles?.placa}</span>
+              <Car size={12} /> {os!.vehicles?.modelo} <span className="text-stone-300">|</span> <span className="font-mono">{os!.vehicles?.placa}</span>
             </p>
           </div>
         </div>
@@ -944,7 +1010,7 @@ export default function DetalhesOS() {
           )}
 
           {/* BOTÃO DE IMPRESSÃO (NOVO) */}
-          <Link href={`/imprimir/os/${os.id}`} target="_blank" className="hidden md:block">
+          <Link href={`/imprimir/os/${os!.id}`} target="_blank" className="hidden md:block">
             <button className="bg-white border border-stone-200 text-[#1A1A1A] px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 hover:bg-stone-50 transition whitespace-nowrap">
               <Printer size={18} /> Imprimir
             </button>
@@ -982,21 +1048,21 @@ export default function DetalhesOS() {
 
               {/* CARD: ORÇAMENTO */}
               <div
-                className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('orcamento')} ${os.status !== 'orcamento' && os.aprovacao_timestamp ? 'cursor-pointer hover:scale-[1.02]' : ''}`}
+                className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('orcamento')} ${os!.status !== 'orcamento' && os!.aprovacao_timestamp ? 'cursor-pointer hover:scale-[1.02]' : ''}`}
                 onClick={() => {
-                  if (os.status !== 'orcamento' && os.aprovacao_timestamp) setModalMetadados(true);
+                  if (os!.status !== 'orcamento' && os!.aprovacao_timestamp) setModalMetadados(true);
                 }}
               >
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><DollarSign size={20} /></div>
                   <div>
                     <p className="font-bold text-sm">Orçamento Criado</p>
-                    <p className="text-xs opacity-80">{os.status !== 'orcamento' && os.aprovacao_timestamp ? 'Aprovado ✓ (clique para ver detalhes)' : 'Aguardando aprovação'}</p>
+                    <p className="text-xs opacity-80">{os!.status !== 'orcamento' && os!.aprovacao_timestamp ? 'Aprovado ✓ (clique para ver detalhes)' : 'Aguardando aprovação'}</p>
                   </div>
                 </div>
-                {os.status === 'orcamento' && (
+                {os!.status === 'orcamento' && (
                   <button onClick={() => {
-                    const temPecaCliente = os.work_order_items?.some(i => i.peca_cliente);
+                    const temPecaCliente = os!.work_order_items?.some(i => i.peca_cliente);
                     if (temPecaCliente) {
                       const aceita = confirm(
                         '⚠️ ATENÇÃO: Esta OS contém peças trazidas pelo cliente.\n\n' +
@@ -1019,7 +1085,7 @@ export default function DetalhesOS() {
                   <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Package size={20} /></div>
                   <div><p className="font-bold text-sm">Peças / Insumos</p><p className="text-xs opacity-80">Verificando estoque</p></div>
                 </div>
-                {(os.status === 'aprovado' || os.status === 'aguardando_peca') && (
+                {(os!.status === 'aprovado' || os!.status === 'aguardando_peca') && (
                   <button onClick={() => handleStatusChange('em_servico')} disabled={updating} className="bg-[#FACC15] text-[#1A1A1A] px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-yellow-400 transition flex items-center gap-2">
                     <Wrench size={14} /> Iniciar Serviço
                   </button>
@@ -1032,7 +1098,7 @@ export default function DetalhesOS() {
                   <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Wrench size={20} /></div>
                   <div><p className="font-bold text-sm">Em Execução</p><p className="text-xs opacity-80">Mecânico trabalhando</p></div>
                 </div>
-                {os.status === 'em_servico' && (
+                {os!.status === 'em_servico' && (
                   <button onClick={() => handleStatusChange('pronto')} disabled={updating} className="bg-green-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-green-600 transition flex items-center gap-2">
                     <CheckSquare size={14} /> Finalizar
                   </button>
@@ -1045,7 +1111,7 @@ export default function DetalhesOS() {
                   <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><CheckCircle size={20} /></div>
                   <div><p className="font-bold text-sm">Pronto p/ Entrega</p><p className="text-xs opacity-80">Veículo testado e liberado</p></div>
                 </div>
-                {os.status === 'pronto' && (
+                {os!.status === 'pronto' && (
                   <button onClick={() => setModalCheckoutAberto(true)} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
                     Entregar & Fechar
                   </button>
@@ -1060,7 +1126,7 @@ export default function DetalhesOS() {
               <MessageCircle size={16} /> Relato / Defeito Informado Pelo Cliente
             </h3>
             <p className="text-stone-600 text-sm bg-[#F8F7F2] p-4 rounded-2xl border border-stone-100">
-              {os.description || "Nenhuma descrição informada."}
+              {os!.description || "Nenhuma descrição informada."}
             </p>
           </div>
 
@@ -1149,7 +1215,7 @@ export default function DetalhesOS() {
               <h3 className="font-bold text-[#1A1A1A] text-sm flex items-center gap-2">
                 <Camera size={16} /> Fotos do Veículo
               </h3>
-              <span className="text-xs text-stone-400">{os.photos?.length || 0} fotos</span>
+              <span className="text-xs text-stone-400">{os!.photos?.length || 0} fotos</span>
             </div>
 
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -1160,7 +1226,7 @@ export default function DetalhesOS() {
               </label>
 
               {/* Lista de Fotos */}
-              {os.photos?.map((url, idx) => (
+              {os!.photos?.map((url, idx) => (
                 <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-stone-100 group">
                   <Image src={url} alt="Foto OS" fill className="object-cover" />
                   <button
@@ -1199,19 +1265,19 @@ export default function DetalhesOS() {
               <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
                 <User size={16} /> Cliente
               </h3>
-              {os.clients?.id && (
-                <Link href={`/clientes/${os.clients.id}`} className="text-xs font-bold text-stone-400 hover:text-[#1A1A1A] transition flex items-center gap-1">
+              {os!.clients?.id && (
+                <Link href={`/clientes/${os!.clients.id}`} className="text-xs font-bold text-stone-400 hover:text-[#1A1A1A] transition flex items-center gap-1">
                   Editar
                 </Link>
               )}
             </div>
             <div className="mb-6">
-              <p className="text-lg font-bold text-[#1A1A1A]">{os.clients?.nome}</p>
-              <p className="text-sm text-stone-500">{os.clients?.whatsapp || "Sem telefone"}</p>
+              <p className="text-lg font-bold text-[#1A1A1A]">{os!.clients?.nome}</p>
+              <p className="text-sm text-stone-500">{os!.clients?.whatsapp || "Sem telefone"}</p>
             </div>
 
             {/* DADOS DO PAINEL */}
-            {(os.odometro || os.nivel_combustivel || os.temperatura_motor || os.painel_obs) && (
+            {(os!.odometro || os!.nivel_combustivel || os!.temperatura_motor || os!.painel_obs) && (
               <>
                 <div className="border-t border-stone-300 my-4"></div>
                 <button
@@ -1225,30 +1291,30 @@ export default function DetalhesOS() {
                 </button>
                 {checklistAberto && (
                   <div className="space-y-2 text-sm animate-in slide-in-from-top-2">
-                    {os.odometro && (
+                    {os!.odometro && (
                       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-stone-100">
                         <span className="text-stone-500 flex items-center gap-1.5"><Gauge size={13} /> Odômetro</span>
-                        <span className="font-bold text-[#1A1A1A]">{Number(os.odometro).toLocaleString('pt-BR')} km</span>
+                        <span className="font-bold text-[#1A1A1A]">{Number(os!.odometro).toLocaleString('pt-BR')} km</span>
                       </div>
                     )}
-                    {os.nivel_combustivel && (
+                    {os!.nivel_combustivel && (
                       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-stone-100">
                         <span className="text-stone-500 flex items-center gap-1.5"><Fuel size={13} /> Combustível</span>
-                        <span className="font-bold text-[#1A1A1A] capitalize">{os.nivel_combustivel}</span>
+                        <span className="font-bold text-[#1A1A1A] capitalize">{os!.nivel_combustivel}</span>
                       </div>
                     )}
-                    {os.temperatura_motor && (
+                    {os!.temperatura_motor && (
                       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-stone-100">
                         <span className="text-stone-500 flex items-center gap-1.5"><Thermometer size={13} /> Temperatura</span>
-                        <span className={`font-bold capitalize ${os.temperatura_motor === 'critica' ? 'text-red-600' :
-                          os.temperatura_motor === 'elevada' ? 'text-yellow-600' : 'text-green-600'
-                          }`}>{os.temperatura_motor}</span>
+                        <span className={`font-bold capitalize ${os!.temperatura_motor === 'critica' ? 'text-red-600' :
+                          os!.temperatura_motor === 'elevada' ? 'text-yellow-600' : 'text-green-600'
+                          }`}>{os!.temperatura_motor}</span>
                       </div>
                     )}
-                    {os.painel_obs && (
+                    {os!.painel_obs && (
                       <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200 mt-2">
                         <p className="text-[10px] font-bold text-yellow-600 uppercase mb-1">Observações do Painel</p>
-                        <p className="text-xs text-stone-600">{os.painel_obs}</p>
+                        <p className="text-xs text-stone-600">{os!.painel_obs}</p>
                       </div>
                     )}
                   </div>
@@ -1258,11 +1324,90 @@ export default function DetalhesOS() {
 
             <div className="border-t border-stone-300 my-4"></div>
 
+            {/* SEÇÃO ITENS GERAIS */}
+            <div className="mb-2">
+              <h2 className="text-xl font-bold text-[#1A1A1A]">Itens</h2>
+            </div>
+
+            {/* SEÇÃO SERVIÇOS */}
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-[#1A1A1A]">Itens da OS</h3>
-              {os.status !== 'cancelado' && os.status !== 'entregue' && (
+              <h3 className="font-bold text-[#1A1A1A] text-sm ml-2">Serviços Executados</h3>
+              {os!.status !== 'cancelado' && os!.status !== 'entregue' && (
                 <button
-                  onClick={() => setModalAberto(true)}
+                  onClick={() => {
+                    setModalAdicionarTipo('servico');
+                    setTermoBusca('');
+                  }}
+                  className="bg-white hover:bg-stone-100 text-[#1A1A1A] p-2 rounded-full shadow-sm transition"
+                >
+                  <Plus size={16} />
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-3 text-sm mb-6">
+              {osServicos!.map((item) => (
+                <div key={item.id} className="rounded-xl p-3 border border-stone-100 bg-white">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-stone-600 font-medium">{item.name}</p>
+                      <p className="text-[10px] text-stone-400">
+                        {item.quantity}x R$ {(item.unit_price || 0).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {os!.status !== 'cancelado' && os!.status !== 'entregue' ? (
+                        <button
+                          onClick={() => {
+                            setItemEditando(item);
+                            setNovoValorItem(item.unit_price.toString());
+                            setNovaQtdItem(item.quantity.toString());
+                            setModalEditarItemAberto(true);
+                          }}
+                          className="text-right p-2 rounded-xl hover:bg-stone-200/50 transition cursor-pointer"
+                          title="Clique para editar"
+                        >
+                          <p className="font-bold text-[#1A1A1A]">
+                            {formatCurrency((item.unit_price || 0) * item.quantity)}
+                          </p>
+                        </button>
+                      ) : (
+                        <div className="text-right p-2">
+                          <p className="font-bold text-[#1A1A1A]">
+                            {formatCurrency((item.unit_price || 0) * item.quantity)}
+                          </p>
+                        </div>
+                      )}
+
+                      {os!.status !== 'cancelado' && os!.status !== 'entregue' && (
+                        <button
+                          onClick={() => handleRemoverItem(item)}
+                          className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition"
+                          title="Remover Item"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {osServicos!.length === 0 && (
+                <p className="text-xs text-stone-400 italic text-center py-2">Nenhum serviço adicionado.</p>
+              )}
+            </div>
+
+            <div className="border-t border-stone-300 my-4"></div>
+
+            {/* SEÇÃO PEÇAS */}
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-[#1A1A1A] text-sm ml-2">Peças / Insumos</h3>
+              {os!.status !== 'cancelado' && os!.status !== 'entregue' && (
+                <button
+                  onClick={() => {
+                    setModalAdicionarTipo('peca');
+                    setTermoBusca('');
+                  }}
                   className="bg-white hover:bg-stone-100 text-[#1A1A1A] p-2 rounded-full shadow-sm transition"
                 >
                   <Plus size={16} />
@@ -1271,8 +1416,8 @@ export default function DetalhesOS() {
             </div>
 
             <div className="space-y-3 text-sm">
-              {os.work_order_items?.map((item) => (
-                <div key={item.id} className={`rounded-xl p-3 ${item.peca_cliente ? 'bg-yellow-50 border-2 border-yellow-200' : ''}`}>
+              {osPecas.map((item) => (
+                <div key={item.id} className={`rounded-xl p-3 border bg-white ${item.peca_cliente ? 'bg-yellow-50 border-yellow-200' : 'border-stone-100'}`}>
                   <div className="flex justify-between items-center">
                     <div>
                       <p className={`text-stone-600 font-medium ${item.peca_cliente ? 'line-through opacity-60' : ''}`}>{item.name}</p>
@@ -1281,10 +1426,12 @@ export default function DetalhesOS() {
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
-                      {os.status !== 'cancelado' && os.status !== 'entregue' ? (
+                      {os!.status !== 'cancelado' && os!.status !== 'entregue' ? (
                         <button
                           onClick={() => {
                             setItemEditando(item);
+                            setNovoValorItem(item.unit_price.toString());
+                            setNovaQtdItem(item.quantity.toString());
                             setModalEditarItemAberto(true);
                           }}
                           className="text-right p-2 rounded-xl hover:bg-stone-200/50 transition cursor-pointer"
@@ -1302,21 +1449,19 @@ export default function DetalhesOS() {
                         </div>
                       )}
 
-                      {os.status !== 'cancelado' && os.status !== 'entregue' && (
+                      {os!.status !== 'cancelado' && os!.status !== 'entregue' && (
                         <>
-                          {item.tipo === 'peca' && (
-                            <button
-                              onClick={() => handleTogglePecaCliente(item)}
-                              disabled={updating}
-                              className={`p-1.5 rounded-lg transition ${item.peca_cliente
-                                ? 'bg-yellow-400 text-[#1A1A1A]'
-                                : 'bg-stone-100 text-stone-400 hover:bg-yellow-100 hover:text-yellow-700'
-                                }`}
-                              title={item.peca_cliente ? 'Peça do cliente (clique para desmarcar)' : 'Marcar como peça do cliente'}
-                            >
-                              <UserCheck size={14} />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleTogglePecaCliente(item)}
+                            disabled={updating}
+                            className={`p-1.5 rounded-lg transition border ${item.peca_cliente
+                              ? 'bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A]'
+                              : 'bg-white text-stone-400 border-stone-200 hover:bg-yellow-50 hover:text-yellow-700 hover:border-yellow-200'
+                              }`}
+                            title={item.peca_cliente ? 'Peça trazida pelo cliente (desmarcar)' : 'Marcar como peça trazida pelo cliente'}
+                          >
+                            <UserCheck size={16} />
+                          </button>
 
                           <button
                             onClick={() => handleRemoverItem(item)}
@@ -1330,20 +1475,20 @@ export default function DetalhesOS() {
                     </div>
                   </div>
                   {item.peca_cliente && (
-                    <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold bg-yellow-400 text-[#1A1A1A] px-2 py-0.5 rounded-full">
+                    <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold bg-[#1A1A1A] text-[#FACC15] px-2 py-0.5 rounded-full">
                       <UserCheck size={10} /> PEÇA DO CLIENTE
                     </span>
                   )}
                 </div>
               ))}
 
-              {(!os.work_order_items || os.work_order_items.length === 0) && (
-                <p className="text-xs text-stone-400 italic text-center py-2">Nenhum item adicionado.</p>
+              {osPecas.length === 0 && (
+                <p className="text-xs text-stone-400 italic text-center py-2">Nenhuma peça adicionada.</p>
               )}
 
               <div className="border-t border-stone-300 my-2 pt-4 flex justify-between text-lg">
-                <span className="font-bold text-[#1A1A1A]">Total</span>
-                <span className="font-bold text-[#1A1A1A]">{formatCurrency(os.total)}</span>
+                <span className="font-bold text-[#1A1A1A]">Total Geral</span>
+                <span className="font-bold text-[#1A1A1A]">{formatCurrency(os!.total)}</span>
               </div>
 
               {/* RELATÓRIO DE SCANNER */}
@@ -1358,11 +1503,11 @@ export default function DetalhesOS() {
                     setUploadingScan(true);
                     try {
                       const file = e.target.files[0];
-                      const fileName = `${os.id}/scanner_${Date.now()}.pdf`;
+                      const fileName = `${os!.id}/scanner_${Date.now()}.pdf`;
                       const { error: upErr } = await supabase.storage.from('os-images').upload(fileName, file);
                       if (upErr) throw upErr;
                       const { data: urlData } = supabase.storage.from('os-images').getPublicUrl(fileName);
-                      await supabase.from('work_orders').update({ scanner_pdf: urlData.publicUrl }).eq('id', os.id);
+                      await supabase.from('work_orders').update({ scanner_pdf: urlData.publicUrl }).eq('id', os!.id);
                       setOs({ ...os, scanner_pdf: urlData.publicUrl });
                       alert('Relatório enviado!');
                     } catch (err: any) {
@@ -1381,10 +1526,10 @@ export default function DetalhesOS() {
                   {uploadingScan ? 'Enviando...' : 'Relatório de Scanner'}
                 </button>
 
-                {os.scanner_pdf && (
+                {os!.scanner_pdf && (
                   <div className="mt-3 flex items-center gap-2">
                     <a
-                      href={os.scanner_pdf}
+                      href={os!.scanner_pdf}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex-1 flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700 text-sm font-bold hover:bg-blue-100 transition"
@@ -1396,8 +1541,8 @@ export default function DetalhesOS() {
                       onClick={async () => {
                         if (!confirm('Deseja remover o relatório de scanner?')) return;
                         try {
-                          await supabase.from('work_orders').update({ scanner_pdf: null }).eq('id', os.id);
-                          setOs({ ...os, scanner_pdf: null });
+                          await supabase.from('work_orders').update({ scanner_pdf: null }).eq('id', os!.id);
+                          setOs({ ...os, scanner_pdf: null } as WorkOrderFull);
                         } catch (err: any) {
                           alert('Erro ao remover: ' + err.message);
                         }
@@ -1421,9 +1566,9 @@ export default function DetalhesOS() {
                     <Search size={16} /> Diagnóstico OBD-II
                   </h3>
                   <div className="flex items-center gap-2">
-                    {dtcsSalvos.length > 0 && (
+                    {dtcsSalvos!.length > 0 && (
                       <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
-                        {dtcsSalvos.length}
+                        {dtcsSalvos!.length}
                       </span>
                     )}
                     {dtcAberto ? <ChevronUp size={18} className="text-stone-400" /> : <ChevronDown size={18} className="text-stone-400" />}
@@ -1490,10 +1635,10 @@ export default function DetalhesOS() {
                     )}
 
                     {/* Lista de Códigos Salvos */}
-                    {dtcsSalvos.length > 0 && (
+                    {dtcsSalvos!.length > 0 && (
                       <div className="space-y-2 pt-2">
                         <p className="text-[10px] font-bold text-stone-400 uppercase">Códigos Registrados</p>
-                        {dtcsSalvos.map((dtc) => (
+                        {dtcsSalvos!.map((dtc) => (
                           <div key={dtc.id} className="flex items-start justify-between gap-2 bg-red-50 border border-red-200 rounded-xl p-2.5">
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-bold text-red-700 font-mono">{dtc.code}</p>
@@ -1511,7 +1656,7 @@ export default function DetalhesOS() {
                       </div>
                     )}
 
-                    {dtcsSalvos.length === 0 && (
+                    {dtcsSalvos!.length === 0 && (
                       <p className="text-xs text-stone-400 italic text-center py-1">Nenhum código registrado.</p>
                     )}
                   </div>
@@ -1521,8 +1666,8 @@ export default function DetalhesOS() {
           </div>
 
           <div className="text-center">
-            <p className="text-xs text-stone-400 mb-2">Criado em: {new Date(os.created_at).toLocaleDateString()}</p>
-            {os.status !== 'cancelado' && os.status !== 'entregue' && (
+            <p className="text-xs text-stone-400 mb-2">Criado em: {new Date(os!.created_at).toLocaleDateString()}</p>
+            {os!.status !== 'cancelado' && os!.status !== 'entregue' && (
               <button
                 onClick={handleCancelarOS}
                 className="text-red-400 text-xs font-bold hover:underline"
@@ -1530,7 +1675,7 @@ export default function DetalhesOS() {
                 Cancelar Ordem de Serviço
               </button>
             )}
-            {os.status === 'cancelado' && <p className="text-red-500 font-bold text-sm">ESTA ORDEM FOI CANCELADA</p>}
+            {os!.status === 'cancelado' && <p className="text-red-500 font-bold text-sm">ESTA ORDEM FOI CANCELADA</p>}
           </div>
         </div>
 
@@ -1548,7 +1693,7 @@ export default function DetalhesOS() {
             </div>
 
             <p className="text-xs text-stone-500">
-              Este agendamento será vinculado ao veículo <strong className="text-[#1A1A1A]">{os.vehicles?.modelo}</strong> da OS <strong className="text-[#1A1A1A]">#{os.id.toString().slice(0, 4)}</strong>.
+              Este agendamento será vinculado ao veículo <strong className="text-[#1A1A1A]">{os!.vehicles?.modelo}</strong> da OS <strong className="text-[#1A1A1A]">#{os!.id.toString().slice(0, 4)}</strong>.
             </p>
 
             <div className="grid grid-cols-2 gap-3 mt-4">
@@ -1610,76 +1755,139 @@ export default function DetalhesOS() {
         </div>
       )}
 
-      {/* MODAL ADICIONAR ITEM */}
-      {modalAberto && (
+      {/* MODAL ADICIONAR ITEM ESPECIALIZADO */}
+      {modalAdicionarTipo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl space-y-4 h-[500px] flex flex-col">
             <div className="flex justify-between items-center">
-              <h2 className="font-bold text-lg">Adicionar à OS Existente</h2>
-              <button onClick={() => setModalAberto(false)}>
+              <h2 className="font-bold text-lg">Adicionar {modalAdicionarTipo === 'servico' ? 'Serviço' : 'Peça'}</h2>
+              <button onClick={() => setModalAdicionarTipo(null)} className="text-stone-400 hover:text-[#1A1A1A] transition">
                 <X />
               </button>
             </div>
-            <div className="flex bg-stone-200 p-1.5 rounded-2xl border-2 border-stone-300 shadow-inner gap-1">
-              <button
-                onClick={() => setAbaItem("pecas")}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition border-2 ${abaItem === "pecas" ? "bg-white shadow-md text-[#1A1A1A] border-stone-300" : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
-                  }`}
-              >
-                Peças
-              </button>
-              <button
-                onClick={() => setAbaItem("servicos")}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition border-2 ${abaItem === "servicos" ? "bg-white shadow-md text-[#1A1A1A] border-stone-300" : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
-                  }`}
-              >
-                Serviços
-              </button>
+
+            <div className="relative">
+              <input
+                autoFocus
+                placeholder={`Buscar ${modalAdicionarTipo === 'servico' ? 'serviço...' : 'peça...'}`}
+                value={termoBusca}
+                onChange={(e) => setTermoBusca(e.target.value)}
+                className="w-full bg-[#F8F7F2] p-4 pl-10 rounded-2xl border-2 border-stone-300 focus:border-[#FACC15] outline-none text-sm text-[#1A1A1A] placeholder:text-stone-400 font-medium transition"
+              />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
             </div>
-            <input
-              autoFocus
-              placeholder="Buscar..."
-              value={termoBusca}
-              onChange={(e) => setTermoBusca(e.target.value)}
-              className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
-            />
-            <div className="flex-1 overflow-auto space-y-2">
+
+            <div className="flex-1 overflow-auto space-y-2 pb-4">
               {adicionandoItem && (
                 <div className="text-center py-4 text-stone-400 flex flex-col items-center">
                   <Loader2 className="animate-spin mb-2" /> Salvando...
                 </div>
               )}
 
-              {!adicionandoItem && abaItem === "pecas" &&
+              {!adicionandoItem && modalAdicionarTipo === "peca" &&
                 listaProdutos
                   .filter((p) => p.nome.toLowerCase().includes(termoBusca.toLowerCase()))
                   .map((p) => (
                     <button
                       key={p.id}
                       onClick={() => handleAdicionarItem(p, "peca")}
-                      className="w-full flex justify-between p-3 hover:bg-stone-50 rounded-xl text-left"
+                      className="w-full flex justify-between p-3 bg-white border border-stone-100 hover:border-[#FACC15] shadow-sm hover:shadow-md rounded-xl text-left transition"
                     >
                       <div>
-                        <p className="font-bold">{p.nome}</p>
+                        <p className="font-bold text-[#1A1A1A]">{p.nome}</p>
                         <p className="text-xs text-stone-400">Estoque: {p.estoque_atual}</p>
                       </div>
-                      <span className="font-bold">R$ {p.preco_venda?.toFixed(2)}</span>
+                      <span className="font-bold text-[#1A1A1A]">R$ {p.preco_venda?.toFixed(2)}</span>
                     </button>
                   ))}
 
-              {!adicionandoItem && abaItem === "servicos" &&
+              {!adicionandoItem && modalAdicionarTipo === "servico" &&
                 listaServicos
                   .filter((s) => s.nome.toLowerCase().includes(termoBusca.toLowerCase()))
                   .map((s) => (
                     <button
                       key={s.id}
                       onClick={() => handleAdicionarItem(s, "servico")}
-                      className="w-full flex justify-between p-3 hover:bg-stone-50 rounded-xl text-left"
+                      className="w-full flex justify-between p-3 bg-white border border-stone-100 hover:border-[#FACC15] shadow-sm hover:shadow-md rounded-xl text-left transition"
                     >
-                      <p className="font-bold">{s.nome}</p>
-                      <span className="font-bold">R$ {(s.price || 0).toFixed(2)}</span>
+                      <div>
+                        <p className="font-bold text-[#1A1A1A]">{s.nome}</p>
+                      </div>
+                      <span className="font-bold text-[#1A1A1A]">R$ {(s.price || 0).toFixed(2)}</span>
                     </button>
                   ))}
+
+              {!adicionandoItem && (
+                <div className="mt-4 border-t border-stone-200 pt-4 flex flex-col items-center">
+                  <p className="text-xs text-stone-500 mb-2">Não encontrou o que procurava?</p>
+                  <button
+                    onClick={() => {
+                      setNomeNovoItem(termoBusca);
+                      setModalCadastroRapidoTipo(modalAdicionarTipo);
+                      setModalAdicionarTipo(null);
+                    }}
+                    className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2"
+                  >
+                    Cadastrar {modalAdicionarTipo === 'servico' ? 'Novo Serviço' : 'Nova Peça'} <Plus size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CADASTRO RÁPIDO */}
+      {modalCadastroRapidoTipo && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="font-bold text-lg text-[#1A1A1A]">
+                Nova {modalCadastroRapidoTipo === 'peca' ? 'Peça' : 'Serviço'}
+              </h2>
+              <button
+                onClick={() => {
+                  setModalAdicionarTipo(modalCadastroRapidoTipo); // Volta para a tela anterior
+                  setModalCadastroRapidoTipo(null);
+                  setNomeNovoItem("");
+                }}
+                className="text-stone-400 hover:text-red-500 transition"
+              >
+                <ArrowLeft size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-2">
+                <AlertCircle className="text-yellow-600 shrink-0 mt-0.5" size={16} />
+                <p className="text-xs text-yellow-800 font-medium leading-tight">
+                  Isto cria um item básico para agilizar. Lembre-se de complementar as informações no painel depois (preços, estoque).
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">NOME DA {modalCadastroRapidoTipo === 'peca' ? 'PEÇA' : 'SERVIÇO'}</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={nomeNovoItem}
+                  onChange={(e) => setNomeNovoItem(e.target.value)}
+                  placeholder={`Ex: ${modalCadastroRapidoTipo === 'peca' ? 'Filtro de Ar' : 'Alinhamento 3D'}`}
+                  className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none font-bold text-[#1A1A1A]"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCadastroRapido();
+                  }}
+                />
+              </div>
+
+              <button
+                onClick={handleCadastroRapido}
+                disabled={salvandoNovoItem || !nomeNovoItem.trim()}
+                className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3.5 rounded-2xl flex justify-center items-center gap-2 hover:bg-black transition disabled:opacity-50"
+              >
+                {salvandoNovoItem ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                {salvandoNovoItem ? "Salvando..." : "Salvar e Continuar"}
+              </button>
             </div>
           </div>
         </div>
@@ -1771,7 +1979,7 @@ export default function DetalhesOS() {
       )}
 
       {/* MODAL METADADOS DE APROVAÇÃO */}
-      {modalMetadados && os.aprovacao_timestamp && (
+      {modalMetadados && os!.aprovacao_timestamp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center">
@@ -1785,23 +1993,23 @@ export default function DetalhesOS() {
               <div className="bg-green-50 border border-green-200 rounded-2xl p-4">
                 <p className="text-[10px] font-bold text-green-600 uppercase mb-1">Data e Hora</p>
                 <p className="text-sm font-bold text-[#1A1A1A]">
-                  {new Date(os.aprovacao_timestamp).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'medium' })}
+                  {new Date(os!.aprovacao_timestamp).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'medium' })}
                 </p>
               </div>
 
               <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
                 <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Endereço IP</p>
-                <p className="text-sm font-mono font-bold text-[#1A1A1A]">{os.aprovacao_ip || 'Não disponível'}</p>
+                <p className="text-sm font-mono font-bold text-[#1A1A1A]">{os!.aprovacao_ip || 'Não disponível'}</p>
               </div>
 
               <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
                 <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Dispositivo</p>
-                <p className="text-xs text-[#1A1A1A] break-all">{os.aprovacao_dispositivo || 'Não disponível'}</p>
+                <p className="text-xs text-[#1A1A1A] break-all">{os!.aprovacao_dispositivo || 'Não disponível'}</p>
               </div>
 
               <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
                 <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Hash do Orçamento</p>
-                <p className="text-[10px] font-mono text-stone-600 break-all">{os.aprovacao_versao_hash || 'Não disponível'}</p>
+                <p className="text-[10px] font-mono text-stone-600 break-all">{os!.aprovacao_versao_hash || 'Não disponível'}</p>
               </div>
             </div>
 
@@ -1883,13 +2091,13 @@ export default function DetalhesOS() {
                     .update({ unit_price: itemEditando.unit_price, quantity: itemEditando.quantity, total_price: novoTotalPrice })
                     .eq('id', itemEditando.id);
 
-                  const itensAtualizados = os.work_order_items.map(i =>
+                  const itensAtualizados = os!.work_order_items.map(i =>
                     i.id === itemEditando.id ? { ...i, unit_price: itemEditando.unit_price, quantity: itemEditando.quantity, total_price: novoTotalPrice } : i
                   );
-                  const novoTotalOS = itensAtualizados.reduce((acc, i) =>
+                  const novoTotalOS = itensAtualizados!.reduce((acc, i) =>
                     i.peca_cliente ? acc : acc + i.total_price, 0
                   );
-                  await supabase.from('work_orders').update({ total: novoTotalOS }).eq('id', os.id);
+                  await supabase.from('work_orders').update({ total: novoTotalOS }).eq('id', os!.id);
 
                   fetchOS();
                   setModalEditarItemAberto(false);
