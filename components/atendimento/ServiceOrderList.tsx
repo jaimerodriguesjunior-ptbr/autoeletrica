@@ -125,10 +125,11 @@ export default function ServiceOrderList() {
                     <p className="text-stone-500 text-sm">Manutenções e serviços em veículos</p>
                 </div>
 
-                <Link href="/atendimento/nova-os">
-                    <button className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-5 py-2.5 rounded-full font-bold text-xs shadow-lg flex items-center gap-2 transition hover:scale-105">
-                        <Plus size={18} /> Nova OS
-                    </button>
+                <Link
+                    href="/os/nova"
+                    className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-5 py-2.5 rounded-full font-bold text-xs shadow-lg flex items-center gap-2 transition hover:scale-105"
+                >
+                    <Plus size={18} /> Nova OS
                 </Link>
             </div>
 
