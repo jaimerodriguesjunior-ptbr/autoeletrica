@@ -500,7 +500,7 @@ export default function AgendamentosPage() {
                                         {/* Nova OS (quando não tem OS vinculada) */}
                                         {!a.work_order_id && (
                                             <Link
-                                                href={`/atendimento/nova-os?${[
+                                                href={`/os/nova?${[
                                                     a.client_id ? `client_id=${a.client_id}` : '',
                                                     a.vehicle_id ? `vehicle_id=${a.vehicle_id}` : '',
                                                     a.token ? `appointment_token=${a.token}` : ''
