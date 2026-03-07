@@ -14,6 +14,7 @@ type WorkOrder = {
     status: string;
     total: number;
     created_at: string;
+    tipo?: string;
     clients: {
         nome: string;
     } | null;
@@ -48,6 +49,7 @@ export default function SalesList() {
           status,
           total,
           created_at,
+          tipo,
           clients ( nome ),
           vehicles ( modelo, placa )
         `)
@@ -86,13 +88,13 @@ export default function SalesList() {
         <div className="space-y-6 h-full flex flex-col">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h2 className="text-xl font-bold text-[#1A1A1A]">Vendas de Peças</h2>
-                    <p className="text-stone-500 text-sm">Vendas diretas no balcão</p>
+                    <h2 className="text-xl font-bold text-[#1A1A1A]">Venda Direta / Balcão</h2>
+                    <p className="text-stone-500 text-sm">Vendas avulsas e serviços de bancada</p>
                 </div>
 
-                <Link href="/atendimento/nova-venda">
+                <Link href="/atendimento/venda-direta">
                     <button className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-5 py-2.5 rounded-full font-bold text-xs shadow-lg flex items-center gap-2 transition hover:scale-105">
-                        <Plus size={18} /> Nova Venda
+                        <Plus size={18} /> Nova Venda Direta
                     </button>
                 </Link>
             </div>
@@ -120,7 +122,7 @@ export default function SalesList() {
                     ) : (
                         filteredOrders.length > 0 ? (
                             filteredOrders.map((os) => (
-                                <Link key={os.id} href={`/os/detalhes/${os.id}`} className="block">
+                                <Link key={os.id} href={os.tipo === 'venda_balcao' ? `/recibo/${os.id}` : `/os/detalhes/${os.id}`} className="block">
                                     <div className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-3xl bg-white hover:bg-stone-50 transition cursor-pointer border-2 border-stone-200 hover:border-stone-300 shadow-sm mb-2">
                                         <div className="flex items-center gap-4 w-full md:w-auto">
                                             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm bg-orange-50 text-orange-400 group-hover:bg-white transition`}>
@@ -144,9 +146,22 @@ export default function SalesList() {
                                         </div>
 
                                         <div className="flex items-center gap-6 mt-4 md:mt-0 w-full md:w-auto justify-between md:justify-end">
-                                            <span className={`px-4 py-2 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200`}>
-                                                Concluído
-                                            </span>
+                                            {(() => {
+                                                const statusMap: Record<string, { label: string, color: string }> = {
+                                                    'orcamento': { label: 'Orçamento', color: 'bg-stone-100 text-stone-600 border-stone-200' },
+                                                    'aprovado': { label: 'Aprovado', color: 'bg-blue-50 text-blue-600 border-blue-200' },
+                                                    'em_andamento': { label: 'Execução', color: 'bg-yellow-50 text-yellow-600 border-yellow-200' },
+                                                    'aguardando_peca': { label: 'Peças', color: 'bg-purple-50 text-purple-600 border-purple-200' },
+                                                    'entregue': { label: 'Concluído', color: 'bg-green-100 text-green-700 border-green-200' },
+                                                    'cancelado': { label: 'Cancelado', color: 'bg-red-50 text-red-600 border-red-200' },
+                                                };
+                                                const s = statusMap[os.status] || { label: os.status, color: 'bg-stone-100 text-stone-600 border-stone-200' };
+                                                return (
+                                                    <span className={`px-4 py-2 rounded-full text-xs font-bold border ${s.color}`}>
+                                                        {s.label}
+                                                    </span>
+                                                );
+                                            })()}
                                             <div className="text-right min-w-[80px]">
                                                 <p className="text-xs text-stone-400 font-medium">Total</p>
                                                 <p className="font-bold text-[#1A1A1A]">

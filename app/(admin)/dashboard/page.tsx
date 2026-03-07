@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   TrendingUp, Wrench, AlertCircle, Calendar,
-  MoreHorizontal, ArrowUpRight, CheckCircle, Car, Loader2, Clock
+  MoreHorizontal, ArrowUpRight, CheckCircle, Car, Loader2, Clock, ShoppingBag
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "../../../src/lib/supabase";
@@ -362,7 +362,12 @@ export default function Dashboard() {
               ) : (
                 recentOS.map((os) => (
                   <tr key={os.id} className="border-b border-stone-300 last:border-0 hover:bg-stone-100 transition cursor-default">
-                    <td className="py-4 font-bold text-[#1A1A1A]">{os.vehicles?.modelo || "Veículo não identificado"}</td>
+                    <td className="py-4 font-bold text-[#1A1A1A]">
+                      <div className="flex items-center gap-2">
+                        {!os.vehicles ? <ShoppingBag size={14} className="text-orange-400" /> : <Car size={14} className="text-stone-400" />}
+                        {os.vehicles?.modelo || `Venda #${os.id}`}
+                      </div>
+                    </td>
                     <td className="py-4 text-stone-500">{os.clients?.nome || "Consumidor"}</td>
                     <td className="py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(os.status)}`}>

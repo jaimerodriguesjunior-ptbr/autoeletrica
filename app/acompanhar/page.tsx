@@ -221,62 +221,103 @@ function ConteudoPortal() {
         <div className="bg-white rounded-[24px] p-4 shadow-sm border-2 border-stone-300">
 
           {/* VEÍCULO - Compacto */}
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-stone-100 rounded-full flex items-center justify-center shrink-0 border border-stone-300">
-              <Car size={20} className="text-[#1A1A1A]" />
+          {nomeVeiculo ? (
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-stone-100 rounded-full flex items-center justify-center shrink-0 border border-stone-300">
+                <Car size={20} className="text-[#1A1A1A]" />
+              </div>
+              <div className="text-left min-w-0">
+                <h2 className="text-base font-extrabold text-[#1A1A1A] leading-tight truncate">
+                  {nomeVeiculo}
+                </h2>
+                <p className="text-stone-500 font-mono text-xs uppercase">
+                  {placaVeiculo || "---"}
+                </p>
+              </div>
             </div>
-            <div className="text-left min-w-0">
-              <h2 className="text-base font-extrabold text-[#1A1A1A] leading-tight truncate">
-                {nomeVeiculo || "Veículo não identificado"}
-              </h2>
-              <p className="text-stone-500 font-mono text-xs uppercase">
-                {placaVeiculo || "---"}
-              </p>
+          ) : (
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-stone-100 rounded-full flex items-center justify-center shrink-0 border border-stone-300">
+                <Wrench size={20} className="text-[#1A1A1A]" />
+              </div>
+              <div className="text-left min-w-0">
+                <h2 className="text-base font-extrabold text-[#1A1A1A] leading-tight truncate">
+                  Serviço de Bancada
+                </h2>
+                <p className="text-stone-500 font-mono text-xs uppercase">
+                  Venda Direta / Serviço Avulso
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* TIMELINE (Só para OS) */}
           {!isAppointment && (
             <div className="relative px-1">
               <div className="absolute left-4 right-4 top-4 h-0.5 bg-stone-200 -z-10"></div>
-              <div className="flex justify-between items-start">
-                <div className="flex flex-col items-center gap-1.5 w-12">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(1)}`}>
-                    <CheckCircle size={12} />
+              {nomeVeiculo ? (
+                <div className="flex justify-between items-start">
+                  <div className="flex flex-col items-center gap-1.5 w-12">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(1)}`}>
+                      <CheckCircle size={12} />
+                    </div>
+                    <span className="text-[8px] font-bold text-stone-500 leading-tight">Diag.</span>
                   </div>
-                  <span className="text-[8px] font-bold text-stone-500 leading-tight">Diag.</span>
-                </div>
 
-                <div className="flex flex-col items-center gap-1.5 w-12">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(2)}`}>
-                    <Clock size={12} />
+                  <div className="flex flex-col items-center gap-1.5 w-12">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(2)}`}>
+                      <Clock size={12} />
+                    </div>
+                    <span className="text-[8px] font-bold text-stone-500 leading-tight">Aprov.</span>
                   </div>
-                  <span className="text-[8px] font-bold text-stone-500 leading-tight">Aprov.</span>
-                </div>
 
-                <div className="flex flex-col items-center gap-1.5 w-12">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(3)}`}>
-                    <Package size={12} />
+                  <div className="flex flex-col items-center gap-1.5 w-12">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(3)}`}>
+                      <Package size={12} />
+                    </div>
+                    <span className={`text-[8px] font-bold leading-tight ${os.status === 'aguardando_peca' ? 'text-orange-600' : 'text-stone-500'}`}>
+                      Peças
+                    </span>
                   </div>
-                  <span className={`text-[8px] font-bold leading-tight ${os.status === 'aguardando_peca' ? 'text-orange-600' : 'text-stone-500'}`}>
-                    Peças
-                  </span>
-                </div>
 
-                <div className="flex flex-col items-center gap-1.5 w-12">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(4)}`}>
-                    <Wrench size={12} />
+                  <div className="flex flex-col items-center gap-1.5 w-12">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(4)}`}>
+                      <Wrench size={12} />
+                    </div>
+                    <span className="text-[8px] font-bold text-stone-500 leading-tight">Serviço</span>
                   </div>
-                  <span className="text-[8px] font-bold text-stone-500 leading-tight">Serviço</span>
-                </div>
 
-                <div className="flex flex-col items-center gap-1.5 w-12">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(5)}`}>
-                    <CheckCircle size={12} />
+                  <div className="flex flex-col items-center gap-1.5 w-12">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(5)}`}>
+                      <CheckCircle size={12} />
+                    </div>
+                    <span className="text-[8px] font-bold text-stone-500 leading-tight">Pronto</span>
                   </div>
-                  <span className="text-[8px] font-bold text-stone-500 leading-tight">Pronto</span>
                 </div>
-              </div>
+              ) : (
+                <div className="flex justify-between items-start px-4">
+                  <div className="flex flex-col items-center gap-1.5 w-16">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(3)}`}>
+                      <Clock size={12} />
+                    </div>
+                    <span className="text-[8px] font-bold text-stone-500 leading-tight">Na Fila</span>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-1.5 w-16">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(4)}`}>
+                      <Wrench size={12} />
+                    </div>
+                    <span className="text-[8px] font-bold text-stone-500 leading-tight">Serviço</span>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-1.5 w-16">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 transition-all z-10 ${getStatusColor(5)}`}>
+                      <CheckCircle size={12} />
+                    </div>
+                    <span className="text-[8px] font-bold text-stone-500 leading-tight">Pronto</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -390,8 +431,8 @@ function ConteudoPortal() {
         <div className="px-4 pt-3 max-w-xl mx-auto animate-in zoom-in">
           <div className="bg-green-600 text-white p-5 rounded-[24px] text-center shadow-lg border-2 border-green-700">
             <ShieldCheck size={36} className="mx-auto mb-2" />
-            <h3 className="text-lg font-bold">Aprovado!</h3>
-            <p className="text-xs opacity-90">Verificando estoque e fila...</p>
+            <h3 className="text-lg font-bold">Seu serviço começará em breve</h3>
+            <p className="text-xs opacity-90">Estamos preparando tudo para você!</p>
           </div>
         </div>
       )}

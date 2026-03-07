@@ -60,7 +60,8 @@ export default function NovoCliente() {
           cpf_cnpj: cpfCnpj,
           whatsapp,
           email,
-          endereco: { cep, rua, numero, bairro }
+          endereco: { cep, rua, numero, bairro },
+          public_token: crypto.randomUUID().replace(/-/g, '')
         })
         .select()
         .single();

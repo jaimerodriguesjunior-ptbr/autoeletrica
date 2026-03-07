@@ -263,7 +263,7 @@ export default function ImportarXML() {
                     amount: -Math.abs(notaInfo.total), // Negativo = Despesa
                     type: 'expense',
                     category: 'Estoque / Compras',
-                    date: new Date().toISOString().split('T')[0],
+                    date: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
                     status: 'pending',
                     payment_method: 'boleto' // Padrão para compras de fornecedor até que seja pago
                 });

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Plus, Search, Car, User,
-  ChevronRight, Clock, Loader2, AlertCircle
+  ChevronRight, Clock, Loader2, AlertCircle, ShoppingBag
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "../../../src/lib/supabase";
@@ -14,6 +14,7 @@ type WorkOrder = {
   id: string | number;
   status: string;
   total: number;
+  tipo?: string;
   created_at: string;
   clients: {
     nome: string;
@@ -48,6 +49,7 @@ export default function ServicosOS() {
           id,
           status,
           total,
+          tipo,
           created_at,
           clients ( nome ),
           vehicles ( modelo, placa )
@@ -193,18 +195,18 @@ export default function ServicosOS() {
           ) : (
             filteredOrders.length > 0 ? (
               filteredOrders.map((os) => (
-                <Link key={os.id} href={`/os/detalhes/${os.id}`} className="block">
+                <Link key={os.id} href={os.tipo === 'venda_balcao' ? `/recibo/${os.id}` : `/os/detalhes/${os.id}`} className="block">
                   <div className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-3xl bg-white hover:bg-stone-50 transition cursor-pointer border-2 border-stone-200 hover:border-stone-300 shadow-sm mb-2">
 
                     {/* Lado Esquerdo */}
                     <div className="flex items-center gap-4 w-full md:w-auto">
-                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm bg-stone-50 text-stone-400 group-hover:bg-white transition`}>
-                        <Car size={24} />
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm ${!os.vehicles ? "bg-orange-50 text-orange-400 group-hover:bg-white" : "bg-stone-50 text-stone-400 group-hover:bg-white"} transition`}>
+                        {!os.vehicles ? <ShoppingBag size={24} /> : <Car size={24} />}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-[#1A1A1A] text-lg">
-                            {os.vehicles?.modelo || "Veículo não identificado"}
+                            {os.vehicles?.modelo || `Venda #${os.id}`}
                           </span>
                           {os.vehicles?.placa && (
                             <span className="text-xs font-mono bg-stone-100 text-stone-500 px-2 py-0.5 rounded-md border border-stone-200">

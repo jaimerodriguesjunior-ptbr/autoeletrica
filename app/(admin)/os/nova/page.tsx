@@ -319,6 +319,7 @@ export default function NovaOS() {
           client_id: clienteSelecionado.id,
           vehicle_id: veiculoConfirmado.id,
           status: "orcamento",
+          tipo: "os",
           description: defeito,
           odometro: odometro || null,
           nivel_combustivel: nivelCombustivel || null,
@@ -390,6 +391,7 @@ export default function NovaOS() {
           organization_id: profile?.organization_id,
           nome: novoNomeCliente,
           whatsapp: novoZapCliente,
+          public_token: crypto.randomUUID().replace(/-/g, ""),
         })
         .select()
         .single();

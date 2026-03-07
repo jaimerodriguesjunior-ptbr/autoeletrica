@@ -31,6 +31,8 @@ type WorkOrderFull = {
   description: string;
   total: number;
   created_at: string;
+  updated_at: string;
+  tipo?: string;
   previsao_entrega: string | null; // Novo campo
   public_token: string;
   photos: string[] | null;
@@ -88,6 +90,7 @@ export default function DetalhesOS() {
 
   // Previsão de Entrega
   const [previsao, setPrevisao] = useState("");
+  const [descricaoLocal, setDescricaoLocal] = useState("");
 
   // Speech Recognition (Laudo)
   const recognitionDefeitosRef = useRef<any>(null);
@@ -193,7 +196,7 @@ export default function DetalhesOS() {
   // Novo Agendamento
   const [modalAgendamentoAberto, setModalAgendamentoAberto] = useState(false);
   const [formAgendamento, setFormAgendamento] = useState({
-    data: new Date().toISOString().split('T')[0],
+    data: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0],
     hora: '09:00',
     tipo: 'ja_tem_os',
     duracao: 60,
@@ -225,6 +228,7 @@ export default function DetalhesOS() {
         if (data.previsao_entrega) {
           setPrevisao(new Date(data.previsao_entrega).toISOString().split('T')[0]);
         }
+        setDescricaoLocal(data.description || "");
         setDefeitosConstatados(data.defeitos_constatados || "");
         setServicosExecutados(data.servicos_executados || "");
       }
@@ -488,6 +492,21 @@ export default function DetalhesOS() {
     }
   };
 
+  // Salvar Descrição/Observações ao sair do campo
+  const handleSalvarDescricao = async () => {
+    if (!os) return;
+    if (descricaoLocal === (os.description || "")) return; // nada mudou
+    try {
+      await supabase
+        .from('work_orders')
+        .update({ description: descricaoLocal || null })
+        .eq('id', os!.id);
+      setOs({ ...os, description: descricaoLocal });
+    } catch (error) {
+      console.error("Erro ao salvar observações", error);
+    }
+  };
+
   // REMOVER ITEM (COM ESTORNO)
   const handleRemoverItem = async (item: WorkOrderItem) => {
     if (!os) return;
@@ -704,7 +723,7 @@ export default function DetalhesOS() {
     if (!os || !profile?.organization_id) return;
 
     if (formaPagamento === "cheque_pre" && !dataCheque) {
-      return alert("Para Cheque-pré, é obrigatório informar a data de depósito.");
+      return alert("Para lançamento A prazo, é obrigatório informar a data de depósito.");
     }
 
     setUpdating(true);
@@ -730,7 +749,7 @@ export default function DetalhesOS() {
             category: 'Serviços',
             status: 'pending',
             payment_method: formaPagamento,
-            date: dataVencimento.toISOString().split('T')[0]
+            date: new Date(dataVencimento.getTime() - dataVencimento.getTimezoneOffset() * 60000).toISOString().split('T')[0]
           });
         }
 
@@ -757,7 +776,7 @@ export default function DetalhesOS() {
           category: 'Serviços',
           status: 'paid',
           payment_method: formaPagamento,
-          date: hoje.toISOString().split('T')[0]
+          date: new Date(hoje.getTime() - hoje.getTimezoneOffset() * 60000).toISOString().split('T')[0]
         });
       }
 
@@ -930,7 +949,7 @@ export default function DetalhesOS() {
       if (error) throw error;
       alert("Agendamento criado com sucesso!");
       setModalAgendamentoAberto(false);
-      setFormAgendamento({ data: new Date().toISOString().split('T')[0], hora: "09:00", duracao: 60, tipo: "ja_tem_os", desc: "" });
+      setFormAgendamento({ data: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0], hora: "09:00", duracao: 60, tipo: "ja_tem_os", desc: "" });
       fetchOS(); // Atualiza a lista
     } catch (e: any) {
       alert("Erro ao criar agendamento: " + e.message);
@@ -961,10 +980,15 @@ export default function DetalhesOS() {
       const osId = String(os!.id);
       const baseUrl = window.location.origin;
       const trackingLink = `${baseUrl}/acompanhar?token=${os!.public_token}`;
-      const message = `Olá ${os!.clients.nome}, tudo bem? 👋\n\n` +
-        `Sobre o seu veículo: *${os!.vehicles?.modelo}* (OS #${osId}).\n` +
-        `Você pode acompanhar o status e o orçamento clicando aqui:\n\n` +
-        `${trackingLink}`;
+
+      let message = `Olá ${os!.clients.nome}, tudo bem? 👋\n\n`;
+      if (os!.vehicles) {
+        message += `Sobre o seu veículo: *${os!.vehicles?.modelo}* (OS #${osId}).\n`;
+      } else {
+        message += `Sobre o seu serviço (OS #${osId}).\n`;
+      }
+      message += `Você pode acompanhar o status e o orçamento clicando aqui:\n\n${trackingLink}`;
+
       window.open(`https://wa.me/55${number}?text=${encodeURIComponent(message)}`, '_blank');
     } else {
       alert("Cliente sem WhatsApp cadastrado.");
@@ -979,6 +1003,24 @@ export default function DetalhesOS() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-32">
+      {os.tipo === 'venda_balcao' && (
+        <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+              <AlertCircle size={24} />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-amber-900">Venda de Balcão</h3>
+              <p className="text-sm text-amber-700">Este registro é uma venda avulsa, não uma Ordem de Serviço completa.</p>
+            </div>
+          </div>
+          <Link href={`/recibo/${os.id}`}>
+            <button className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-xl font-bold transition shadow-lg shrink-0">
+              Ver Recibo Simplificado
+            </button>
+          </Link>
+        </div>
+      )}
 
       {/* 1. CABEÇALHO */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -995,9 +1037,15 @@ export default function DetalhesOS() {
                 {os!.status.replace('_', ' ')}
               </span>
             </div>
-            <p className="text-stone-500 text-xs flex items-center gap-2 mt-1">
-              <Car size={12} /> {os!.vehicles?.modelo} <span className="text-stone-300">|</span> <span className="font-mono">{os!.vehicles?.placa}</span>
-            </p>
+            {os!.vehicles ? (
+              <p className="text-stone-500 text-xs flex items-center gap-2 mt-1">
+                <Car size={12} /> {os!.vehicles?.modelo} <span className="text-stone-300">|</span> <span className="font-mono">{os!.vehicles?.placa}</span>
+              </p>
+            ) : (
+              <p className="text-stone-500 text-xs flex items-center gap-2 mt-1">
+                <Wrench size={12} /> Serviço de Bancada
+              </p>
+            )}
           </div>
         </div>
 
@@ -1042,180 +1090,232 @@ export default function DetalhesOS() {
 
           <div className="bg-white rounded-[32px] p-8 border-2 border-stone-300 shadow-sm">
             <h2 className="text-lg font-bold text-[#1A1A1A] mb-6 flex items-center gap-2">
-              <Clock size={20} /> Linha do Tempo
+              <Clock size={20} /> Linha do Tempo {os!.vehicles ? '' : '(Fast-Track)'}
             </h2>
 
-            <div className="space-y-4 relative">
-              <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-stone-100 -z-10"></div>
+            {os!.vehicles ? (
+              <div className="space-y-4 relative">
+                <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-stone-100 -z-10"></div>
 
-              {/* CARD: ORÇAMENTO */}
-              <div
-                className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('orcamento')} ${os!.status !== 'orcamento' && os!.aprovacao_timestamp ? 'cursor-pointer hover:scale-[1.02]' : ''}`}
-                onClick={() => {
-                  if (os!.status !== 'orcamento' && os!.aprovacao_timestamp) setModalMetadados(true);
-                }}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><DollarSign size={20} /></div>
-                  <div>
-                    <p className="font-bold text-sm">Orçamento Criado</p>
-                    <p className="text-xs opacity-80">{os!.status !== 'orcamento' && os!.aprovacao_timestamp ? 'Aprovado ✓ (clique para ver detalhes)' : 'Aguardando aprovação'}</p>
+                {/* CARD: ORÇAMENTO */}
+                <div
+                  className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('orcamento')} ${os!.status !== 'orcamento' && os!.aprovacao_timestamp ? 'cursor-pointer hover:scale-[1.02]' : ''}`}
+                  onClick={() => {
+                    if (os!.status !== 'orcamento' && os!.aprovacao_timestamp) setModalMetadados(true);
+                  }}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><DollarSign size={20} /></div>
+                    <div>
+                      <p className="font-bold text-sm">Orçamento Criado</p>
+                      <p className="text-xs opacity-80">{os!.status !== 'orcamento' && os!.aprovacao_timestamp ? 'Aprovado ✓ (clique para ver detalhes)' : 'Aguardando aprovação'}</p>
+                    </div>
                   </div>
+                  {os!.status === 'orcamento' && (
+                    <button onClick={() => {
+                      const temPecaCliente = os!.work_order_items?.some(i => i.peca_cliente);
+                      if (temPecaCliente) {
+                        const aceita = confirm(
+                          '⚠️ ATENÇÃO: Esta OS contém peças trazidas pelo cliente.\n\n' +
+                          'A aprovação local (feita pelo mecânico) não registra os dados de aceite do cliente e pode comprometer a segurança jurídica quanto à garantia dessas peças.\n\n' +
+                          'Para proteção da oficina, recomenda-se que o cliente aprove pelo portal.\n\n' +
+                          'Deseja aprovar localmente mesmo assim?'
+                        );
+                        if (!aceita) return;
+                      }
+                      handleStatusChange('aprovado');
+                    }} disabled={updating} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-blue-700 transition flex items-center gap-2">
+                      {updating ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} Aprovar
+                    </button>
+                  )}
                 </div>
-                {os!.status === 'orcamento' && (
-                  <button onClick={() => {
-                    const temPecaCliente = os!.work_order_items?.some(i => i.peca_cliente);
-                    if (temPecaCliente) {
-                      const aceita = confirm(
-                        '⚠️ ATENÇÃO: Esta OS contém peças trazidas pelo cliente.\n\n' +
-                        'A aprovação local (feita pelo mecânico) não registra os dados de aceite do cliente e pode comprometer a segurança jurídica quanto à garantia dessas peças.\n\n' +
-                        'Para proteção da oficina, recomenda-se que o cliente aprove pelo portal.\n\n' +
-                        'Deseja aprovar localmente mesmo assim?'
-                      );
-                      if (!aceita) return;
-                    }
-                    handleStatusChange('aprovado');
-                  }} disabled={updating} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-blue-700 transition flex items-center gap-2">
-                    {updating ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} Aprovar
-                  </button>
-                )}
-              </div>
 
-              {/* CARD: APROVADO / AGUARDANDO PEÇA */}
-              <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('aguardando_peca')}`}>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Package size={20} /></div>
-                  <div><p className="font-bold text-sm">Peças / Insumos</p><p className="text-xs opacity-80">Verificando estoque</p></div>
+                {/* CARD: APROVADO / AGUARDANDO PEÇA */}
+                <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('aguardando_peca')}`}>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Package size={20} /></div>
+                    <div><p className="font-bold text-sm">Peças / Insumos</p><p className="text-xs opacity-80">Verificando estoque</p></div>
+                  </div>
+                  {(os!.status === 'aprovado' || os!.status === 'aguardando_peca') && (
+                    <button onClick={() => handleStatusChange('em_servico')} disabled={updating} className="bg-[#FACC15] text-[#1A1A1A] px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-yellow-400 transition flex items-center gap-2">
+                      <Wrench size={14} /> Iniciar Serviço
+                    </button>
+                  )}
                 </div>
-                {(os!.status === 'aprovado' || os!.status === 'aguardando_peca') && (
-                  <button onClick={() => handleStatusChange('em_servico')} disabled={updating} className="bg-[#FACC15] text-[#1A1A1A] px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-yellow-400 transition flex items-center gap-2">
-                    <Wrench size={14} /> Iniciar Serviço
-                  </button>
-                )}
-              </div>
 
-              {/* CARD: EM SERVIÇO */}
-              <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('em_servico')}`}>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Wrench size={20} /></div>
-                  <div><p className="font-bold text-sm">Em Execução</p><p className="text-xs opacity-80">Mecânico trabalhando</p></div>
+                {/* CARD: EM SERVIÇO */}
+                <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('em_servico')}`}>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Wrench size={20} /></div>
+                    <div><p className="font-bold text-sm">Em Execução</p><p className="text-xs opacity-80">Mecânico trabalhando</p></div>
+                  </div>
+                  {os!.status === 'em_servico' && (
+                    <button onClick={() => handleStatusChange('pronto')} disabled={updating} className="bg-green-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-green-600 transition flex items-center gap-2">
+                      <CheckSquare size={14} /> Finalizar
+                    </button>
+                  )}
                 </div>
-                {os!.status === 'em_servico' && (
-                  <button onClick={() => handleStatusChange('pronto')} disabled={updating} className="bg-green-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-green-600 transition flex items-center gap-2">
-                    <CheckSquare size={14} /> Finalizar
-                  </button>
-                )}
-              </div>
 
-              {/* CARD: PRONTO */}
-              <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('pronto')}`}>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><CheckCircle size={20} /></div>
-                  <div><p className="font-bold text-sm">Pronto p/ Entrega</p><p className="text-xs opacity-80">Veículo testado e liberado</p></div>
+                {/* CARD: PRONTO */}
+                <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('pronto')}`}>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><CheckCircle size={20} /></div>
+                    <div><p className="font-bold text-sm">Pronto p/ Entrega</p><p className="text-xs opacity-80">Veículo testado e liberado</p></div>
+                  </div>
+                  {os!.status === 'pronto' && (
+                    <button onClick={() => setModalCheckoutAberto(true)} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                      Entregar & Fechar
+                    </button>
+                  )}
                 </div>
-                {os!.status === 'pronto' && (
-                  <button onClick={() => setModalCheckoutAberto(true)} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
-                    Entregar & Fechar
-                  </button>
-                )}
-              </div>
 
-            </div>
+              </div>
+            ) : (
+              <div className="space-y-4 relative">
+                <div className="absolute left-6 top-4 bottom-4 w-0.5 bg-stone-100 -z-10"></div>
+
+                {/* FAST TRACK - NA FILA */}
+                <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('aprovado')}`}>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Clock size={20} /></div>
+                    <div><p className="font-bold text-sm">Na Fila</p><p className="text-xs opacity-80">Aguardando início</p></div>
+                  </div>
+                  {os!.status === 'aprovado' && (
+                    <button onClick={() => handleStatusChange('em_servico')} disabled={updating} className="bg-[#FACC15] text-[#1A1A1A] px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-yellow-400 transition flex items-center gap-2">
+                      <Wrench size={14} /> Iniciar
+                    </button>
+                  )}
+                </div>
+
+                {/* FAST TRACK - EM SERVIÇO */}
+                <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('em_servico')}`}>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><Wrench size={20} /></div>
+                    <div><p className="font-bold text-sm">Em Execução</p><p className="text-xs opacity-80">Mecânico trabalhando</p></div>
+                  </div>
+                  {os!.status === 'em_servico' && (
+                    <button onClick={() => handleStatusChange('pronto')} disabled={updating} className="bg-green-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:bg-green-600 transition flex items-center gap-2">
+                      <CheckSquare size={14} /> Pronto
+                    </button>
+                  )}
+                </div>
+
+                {/* FAST TRACK - PRONTO */}
+                <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 transition-all ${getStatusColor('pronto')}`}>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm"><CheckCircle size={20} /></div>
+                    <div><p className="font-bold text-sm">Serviço Pronto</p><p className="text-xs opacity-80">Aguardando retirada</p></div>
+                  </div>
+                  {os!.status === 'pronto' && (
+                    <button onClick={() => setModalCheckoutAberto(true)} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                      Receber & Fechar
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm">
-            <h3 className="font-bold text-[#1A1A1A] mb-2 text-sm flex items-center gap-2">
-              <MessageCircle size={16} /> Relato / Defeito Informado Pelo Cliente
-            </h3>
-            <p className="text-stone-600 text-sm bg-[#F8F7F2] p-4 rounded-2xl border border-stone-100">
-              {os!.description || "Nenhuma descrição informada."}
-            </p>
-          </div>
-
-          {/* LAUDO TÉCNICO E SERVIÇOS EXECUTADOS */}
           <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm mt-6">
-            <h3 className="font-bold text-[#1A1A1A] mb-4 text-sm flex items-center gap-2">
-              <Wrench size={16} /> Laudo Técnico (Defeitos e Serviços Realizados)
+            <h3 className="font-bold text-[#1A1A1A] mb-2 text-sm flex items-center gap-2">
+              <MessageCircle size={16} /> {os!.vehicles ? "Relato / Descrição do Cliente" : "Observações"}
             </h3>
-
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-bold text-stone-400 ml-1">DEFEITOS CONSTATADOS PELA OFICINA</label>
-                  <button
-                    type="button"
-                    onClick={() => isListeningDefeitos ? stopSpeech('defeitos') : startSpeech('defeitos')}
-                    className={`p-2 rounded-full transition-all duration-200 ${isListeningDefeitos
-                      ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse'
-                      : 'bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]'
-                      }`}
-                    title={isListeningDefeitos ? 'Parar gravação' : 'Ditar defeitos'}
-                  >
-                    <Mic size={14} />
-                  </button>
-                </div>
-                {isListeningDefeitos && (
-                  <div className="flex items-center gap-2 mb-2 animate-pulse">
-                    <span className="w-2 h-2 bg-red-500 rounded-full" />
-                    <span className="text-xs font-bold text-red-500">Ouvindo... dite os defeitos encontrados</span>
-                  </div>
-                )}
-                <textarea
-                  value={defeitosConstatados}
-                  onChange={e => setDefeitosConstatados(e.target.value)}
-                  placeholder="Descreva aqui o que foi encontrado de problema após a avaliação..."
-                  rows={3}
-                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 border border-stone-200 outline-none focus:border-[#FACC15] text-sm resize-none"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-bold text-stone-400 ml-1">SERVIÇOS EXECUTADOS</label>
-                  <button
-                    type="button"
-                    onClick={() => isListeningServicos ? stopSpeech('servicos') : startSpeech('servicos')}
-                    className={`p-2 rounded-full transition-all duration-200 ${isListeningServicos
-                      ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse'
-                      : 'bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]'
-                      }`}
-                    title={isListeningServicos ? 'Parar gravação' : 'Ditar serviços'}
-                  >
-                    <Mic size={14} />
-                  </button>
-                </div>
-                {isListeningServicos && (
-                  <div className="flex items-center gap-2 mb-2 animate-pulse">
-                    <span className="w-2 h-2 bg-red-500 rounded-full" />
-                    <span className="text-xs font-bold text-red-500">Ouvindo... dite os serviços realizados</span>
-                  </div>
-                )}
-                <textarea
-                  value={servicosExecutados}
-                  onChange={e => setServicosExecutados(e.target.value)}
-                  placeholder="Descreva aqui o que foi feito para a resolução do problema..."
-                  rows={3}
-                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 border border-stone-200 outline-none focus:border-[#FACC15] text-sm resize-none"
-                />
-              </div>
-
-              <button
-                onClick={handleSalvarLaudo}
-                disabled={salvandoLaudo}
-                className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-black transition disabled:opacity-50"
-              >
-                {salvandoLaudo ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                Salvar Laudo Técnico
-              </button>
-            </div>
+            <textarea
+              value={descricaoLocal}
+              onChange={(e) => setDescricaoLocal(e.target.value)}
+              onBlur={handleSalvarDescricao}
+              placeholder={os!.vehicles ? "Clique aqui para digitar uma descrição ou relato..." : "Clique aqui para digitar uma observação..."}
+              rows={3}
+              className="w-full text-[#1A1A1A] text-sm bg-white p-4 rounded-2xl border-2 border-stone-200 outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/30 resize-none transition placeholder:text-stone-400 font-medium"
+            />
           </div>
+
+          {/* LAUDO TÉCNICO E SERVIÇOS EXECUTADOS Ocultos no modo Venda Direta */}
+          {os!.vehicles && (
+            <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm mt-6">
+              <h3 className="font-bold text-[#1A1A1A] mb-4 text-sm flex items-center gap-2">
+                <Wrench size={16} /> Laudo Técnico (Defeitos e Serviços Realizados)
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold text-stone-400 ml-1">DEFEITOS CONSTATADOS PELA OFICINA</label>
+                    <button
+                      type="button"
+                      onClick={() => isListeningDefeitos ? stopSpeech('defeitos') : startSpeech('defeitos')}
+                      className={`p-2 rounded-full transition-all duration-200 ${isListeningDefeitos
+                        ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse'
+                        : 'bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]'
+                        }`}
+                      title={isListeningDefeitos ? 'Parar gravação' : 'Ditar defeitos'}
+                    >
+                      <Mic size={14} />
+                    </button>
+                  </div>
+                  {isListeningDefeitos && (
+                    <div className="flex items-center gap-2 mb-2 animate-pulse">
+                      <span className="w-2 h-2 bg-red-500 rounded-full" />
+                      <span className="text-xs font-bold text-red-500">Ouvindo... dite os defeitos encontrados</span>
+                    </div>
+                  )}
+                  <textarea
+                    value={defeitosConstatados}
+                    onChange={e => setDefeitosConstatados(e.target.value)}
+                    placeholder="Descreva aqui o que foi encontrado de problema após a avaliação..."
+                    rows={3}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 border border-stone-200 outline-none focus:border-[#FACC15] text-sm resize-none"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold text-stone-400 ml-1">SERVIÇOS EXECUTADOS</label>
+                    <button
+                      type="button"
+                      onClick={() => isListeningServicos ? stopSpeech('servicos') : startSpeech('servicos')}
+                      className={`p-2 rounded-full transition-all duration-200 ${isListeningServicos
+                        ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse'
+                        : 'bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]'
+                        }`}
+                      title={isListeningServicos ? 'Parar gravação' : 'Ditar serviços'}
+                    >
+                      <Mic size={14} />
+                    </button>
+                  </div>
+                  {isListeningServicos && (
+                    <div className="flex items-center gap-2 mb-2 animate-pulse">
+                      <span className="w-2 h-2 bg-red-500 rounded-full" />
+                      <span className="text-xs font-bold text-red-500">Ouvindo... dite os serviços realizados</span>
+                    </div>
+                  )}
+                  <textarea
+                    value={servicosExecutados}
+                    onChange={e => setServicosExecutados(e.target.value)}
+                    placeholder="Descreva aqui o que foi feito para a resolução do problema..."
+                    rows={3}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 border border-stone-200 outline-none focus:border-[#FACC15] text-sm resize-none"
+                  />
+                </div>
+
+                <button
+                  onClick={handleSalvarLaudo}
+                  disabled={salvandoLaudo}
+                  className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-black transition disabled:opacity-50"
+                >
+                  {salvandoLaudo ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  Salvar Laudo Técnico
+                </button>
+              </div>
+            </div>
+          )}
 
 
           {/* === GALERIA DE FOTOS (NOVO) === */}
           <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm mt-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-[#1A1A1A] text-sm flex items-center gap-2">
-                <Camera size={16} /> Fotos do Veículo
+                <Camera size={16} /> Fotos do Serviço / Evidências
               </h3>
               <span className="text-xs text-stone-400">{os!.photos?.length || 0} fotos</span>
             </div>
@@ -1288,7 +1388,7 @@ export default function DetalhesOS() {
             </div>
 
             {/* DADOS DO PAINEL */}
-            {(os!.odometro || os!.nivel_combustivel || os!.temperatura_motor || os!.painel_obs) && (
+            {os!.vehicles && (os!.odometro || os!.nivel_combustivel || os!.temperatura_motor || os!.painel_obs) && (
               <>
                 <div className="border-t border-stone-300 my-4"></div>
                 <button
@@ -1695,465 +1795,479 @@ export default function DetalhesOS() {
       </div>
 
       {/* MODAL NOVO AGENDAMENTO DA OS */}
-      {modalAgendamentoAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-[#1A1A1A]">Novo Agendamento</h2>
-              <button onClick={() => setModalAgendamentoAberto(false)} className="text-stone-400 hover:text-red-500 transition"><X /></button>
-            </div>
-
-            <p className="text-xs text-stone-500">
-              Este agendamento será vinculado ao veículo <strong className="text-[#1A1A1A]">{os!.vehicles?.modelo}</strong> da OS <strong className="text-[#1A1A1A]">#{os!.id.toString().slice(0, 4)}</strong>.
-            </p>
-
-            <div className="grid grid-cols-2 gap-3 mt-4">
-              <div>
-                <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">DATA</label>
-                <input
-                  type="date"
-                  value={formAgendamento.data}
-                  onChange={e => setFormAgendamento({ ...formAgendamento, data: e.target.value })}
-                  className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] font-bold text-sm"
-                />
+      {
+        modalAgendamentoAberto && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-[#1A1A1A]">Novo Agendamento</h2>
+                <button onClick={() => setModalAgendamentoAberto(false)} className="text-stone-400 hover:text-red-500 transition"><X /></button>
               </div>
-              <div>
-                <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">HORA</label>
-                <input
-                  type="time"
-                  value={formAgendamento.hora}
-                  onChange={e => setFormAgendamento({ ...formAgendamento, hora: e.target.value })}
-                  className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] font-bold text-sm"
-                />
-              </div>
-            </div>
 
-            <div className="mt-3">
-              <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">DURAÇÃO</label>
-              <select
-                value={formAgendamento.duracao}
-                onChange={e => setFormAgendamento({ ...formAgendamento, duracao: Number(e.target.value) })}
-                className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] font-bold text-sm"
-              >
-                <option value={30}>30 min</option>
-                <option value={60}>1 hora</option>
-                <option value={120}>2 horas</option>
-                <option value={240}>Meio Dia (4h)</option>
-                <option value={480}>Dia Todo (8h)</option>
-              </select>
-            </div>
+              <p className="text-xs text-stone-500">
+                Este agendamento será vinculado ao veículo <strong className="text-[#1A1A1A]">{os!.vehicles?.modelo}</strong> da OS <strong className="text-[#1A1A1A]">#{os!.id.toString().slice(0, 4)}</strong>.
+              </p>
 
-            <div>
-              <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">DESCRIÇÃO (Opcional)</label>
-              <textarea
-                value={formAgendamento.desc}
-                onChange={e => setFormAgendamento({ ...formAgendamento, desc: e.target.value })}
-                placeholder="Ex: Instalar farol que estava aguardando chegar"
-                rows={2}
-                className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] text-sm resize-none"
-              />
-            </div>
-
-            <button
-              onClick={handleSalvarAgendamento}
-              disabled={salvandoAgendamento}
-              className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 hover:bg-black transition disabled:opacity-50 mt-2"
-            >
-              {salvandoAgendamento ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
-              Confirmar Agendamento
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL ADICIONAR ITEM ESPECIALIZADO */}
-      {modalAdicionarTipo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl space-y-4 h-[500px] flex flex-col">
-            <div className="flex justify-between items-center">
-              <h2 className="font-bold text-lg">Adicionar {modalAdicionarTipo === 'servico' ? 'Serviço' : 'Peça'}</h2>
-              <button onClick={() => setModalAdicionarTipo(null)} className="text-stone-400 hover:text-[#1A1A1A] transition">
-                <X />
-              </button>
-            </div>
-
-            <div className="relative">
-              <input
-                autoFocus
-                placeholder={`Buscar ${modalAdicionarTipo === 'servico' ? 'serviço...' : 'peça...'}`}
-                value={termoBusca}
-                onChange={(e) => setTermoBusca(e.target.value)}
-                className="w-full bg-[#F8F7F2] p-4 pl-10 rounded-2xl border-2 border-stone-300 focus:border-[#FACC15] outline-none text-sm text-[#1A1A1A] placeholder:text-stone-400 font-medium transition"
-              />
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
-            </div>
-
-            <div className="flex-1 overflow-auto space-y-2 pb-4">
-              {adicionandoItem && (
-                <div className="text-center py-4 text-stone-400 flex flex-col items-center">
-                  <Loader2 className="animate-spin mb-2" /> Salvando...
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <div>
+                  <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">DATA</label>
+                  <input
+                    type="date"
+                    value={formAgendamento.data}
+                    onChange={e => setFormAgendamento({ ...formAgendamento, data: e.target.value })}
+                    className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] font-bold text-sm"
+                  />
                 </div>
-              )}
-
-              {!adicionandoItem && modalAdicionarTipo === "peca" &&
-                listaProdutos
-                  .filter((p) => p.nome.toLowerCase().includes(termoBusca.toLowerCase()))
-                  .map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => handleAdicionarItem(p, "peca")}
-                      className="w-full flex justify-between p-3 bg-white border border-stone-100 hover:border-[#FACC15] shadow-sm hover:shadow-md rounded-xl text-left transition"
-                    >
-                      <div>
-                        <p className="font-bold text-[#1A1A1A]">{p.nome}</p>
-                        <p className="text-xs text-stone-400">Estoque: {p.estoque_atual}</p>
-                      </div>
-                      <span className="font-bold text-[#1A1A1A]">R$ {p.preco_venda?.toFixed(2)}</span>
-                    </button>
-                  ))}
-
-              {!adicionandoItem && modalAdicionarTipo === "servico" &&
-                listaServicos
-                  .filter((s) => s.nome.toLowerCase().includes(termoBusca.toLowerCase()))
-                  .map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => handleAdicionarItem(s, "servico")}
-                      className="w-full flex justify-between p-3 bg-white border border-stone-100 hover:border-[#FACC15] shadow-sm hover:shadow-md rounded-xl text-left transition"
-                    >
-                      <div>
-                        <p className="font-bold text-[#1A1A1A]">{s.nome}</p>
-                      </div>
-                      <span className="font-bold text-[#1A1A1A]">R$ {(s.price || 0).toFixed(2)}</span>
-                    </button>
-                  ))}
-
-              {!adicionandoItem && (
-                <div className="mt-4 border-t border-stone-200 pt-4 flex flex-col items-center">
-                  <p className="text-xs text-stone-500 mb-2">Não encontrou o que procurava?</p>
-                  <button
-                    onClick={() => {
-                      setNomeNovoItem(termoBusca);
-                      setModalCadastroRapidoTipo(modalAdicionarTipo);
-                      setModalAdicionarTipo(null);
-                    }}
-                    className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2"
-                  >
-                    Cadastrar {modalAdicionarTipo === 'servico' ? 'Novo Serviço' : 'Nova Peça'} <Plus size={14} />
-                  </button>
+                <div>
+                  <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">HORA</label>
+                  <input
+                    type="time"
+                    value={formAgendamento.hora}
+                    onChange={e => setFormAgendamento({ ...formAgendamento, hora: e.target.value })}
+                    className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] font-bold text-sm"
+                  />
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL CADASTRO RÁPIDO */}
-      {modalCadastroRapidoTipo && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="font-bold text-lg text-[#1A1A1A]">
-                Nova {modalCadastroRapidoTipo === 'peca' ? 'Peça' : 'Serviço'}
-              </h2>
-              <button
-                onClick={() => {
-                  setModalAdicionarTipo(modalCadastroRapidoTipo); // Volta para a tela anterior
-                  setModalCadastroRapidoTipo(null);
-                  setNomeNovoItem("");
-                }}
-                className="text-stone-400 hover:text-red-500 transition"
-              >
-                <ArrowLeft size={20} />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-2">
-                <AlertCircle className="text-yellow-600 shrink-0 mt-0.5" size={16} />
-                <p className="text-xs text-yellow-800 font-medium leading-tight">
-                  Isto cria um item básico para agilizar. Lembre-se de complementar as informações no painel depois (preços, estoque).
-                </p>
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">NOME DA {modalCadastroRapidoTipo === 'peca' ? 'PEÇA' : 'SERVIÇO'}</label>
-                <input
-                  autoFocus
-                  type="text"
-                  value={nomeNovoItem}
-                  onChange={(e) => setNomeNovoItem(e.target.value)}
-                  placeholder={`Ex: ${modalCadastroRapidoTipo === 'peca' ? 'Filtro de Ar' : 'Alinhamento 3D'}`}
-                  className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none font-bold text-[#1A1A1A]"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleCadastroRapido();
-                  }}
-                />
-              </div>
-
-              <button
-                onClick={handleCadastroRapido}
-                disabled={salvandoNovoItem || !nomeNovoItem.trim()}
-                className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3.5 rounded-2xl flex justify-center items-center gap-2 hover:bg-black transition disabled:opacity-50"
-              >
-                {salvandoNovoItem ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                {salvandoNovoItem ? "Salvando..." : "Salvar e Continuar"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL CHECKOUT FINANCEIRO */}
-      {modalCheckoutAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-green-700 flex items-center gap-2">
-                <DollarSign /> Fechamento de OS
-              </h2>
-              <button onClick={() => setModalCheckoutAberto(false)}><X /></button>
-            </div>
-
-            <div className="bg-stone-50 p-4 rounded-2xl text-center">
-              <p className="text-xs text-stone-500 uppercase font-bold">Total a Receber</p>
-              <div className="flex items-center justify-center gap-1 mt-1">
-                <span className="text-stone-400 font-bold">R$</span>
-                <input
-                  type="number"
-                  value={valorFinal}
-                  onChange={(e) => setValorFinal(e.target.value)}
-                  className="bg-transparent text-3xl font-bold text-[#1A1A1A] w-32 text-center outline-none border-b border-stone-300 focus:border-[#FACC15] transition"
-                />
-              </div>
-              <p className="text-[10px] text-stone-400 mt-2">Você pode ajustar o valor final aqui (descontos)</p>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-stone-400 ml-2">FORMA DE PAGAMENTO</label>
+              <div className="mt-3">
+                <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">DURAÇÃO</label>
                 <select
-                  value={formaPagamento}
-                  onChange={(e) => setFormaPagamento(e.target.value)}
-                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
+                  value={formAgendamento.duracao}
+                  onChange={e => setFormAgendamento({ ...formAgendamento, duracao: Number(e.target.value) })}
+                  className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] font-bold text-sm"
                 >
-                  <option value="pix">Pix</option>
-                  <option value="dinheiro">Dinheiro</option>
-                  <option value="cartao_debito">Cartão de Débito</option>
-                  <option value="cartao_credito">Cartão de Crédito</option>
-                  <option value="cheque_pre">Cheque-pré (A prazo)</option>
+                  <option value={30}>30 min</option>
+                  <option value={60}>1 hora</option>
+                  <option value={120}>2 horas</option>
+                  <option value={240}>Meio Dia (4h)</option>
+                  <option value={480}>Dia Todo (8h)</option>
                 </select>
               </div>
 
-              {formaPagamento === "cartao_credito" && (
-                <div className="animate-in slide-in-from-top-2">
-                  <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
-                    <CreditCard size={12} /> PARCELAS
-                  </label>
-                  <select
-                    value={parcelas}
-                    onChange={(e) => setParcelas(Number(e.target.value))}
-                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
-                  >
-                    {[1, 2, 3, 4, 5, 6, 10, 12].map(n => (
-                      <option key={n} value={n}>{n}x de {formatCurrency(Number(valorFinal) / n)}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {formaPagamento === "cheque_pre" && (
-                <div className="animate-in slide-in-from-top-2">
-                  <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
-                    <Calendar size={12} /> DATA DE DEPÓSITO
-                  </label>
-                  <input
-                    type="date"
-                    value={dataCheque}
-                    onChange={(e) => setDataCheque(e.target.value)}
-                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
-                  />
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={handleCheckout}
-              disabled={updating}
-              className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 hover:scale-105 transition"
-            >
-              {updating ? <Loader2 className="animate-spin" /> : <CheckCircle />}
-              Confirmar Recebimento
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL METADADOS DE APROVAÇÃO */}
-      {modalMetadados && os!.aprovacao_timestamp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-bold text-[#1A1A1A] flex items-center gap-2">
-                <ShieldCheck size={20} className="text-green-600" /> Dados da Aprovação
-              </h2>
-              <button onClick={() => setModalMetadados(false)}><X /></button>
-            </div>
-
-            <div className="space-y-3">
-              <div className="bg-green-50 border border-green-200 rounded-2xl p-4">
-                <p className="text-[10px] font-bold text-green-600 uppercase mb-1">Data e Hora</p>
-                <p className="text-sm font-bold text-[#1A1A1A]">
-                  {new Date(os!.aprovacao_timestamp).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'medium' })}
-                </p>
-              </div>
-
-              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
-                <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Endereço IP</p>
-                <p className="text-sm font-mono font-bold text-[#1A1A1A]">{os!.aprovacao_ip || 'Não disponível'}</p>
-              </div>
-
-              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
-                <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Dispositivo</p>
-                <p className="text-xs text-[#1A1A1A] break-all">{os!.aprovacao_dispositivo || 'Não disponível'}</p>
-              </div>
-
-              <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
-                <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Hash do Orçamento</p>
-                <p className="text-[10px] font-mono text-stone-600 break-all">{os!.aprovacao_versao_hash || 'Não disponível'}</p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setModalMetadados(false)}
-              className="w-full bg-stone-100 text-stone-600 font-bold py-3 rounded-2xl border-2 border-stone-300 hover:bg-stone-200 transition"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL EDITAR ITEM */}
-      {modalEditarItemAberto && itemEditando && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="font-bold text-lg text-[#1A1A1A]">Editar Item</h2>
-              <button onClick={() => { setModalEditarItemAberto(false); setItemEditando(null); }}>
-                <X size={20} className="text-stone-400" />
-              </button>
-            </div>
-
-            <div>
-              <p className="font-bold text-sm text-[#1A1A1A]">{itemEditando.name}</p>
-              <p className="text-xs text-stone-500 uppercase">{itemEditando.tipo}</p>
-            </div>
-
-            <div className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-stone-400 ml-1">QUANTIDADE</label>
-                <div className="flex items-center justify-between bg-[#F8F7F2] rounded-2xl p-2 border-2 border-stone-300">
-                  <button
-                    onClick={() => setItemEditando(prev => prev ? { ...prev, quantity: Math.max(1, prev.quantity - 1) } : prev)}
-                    className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
-                  >
-                    <Minus size={20} />
-                  </button>
-                  <span className="font-bold text-2xl">{itemEditando.quantity}</span>
-                  <button
-                    onClick={() => setItemEditando(prev => prev ? { ...prev, quantity: prev.quantity + 1 } : prev)}
-                    className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
-                  >
-                    <Plus size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-stone-400 ml-1">VALOR UNITÁRIO (R$)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={itemEditando.unit_price}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    setItemEditando(prev => prev ? { ...prev, unit_price: isNaN(val) ? 0 : val } : prev);
-                  }}
-                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl text-center text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                <label className="text-[10px] font-bold text-stone-400 ml-1 mb-1 block">DESCRIÇÃO (Opcional)</label>
+                <textarea
+                  value={formAgendamento.desc}
+                  onChange={e => setFormAgendamento({ ...formAgendamento, desc: e.target.value })}
+                  placeholder="Ex: Instalar farol que estava aguardando chegar"
+                  rows={2}
+                  className="w-full bg-stone-50 rounded-xl py-3 px-4 border border-stone-200 outline-none focus:border-[#1A1A1A] text-sm resize-none"
                 />
               </div>
 
-              <div className="bg-stone-50 rounded-2xl p-3 text-center">
-                <p className="text-xs text-stone-400 font-bold">TOTAL DO ITEM</p>
-                <p className="text-xl font-bold text-[#1A1A1A]">{formatCurrency((itemEditando.unit_price || 0) * itemEditando.quantity)}</p>
+              <button
+                onClick={handleSalvarAgendamento}
+                disabled={salvandoAgendamento}
+                className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 hover:bg-black transition disabled:opacity-50 mt-2"
+              >
+                {salvandoAgendamento ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
+                Confirmar Agendamento
+              </button>
+            </div>
+          </div>
+        )
+      }
+
+      {/* MODAL ADICIONAR ITEM ESPECIALIZADO */}
+      {
+        modalAdicionarTipo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl space-y-4 h-[500px] flex flex-col">
+              <div className="flex justify-between items-center">
+                <h2 className="font-bold text-lg">Adicionar {modalAdicionarTipo === 'servico' ? 'Serviço' : 'Peça'}</h2>
+                <button onClick={() => setModalAdicionarTipo(null)} className="text-stone-400 hover:text-[#1A1A1A] transition">
+                  <X />
+                </button>
+              </div>
+
+              <div className="relative">
+                <input
+                  autoFocus
+                  placeholder={`Buscar ${modalAdicionarTipo === 'servico' ? 'serviço...' : 'peça...'}`}
+                  value={termoBusca}
+                  onChange={(e) => setTermoBusca(e.target.value)}
+                  className="w-full bg-[#F8F7F2] p-4 pl-10 rounded-2xl border-2 border-stone-300 focus:border-[#FACC15] outline-none text-sm text-[#1A1A1A] placeholder:text-stone-400 font-medium transition"
+                />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+              </div>
+
+              <div className="flex-1 overflow-auto space-y-2 pb-4">
+                {adicionandoItem && (
+                  <div className="text-center py-4 text-stone-400 flex flex-col items-center">
+                    <Loader2 className="animate-spin mb-2" /> Salvando...
+                  </div>
+                )}
+
+                {!adicionandoItem && modalAdicionarTipo === "peca" &&
+                  listaProdutos
+                    .filter((p) => p.nome.toLowerCase().includes(termoBusca.toLowerCase()))
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => handleAdicionarItem(p, "peca")}
+                        className="w-full flex justify-between p-3 bg-white border border-stone-100 hover:border-[#FACC15] shadow-sm hover:shadow-md rounded-xl text-left transition"
+                      >
+                        <div>
+                          <p className="font-bold text-[#1A1A1A]">{p.nome}</p>
+                          <p className="text-xs text-stone-400">Estoque: {p.estoque_atual}</p>
+                        </div>
+                        <span className="font-bold text-[#1A1A1A]">R$ {p.preco_venda?.toFixed(2)}</span>
+                      </button>
+                    ))}
+
+                {!adicionandoItem && modalAdicionarTipo === "servico" &&
+                  listaServicos
+                    .filter((s) => s.nome.toLowerCase().includes(termoBusca.toLowerCase()))
+                    .map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => handleAdicionarItem(s, "servico")}
+                        className="w-full flex justify-between p-3 bg-white border border-stone-100 hover:border-[#FACC15] shadow-sm hover:shadow-md rounded-xl text-left transition"
+                      >
+                        <div>
+                          <p className="font-bold text-[#1A1A1A]">{s.nome}</p>
+                        </div>
+                        <span className="font-bold text-[#1A1A1A]">R$ {(s.price || 0).toFixed(2)}</span>
+                      </button>
+                    ))}
+
+                {!adicionandoItem && (
+                  <div className="mt-4 border-t border-stone-200 pt-4 flex flex-col items-center">
+                    <p className="text-xs text-stone-500 mb-2">Não encontrou o que procurava?</p>
+                    <button
+                      onClick={() => {
+                        setNomeNovoItem(termoBusca);
+                        setModalCadastroRapidoTipo(modalAdicionarTipo);
+                        setModalAdicionarTipo(null);
+                      }}
+                      className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2"
+                    >
+                      Cadastrar {modalAdicionarTipo === 'servico' ? 'Novo Serviço' : 'Nova Peça'} <Plus size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-
-            <button
-              onClick={async () => {
-                if (!os) return;
-                setUpdating(true);
-                try {
-                  const novoTotalPrice = itemEditando.unit_price * itemEditando.quantity;
-                  await supabase
-                    .from('work_order_items')
-                    .update({ unit_price: itemEditando.unit_price, quantity: itemEditando.quantity, total_price: novoTotalPrice })
-                    .eq('id', itemEditando.id);
-
-                  const itensAtualizados = os!.work_order_items.map(i =>
-                    i.id === itemEditando.id ? { ...i, unit_price: itemEditando.unit_price, quantity: itemEditando.quantity, total_price: novoTotalPrice } : i
-                  );
-                  const novoTotalOS = itensAtualizados!.reduce((acc, i) =>
-                    i.peca_cliente ? acc : acc + i.total_price, 0
-                  );
-                  await supabase.from('work_orders').update({ total: novoTotalOS }).eq('id', os!.id);
-
-                  fetchOS();
-                  setModalEditarItemAberto(false);
-                  setItemEditando(null);
-                } catch (error: any) {
-                  alert('Erro ao atualizar item: ' + error.message);
-                } finally {
-                  setUpdating(false);
-                }
-              }}
-              disabled={updating}
-              className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-xl shadow-md hover:scale-105 transition flex items-center justify-center gap-2 disabled:opacity-70"
-            >
-              {updating ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Salvar Alterações
-            </button>
           </div>
-        </div>
-      )}
+        )
+      }
+
+      {/* MODAL CADASTRO RÁPIDO */}
+      {
+        modalCadastroRapidoTipo && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="font-bold text-lg text-[#1A1A1A]">
+                  Nova {modalCadastroRapidoTipo === 'peca' ? 'Peça' : 'Serviço'}
+                </h2>
+                <button
+                  onClick={() => {
+                    setModalAdicionarTipo(modalCadastroRapidoTipo); // Volta para a tela anterior
+                    setModalCadastroRapidoTipo(null);
+                    setNomeNovoItem("");
+                  }}
+                  className="text-stone-400 hover:text-red-500 transition"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-2">
+                  <AlertCircle className="text-yellow-600 shrink-0 mt-0.5" size={16} />
+                  <p className="text-xs text-yellow-800 font-medium leading-tight">
+                    Isto cria um item básico para agilizar. Lembre-se de complementar as informações no painel depois (preços, estoque).
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-stone-400 ml-1 mb-1 block">NOME DA {modalCadastroRapidoTipo === 'peca' ? 'PEÇA' : 'SERVIÇO'}</label>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={nomeNovoItem}
+                    onChange={(e) => setNomeNovoItem(e.target.value)}
+                    placeholder={`Ex: ${modalCadastroRapidoTipo === 'peca' ? 'Filtro de Ar' : 'Alinhamento 3D'}`}
+                    className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none font-bold text-[#1A1A1A]"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleCadastroRapido();
+                    }}
+                  />
+                </div>
+
+                <button
+                  onClick={handleCadastroRapido}
+                  disabled={salvandoNovoItem || !nomeNovoItem.trim()}
+                  className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3.5 rounded-2xl flex justify-center items-center gap-2 hover:bg-black transition disabled:opacity-50"
+                >
+                  {salvandoNovoItem ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                  {salvandoNovoItem ? "Salvando..." : "Salvar e Continuar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* MODAL CHECKOUT FINANCEIRO */}
+      {
+        modalCheckoutAberto && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-green-700 flex items-center gap-2">
+                  <DollarSign /> Fechamento de OS
+                </h2>
+                <button onClick={() => setModalCheckoutAberto(false)}><X /></button>
+              </div>
+
+              <div className="bg-stone-50 p-4 rounded-2xl text-center">
+                <p className="text-xs text-stone-500 uppercase font-bold">Total a Receber</p>
+                <div className="flex items-center justify-center gap-1 mt-1">
+                  <span className="text-stone-400 font-bold">R$</span>
+                  <input
+                    type="number"
+                    value={valorFinal}
+                    onChange={(e) => setValorFinal(e.target.value)}
+                    className="bg-transparent text-3xl font-bold text-[#1A1A1A] w-32 text-center outline-none border-b border-stone-300 focus:border-[#FACC15] transition"
+                  />
+                </div>
+                <p className="text-[10px] text-stone-400 mt-2">Você pode ajustar o valor final aqui (descontos)</p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-400 ml-2">FORMA DE PAGAMENTO</label>
+                  <select
+                    value={formaPagamento}
+                    onChange={(e) => setFormaPagamento(e.target.value)}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
+                  >
+                    <option value="pix">Pix</option>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="cartao_debito">Cartão de Débito</option>
+                    <option value="cartao_credito">Cartão de Crédito</option>
+                    <option value="cheque_pre">A prazo</option>
+                  </select>
+                </div>
+
+                {formaPagamento === "cartao_credito" && (
+                  <div className="animate-in slide-in-from-top-2">
+                    <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                      <CreditCard size={12} /> PARCELAS
+                    </label>
+                    <select
+                      value={parcelas}
+                      onChange={(e) => setParcelas(Number(e.target.value))}
+                      className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
+                    >
+                      {[1, 2, 3, 4, 5, 6, 10, 12].map(n => (
+                        <option key={n} value={n}>{n}x de {formatCurrency(Number(valorFinal) / n)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {formaPagamento === "cheque_pre" && (
+                  <div className="animate-in slide-in-from-top-2">
+                    <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                      <Calendar size={12} /> DATA DE DEPÓSITO
+                    </label>
+                    <input
+                      type="date"
+                      value={dataCheque}
+                      onChange={(e) => setDataCheque(e.target.value)}
+                      className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={handleCheckout}
+                disabled={updating}
+                className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 hover:scale-105 transition"
+              >
+                {updating ? <Loader2 className="animate-spin" /> : <CheckCircle />}
+                Confirmar Recebimento
+              </button>
+            </div>
+          </div>
+        )
+      }
+
+      {/* MODAL METADADOS DE APROVAÇÃO */}
+      {
+        modalMetadados && os!.aprovacao_timestamp && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-lg font-bold text-[#1A1A1A] flex items-center gap-2">
+                  <ShieldCheck size={20} className="text-green-600" /> Dados da Aprovação
+                </h2>
+                <button onClick={() => setModalMetadados(false)}><X /></button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="bg-green-50 border border-green-200 rounded-2xl p-4">
+                  <p className="text-[10px] font-bold text-green-600 uppercase mb-1">Data e Hora</p>
+                  <p className="text-sm font-bold text-[#1A1A1A]">
+                    {new Date(os!.aprovacao_timestamp).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'medium' })}
+                  </p>
+                </div>
+
+                <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
+                  <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Endereço IP</p>
+                  <p className="text-sm font-mono font-bold text-[#1A1A1A]">{os!.aprovacao_ip || 'Não disponível'}</p>
+                </div>
+
+                <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
+                  <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Dispositivo</p>
+                  <p className="text-xs text-[#1A1A1A] break-all">{os!.aprovacao_dispositivo || 'Não disponível'}</p>
+                </div>
+
+                <div className="bg-stone-50 border border-stone-200 rounded-2xl p-4">
+                  <p className="text-[10px] font-bold text-stone-500 uppercase mb-1">Hash do Orçamento</p>
+                  <p className="text-[10px] font-mono text-stone-600 break-all">{os!.aprovacao_versao_hash || 'Não disponível'}</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setModalMetadados(false)}
+                className="w-full bg-stone-100 text-stone-600 font-bold py-3 rounded-2xl border-2 border-stone-300 hover:bg-stone-200 transition"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        )
+      }
+
+      {/* MODAL EDITAR ITEM */}
+      {
+        modalEditarItemAberto && itemEditando && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="font-bold text-lg text-[#1A1A1A]">Editar Item</h2>
+                <button onClick={() => { setModalEditarItemAberto(false); setItemEditando(null); }}>
+                  <X size={20} className="text-stone-400" />
+                </button>
+              </div>
+
+              <div>
+                <p className="font-bold text-sm text-[#1A1A1A]">{itemEditando.name}</p>
+                <p className="text-xs text-stone-500 uppercase">{itemEditando.tipo}</p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-400 ml-1">QUANTIDADE</label>
+                  <div className="flex items-center justify-between bg-[#F8F7F2] rounded-2xl p-2 border-2 border-stone-300">
+                    <button
+                      onClick={() => setItemEditando(prev => prev ? { ...prev, quantity: Math.max(1, prev.quantity - 1) } : prev)}
+                      className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
+                    >
+                      <Minus size={20} />
+                    </button>
+                    <span className="font-bold text-2xl">{itemEditando.quantity}</span>
+                    <button
+                      onClick={() => setItemEditando(prev => prev ? { ...prev, quantity: prev.quantity + 1 } : prev)}
+                      className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
+                    >
+                      <Plus size={20} />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-stone-400 ml-1">VALOR UNITÁRIO (R$)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={itemEditando.unit_price}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setItemEditando(prev => prev ? { ...prev, unit_price: isNaN(val) ? 0 : val } : prev);
+                    }}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl text-center text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                  />
+                </div>
+
+                <div className="bg-stone-50 rounded-2xl p-3 text-center">
+                  <p className="text-xs text-stone-400 font-bold">TOTAL DO ITEM</p>
+                  <p className="text-xl font-bold text-[#1A1A1A]">{formatCurrency((itemEditando.unit_price || 0) * itemEditando.quantity)}</p>
+                </div>
+              </div>
+
+              <button
+                onClick={async () => {
+                  if (!os) return;
+                  setUpdating(true);
+                  try {
+                    const novoTotalPrice = itemEditando.unit_price * itemEditando.quantity;
+                    await supabase
+                      .from('work_order_items')
+                      .update({ unit_price: itemEditando.unit_price, quantity: itemEditando.quantity, total_price: novoTotalPrice })
+                      .eq('id', itemEditando.id);
+
+                    const itensAtualizados = os!.work_order_items.map(i =>
+                      i.id === itemEditando.id ? { ...i, unit_price: itemEditando.unit_price, quantity: itemEditando.quantity, total_price: novoTotalPrice } : i
+                    );
+                    const novoTotalOS = itensAtualizados!.reduce((acc, i) =>
+                      i.peca_cliente ? acc : acc + i.total_price, 0
+                    );
+                    await supabase.from('work_orders').update({ total: novoTotalOS }).eq('id', os!.id);
+
+                    fetchOS();
+                    setModalEditarItemAberto(false);
+                    setItemEditando(null);
+                  } catch (error: any) {
+                    alert('Erro ao atualizar item: ' + error.message);
+                  } finally {
+                    setUpdating(false);
+                  }
+                }}
+                disabled={updating}
+                className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-xl shadow-md hover:scale-105 transition flex items-center justify-center gap-2 disabled:opacity-70"
+              >
+                {updating ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Salvar Alterações
+              </button>
+            </div>
+          </div>
+        )
+      }
 
 
       {/* MODAL VISUALIZAÇÃO DE FOTO (LIGHTBOX) */}
-      {selectedPhoto && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300 cursor-zoom-out"
-          onClick={() => setSelectedPhoto(null)}
-        >
-          <button
-            className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors z-[110]"
+      {
+        selectedPhoto && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300 cursor-zoom-out"
             onClick={() => setSelectedPhoto(null)}
           >
-            <X size={40} />
-          </button>
+            <button
+              className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors z-[110]"
+              onClick={() => setSelectedPhoto(null)}
+            >
+              <X size={40} />
+            </button>
 
-          <div className="relative w-full h-full flex items-center justify-center">
-            <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden shadow-2xl border border-white/10">
-              <img
-                src={selectedPhoto}
-                alt="Foto Carro Ampliada"
-                className="max-w-screen max-h-screen object-contain"
-              />
+            <div className="relative w-full h-full flex items-center justify-center">
+              <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+                <img
+                  src={selectedPhoto}
+                  alt="Foto Carro Ampliada"
+                  className="max-w-screen max-h-screen object-contain"
+                />
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-    </div>
+    </div >
   );
 }

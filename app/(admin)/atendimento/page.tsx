@@ -14,7 +14,7 @@ export default function AtendimentoPage() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-[#1A1A1A]">Atendimento</h1>
-                    <p className="text-stone-500 text-sm mt-1">Gerencie ordens de serviço e vendas de peças</p>
+                    <p className="text-stone-500 text-sm mt-1">Gerencie ordens de serviço, venda de peças e serviço de bancada</p>
                 </div>
             </div>
 
@@ -36,7 +36,7 @@ export default function AtendimentoPage() {
                         : "text-stone-500 hover:text-[#1A1A1A] border-transparent"
                         }`}
                 >
-                    <ShoppingBag size={18} /> Venda de Peças
+                    <ShoppingBag size={18} /> Venda Direta
                 </button>
             </div>
 

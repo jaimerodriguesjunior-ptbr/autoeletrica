@@ -195,7 +195,12 @@ export default function EditarProduto() {
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-400 ml-2">QTD ATUAL</label>
-                <input type="number" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-bold text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
+                <input
+                  type="number"
+                  value={estoqueAtual}
+                  onChange={e => setEstoqueAtual(e.target.value)}
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-bold text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-400 ml-2">MÍNIMO</label>

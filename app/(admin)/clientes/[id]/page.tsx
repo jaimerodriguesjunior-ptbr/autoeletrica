@@ -7,7 +7,8 @@ import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
 import {
   ArrowLeft, MapPin,
-  Car, Save, Phone, FileText, Trash2, Loader2, Edit, X, Plus
+  Car, Save, Phone, FileText, Trash2, Loader2, Edit, X, Plus,
+  DollarSign, MessageCircle, ExternalLink, Clock, CheckCircle
 } from "lucide-react";
 
 export default function EditarCliente() {
@@ -34,6 +35,12 @@ export default function EditarCliente() {
 
   // Lista de Veículos do Cliente
   const [veiculos, setVeiculos] = useState<any[]>([]);
+
+  // --- Financeiro & Portal ---
+  const [publicToken, setPublicToken] = useState<string | null>(null);
+  const [saldoDevedor, setSaldoDevedor] = useState(0);
+  const [totalPago, setTotalPago] = useState(0);
+  const [loadingFinanceiro, setLoadingFinanceiro] = useState(true);
 
   // --- Estados para Edição/Criação de Veículo ---
   const [modalVeiculoOpen, setModalVeiculoOpen] = useState(false);
@@ -70,6 +77,23 @@ export default function EditarCliente() {
         setWhatsapp(cliente.whatsapp || "");
         setEmail(cliente.email || "");
 
+        // Auto-gerar token para clientes antigos que não têm
+        if (cliente.public_token) {
+          setPublicToken(cliente.public_token);
+        } else {
+          const newToken = crypto.randomUUID().replace(/-/g, '');
+          supabase.from('clients')
+            .update({ public_token: newToken })
+            .eq('id', id)
+            .then(({ error: upError }) => {
+              if (!upError) {
+                setPublicToken(newToken);
+              } else {
+                console.error("Erro ao auto-gerar token:", upError);
+              }
+            });
+        }
+
         if (cliente.endereco) {
           const end = cliente.endereco;
           setCep(end.cep || "");
@@ -80,6 +104,7 @@ export default function EditarCliente() {
       }
 
       fetchVeiculos();
+      fetchFinanceiro();
     } catch (error) {
       console.error(error);
       alert("Erro ao carregar cliente.");
@@ -97,6 +122,56 @@ export default function EditarCliente() {
       .order('created_at', { ascending: false });
 
     setVeiculos(cars || []);
+  }
+
+  const fetchFinanceiro = async () => {
+    setLoadingFinanceiro(true);
+    try {
+      // Buscar OS do cliente
+      const { data: wos } = await supabase
+        .from('work_orders')
+        .select('id')
+        .eq('client_id', id);
+
+      const woIds = (wos || []).map(w => w.id);
+      if (woIds.length === 0) {
+        setSaldoDevedor(0);
+        setTotalPago(0);
+        setLoadingFinanceiro(false);
+        return;
+      }
+
+      const { data: txs } = await supabase
+        .from('transactions')
+        .select('amount, status, type')
+        .in('work_order_id', woIds)
+        .eq('type', 'income');
+
+      const pago = (txs || []).filter(t => t.status === 'paid').reduce((s, t) => s + (t.amount || 0), 0);
+      const pendente = (txs || []).filter(t => t.status === 'pending').reduce((s, t) => s + (t.amount || 0), 0);
+      setTotalPago(pago);
+      setSaldoDevedor(pendente);
+    } catch (err) {
+      console.error('Erro financeiro:', err);
+    } finally {
+      setLoadingFinanceiro(false);
+    }
+  }
+
+  const getExtratoUrl = () => {
+    if (!publicToken) return '';
+    return `${window.location.origin}/extrato?token=${publicToken}`;
+  }
+
+  const handleEnviarWhatsApp = () => {
+    if (!publicToken || !whatsapp) {
+      alert('É necessário um WhatsApp e um token gerado.');
+      return;
+    }
+    const url = getExtratoUrl();
+    const msg = `Olá ${nome}! Segue o link do seu extrato financeiro:\n${url}`;
+    const wp = whatsapp.replace(/\D/g, '');
+    window.open(`https://wa.me/55${wp}?text=${encodeURIComponent(msg)}`, '_blank');
   }
 
   const handleSalvarCliente = async () => {
@@ -304,7 +379,66 @@ export default function EditarCliente() {
         </div>
       </div>
 
-      {/* 4. VEÍCULOS JÁ CADASTRADOS */}
+      {/* 4. FINANCEIRO & PORTAL */}
+      <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 space-y-4">
+        <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+          <DollarSign size={18} /> Financeiro & Portal
+        </h3>
+
+        {loadingFinanceiro ? (
+          <div className="flex justify-center py-4">
+            <Loader2 className="animate-spin text-stone-400" size={20} />
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
+                <p className="text-[9px] uppercase font-bold text-green-500 tracking-wider">Total Pago</p>
+                <p className="text-lg font-black text-green-600 mt-1">
+                  R$ {totalPago.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className={`border rounded-2xl p-4 text-center ${saldoDevedor > 0 ? 'bg-red-50 border-red-200' : 'bg-stone-50 border-stone-200'}`}>
+                <p className={`text-[9px] uppercase font-bold tracking-wider ${saldoDevedor > 0 ? 'text-red-500' : 'text-stone-400'}`}>Saldo Devedor</p>
+                <p className={`text-lg font-black mt-1 ${saldoDevedor > 0 ? 'text-red-600' : 'text-stone-400'}`}>
+                  R$ {saldoDevedor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t border-stone-100 pt-4 space-y-3">
+              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Extrato do Cliente</p>
+
+              {!publicToken ? (
+                <div className="flex justify-center py-3">
+                  <Loader2 className="animate-spin text-stone-300" size={18} />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <a
+                      href={getExtratoUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold py-3 rounded-xl text-sm transition"
+                    >
+                      <ExternalLink size={16} /> Ver Extrato
+                    </a>
+                    <button
+                      onClick={handleEnviarWhatsApp}
+                      className="flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm transition shadow-sm"
+                    >
+                      <MessageCircle size={16} /> Enviar WhatsApp
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 5. VEÍCULOS JÁ CADASTRADOS */}
       <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
@@ -358,91 +492,93 @@ export default function EditarCliente() {
       </div>
 
       {/* --- MODAL DE EDIÇÃO DE VEÍCULO --- */}
-      {modalVeiculoOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-[#1A1A1A] flex items-center gap-2">
-                <Car size={24} /> {editingVehicleId ? "Editar Veículo" : "Novo Veículo"}
-              </h2>
-              <button onClick={() => setModalVeiculoOpen(false)}><X /></button>
+      {
+        modalVeiculoOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-[#1A1A1A] flex items-center gap-2">
+                  <Car size={24} /> {editingVehicleId ? "Editar Veículo" : "Novo Veículo"}
+                </h2>
+                <button onClick={() => setModalVeiculoOpen(false)}><X /></button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2">PLACA</label>
+                    <input
+                      type="text"
+                      value={vPlaca}
+                      onChange={e => setVPlaca(e.target.value.toUpperCase())}
+                      className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-bold text-[#1A1A1A] uppercase outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2">FABRICANTE</label>
+                    <input
+                      type="text"
+                      value={vFabricante}
+                      onChange={e => setVFabricante(e.target.value)}
+                      className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-stone-400 ml-2">MODELO</label>
+                  <input
+                    type="text"
+                    value={vModelo}
+                    onChange={e => setVModelo(e.target.value)}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2">COR</label>
+                    <input
+                      type="text"
+                      value={vCor}
+                      onChange={e => setVCor(e.target.value)}
+                      className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2">ANO</label>
+                    <input
+                      type="text"
+                      value={vAno}
+                      onChange={e => setVAno(e.target.value)}
+                      className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-stone-400 ml-2">OBSERVAÇÕES</label>
+                  <input
+                    type="text"
+                    value={vObs}
+                    onChange={e => setVObs(e.target.value)}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={handleSalvarVeiculo}
+                disabled={savingVeiculo}
+                className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl flex justify-center gap-2 hover:scale-105 transition"
+              >
+                {savingVeiculo ? <Loader2 className="animate-spin" /> : <Save />} Salvar Veículo
+              </button>
             </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-stone-400 ml-2">PLACA</label>
-                  <input
-                    type="text"
-                    value={vPlaca}
-                    onChange={e => setVPlaca(e.target.value.toUpperCase())}
-                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-bold text-[#1A1A1A] uppercase outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-stone-400 ml-2">FABRICANTE</label>
-                  <input
-                    type="text"
-                    value={vFabricante}
-                    onChange={e => setVFabricante(e.target.value)}
-                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-stone-400 ml-2">MODELO</label>
-                <input
-                  type="text"
-                  value={vModelo}
-                  onChange={e => setVModelo(e.target.value)}
-                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-stone-400 ml-2">COR</label>
-                  <input
-                    type="text"
-                    value={vCor}
-                    onChange={e => setVCor(e.target.value)}
-                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-stone-400 ml-2">ANO</label>
-                  <input
-                    type="text"
-                    value={vAno}
-                    onChange={e => setVAno(e.target.value)}
-                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-stone-400 ml-2">OBSERVAÇÕES</label>
-                <input
-                  type="text"
-                  value={vObs}
-                  onChange={e => setVObs(e.target.value)}
-                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none"
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={handleSalvarVeiculo}
-              disabled={savingVeiculo}
-              className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl flex justify-center gap-2 hover:scale-105 transition"
-            >
-              {savingVeiculo ? <Loader2 className="animate-spin" /> : <Save />} Salvar Veículo
-            </button>
           </div>
-        </div>
-      )}
+        )
+      }
 
-    </div>
+    </div >
   );
 }
