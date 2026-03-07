@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { createClient } from "@/src/utils/supabase/server";
 import { getNuvemFiscalToken } from "@/src/lib/nuvemfiscal";
 import { NextResponse } from "next/server";
