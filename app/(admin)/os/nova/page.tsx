@@ -215,7 +215,7 @@ export default function NovaOS() {
   // ============================================================
 
   const handleBuscarVeiculo = async () => {
-    if (!placaInput || placaInput.length < 7) return alert("Digite uma placa válida.");
+    if (!placaInput || placaInput.length < 6) return alert("Digite uma placa válida.");
 
     setSearchingVehicle(true);
     setVeiculoNaoEncontrado(false);
@@ -557,7 +557,7 @@ export default function NovaOS() {
               {!veiculoNaoEncontrado && (
                 <button
                   onClick={handleBuscarVeiculo}
-                  disabled={searchingVehicle || placaInput.length < 7}
+                  disabled={searchingVehicle || placaInput.length < 6}
                   className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl shadow-lg hover:scale-105 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {searchingVehicle ? <Loader2 className="animate-spin" /> : <Search size={20} />}
