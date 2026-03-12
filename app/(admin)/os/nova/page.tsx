@@ -8,6 +8,8 @@ import {
   Plus,
   Save,
   Car,
+  Bike,
+  Anchor,
   CheckCircle,
   X,
   Search,
@@ -80,6 +82,26 @@ export default function NovaOS() {
 
   const [veiculoConfirmado, setVeiculoConfirmado] = useState<VeiculoConfirmado | null>(null);
   const [veiculoNaoEncontrado, setVeiculoNaoEncontrado] = useState(false);
+
+  // Tipo de veículo (Carro, Moto, Barco)
+  const [vehicleCategory, setVehicleCategory] = useState<'carro' | 'moto' | 'barco'>('carro');
+  const [categoryManuallySet, setCategoryManuallySet] = useState(false);
+
+  // Detecta automaticamente o tipo de veículo com base no texto digitado
+  const detectVehicleCategory = (input: string) => {
+    if (categoryManuallySet) return; // usuário já escolheu manualmente
+    const clean = input.trim();
+    if (!clean) { setVehicleCategory('carro'); return; }
+    // Padrão placa antiga (ABC1234) ou Mercosul (BRA2E19)
+    const isPlaca = /^[A-Z]{3}\d[A-Z0-9]\d{2}$/i.test(clean.replace(/[-\s]/g, ''));
+    if (isPlaca) { setVehicleCategory('carro'); return; }
+    // Se contém espaço ou é longo e alfabético -> barco
+    const hasSpaces = clean.includes(' ');
+    const isLongAlpha = clean.length > 4 && /^[A-ZÀ-ÚÇ\s-]+$/i.test(clean);
+    if (hasSpaces || isLongAlpha) { setVehicleCategory('barco'); return; }
+    // Prefixo de capitania (PR-123, SP-456)
+    if (/^[A-Z]{2}-/i.test(clean)) { setVehicleCategory('barco'); return; }
+  };
 
   // Passo 2: OS
   const [defeito, setDefeito] = useState("");
@@ -156,6 +178,8 @@ export default function NovaOS() {
     setObsVeiculoInput("");
     setVeiculoConfirmado(null);
     setClienteSelecionado(null);
+    setVehicleCategory('carro');
+    setCategoryManuallySet(false);
 
     setOdometro("");
     setNivelCombustivel("");
@@ -184,7 +208,7 @@ export default function NovaOS() {
       const res = await fetch('/api/painel-ia', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64 }),
+        body: JSON.stringify({ imageBase64: base64, categoria: vehicleCategory }),
       });
 
       const data = await res.json();
@@ -215,7 +239,7 @@ export default function NovaOS() {
   // ============================================================
 
   const handleBuscarVeiculo = async () => {
-    if (!placaInput || placaInput.length < 6) return alert("Digite uma placa válida.");
+    if (!placaInput || (vehicleCategory !== 'barco' && placaInput.length < 6)) return alert(vehicleCategory === 'barco' ? "Digite o nome ou prefixo do barco." : "Digite uma placa válida.");
 
     setSearchingVehicle(true);
     setVeiculoNaoEncontrado(false);
@@ -229,7 +253,7 @@ export default function NovaOS() {
       const { data, error } = await supabase
         .from("vehicles")
         .select(`
-          id, placa, modelo, fabricante, ano, obs,
+          id, placa, modelo, fabricante, ano, obs, categoria,
           clients ( id, nome, whatsapp )
         `)
         .eq("organization_id", profile?.organization_id)
@@ -245,6 +269,11 @@ export default function NovaOS() {
           modelo: data.modelo,
           fabricante: data.fabricante,
         });
+
+        // Atualiza categoria do veículo encontrado
+        if (data.categoria) {
+          setVehicleCategory(data.categoria as 'carro' | 'moto' | 'barco');
+        }
 
         // @ts-ignore
         if (data.clients) {
@@ -279,6 +308,7 @@ export default function NovaOS() {
           modelo: modeloInput,
           fabricante: fabricanteInput,
           ano: anoInput,
+          categoria: vehicleCategory,
           obs: obsVeiculoInput,
         })
         .select()
@@ -449,12 +479,35 @@ export default function NovaOS() {
         <div className="animate-in slide-in-from-left duration-300">
           <div className="bg-white rounded-[32px] p-8 shadow-sm border border-stone-100 text-center space-y-6">
             <div className="w-16 h-16 bg-[#F8F7F2] rounded-full flex items-center justify-center mx-auto text-[#1A1A1A]">
-              <Car size={32} />
+              {vehicleCategory === 'moto' ? <Bike size={32} /> : vehicleCategory === 'barco' ? <Anchor size={32} /> : <Car size={32} />}
             </div>
 
             <div>
               <h2 className="text-xl font-bold text-[#1A1A1A]">Qual é o veículo?</h2>
-              <p className="text-stone-400 text-sm">Digite a placa ou tire uma foto</p>
+              <p className="text-stone-400 text-sm">
+                {vehicleCategory === 'barco' ? 'Digite o nome ou prefixo do barco' : 'Digite a placa ou tire uma foto'}
+              </p>
+            </div>
+
+            {/* ABAS DE TIPO DE VEÍCULO */}
+            <div className="flex gap-2 max-w-md mx-auto">
+              {[
+                { value: 'carro' as const, label: 'Carro', icon: Car },
+                { value: 'moto' as const, label: 'Moto', icon: Bike },
+                { value: 'barco' as const, label: 'Barco', icon: Anchor },
+              ].map(tab => (
+                <button
+                  key={tab.value}
+                  onClick={() => { setVehicleCategory(tab.value); setCategoryManuallySet(true); }}
+                  className={`flex-1 py-2.5 rounded-xl font-bold text-xs border-2 transition flex items-center justify-center gap-1.5 ${vehicleCategory === tab.value
+                    ? 'bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A] shadow-md'
+                    : 'bg-stone-50 text-stone-500 border-stone-200 hover:border-stone-300'
+                    }`}
+                >
+                  <tab.icon size={14} />
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
             <div className="max-w-md mx-auto space-y-4">
@@ -464,12 +517,15 @@ export default function NovaOS() {
                   type="text"
                   value={placaInput}
                   onChange={(e) => {
-                    setPlacaInput(e.target.value.toUpperCase());
+                    const val = vehicleCategory === 'barco' ? e.target.value : e.target.value.toUpperCase();
+                    setPlacaInput(val);
                     setVeiculoNaoEncontrado(false);
+                    detectVehicleCategory(val);
                   }}
-                  placeholder="ABC1234"
-                  className="w-full text-center text-3xl font-bold uppercase tracking-widest bg-[#F8F7F2] rounded-2xl py-6 outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] placeholder:text-stone-300 pr-16"
-                  maxLength={8}
+                  placeholder={vehicleCategory === 'barco' ? 'Nome ou prefixo do barco' : 'ABC1234'}
+                  className={`w-full text-center font-bold bg-[#F8F7F2] rounded-2xl py-6 outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] placeholder:text-stone-300 pr-16 ${vehicleCategory === 'barco' ? 'text-xl tracking-normal normal-case' : 'text-3xl tracking-widest uppercase'
+                    }`}
+                  maxLength={vehicleCategory === 'barco' ? 40 : 8}
                 />
                 <button
                   onClick={abrirCameraPlaca}
@@ -499,47 +555,46 @@ export default function NovaOS() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-stone-400 ml-2">FABRICANTE</label>
+                      <label className="text-xs font-bold text-stone-400 ml-2 uppercase">
+                        {vehicleCategory === 'barco' ? 'Estaleiro / Marca' : 'Fabricante'}
+                      </label>
                       <input
-                        type="text"
-                        autoFocus
+                        placeholder={vehicleCategory === 'barco' ? "Fibrafort, Ventura..." : "VW, Fiat..."}
                         value={fabricanteInput}
                         onChange={(e) => setFabricanteInput(e.target.value)}
-                        placeholder="VW, Fiat..."
-                        className="w-full bg-white rounded-xl p-3 font-medium text-[#1A1A1A] outline-none border border-yellow-200 focus:ring-2 focus:ring-[#FACC15]"
+                        className="w-full bg-[#F8F7F2] p-4 rounded-2xl border-2 border-stone-300 focus:border-[#FACC15] outline-none font-bold"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-stone-400 ml-2">ANO</label>
+                      <label className="text-xs font-bold text-stone-400 ml-2 uppercase">Ano</label>
                       <input
-                        type="text"
+                        placeholder="2015"
                         value={anoInput}
                         onChange={(e) => setAnoInput(e.target.value)}
-                        placeholder="2015"
-                        className="w-full bg-white rounded-xl p-3 font-medium text-[#1A1A1A] outline-none border border-yellow-200 focus:ring-2 focus:ring-[#FACC15]"
+                        className="w-full bg-[#F8F7F2] p-4 rounded-2xl border-2 border-stone-300 focus:border-[#FACC15] outline-none font-bold"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-stone-400 ml-2">MODELO / VERSÃO</label>
+                    <label className="text-xs font-bold text-stone-400 ml-2 uppercase">
+                      {vehicleCategory === 'barco' ? 'Modelo / Motorização' : 'Modelo / Versão'}
+                    </label>
                     <input
-                      type="text"
+                      placeholder={vehicleCategory === 'barco' ? "Ex: Focker 242 GTO / Volvo 250hp" : "Ex: Gol G5 1.6 Power"}
                       value={modeloInput}
                       onChange={(e) => setModeloInput(e.target.value)}
-                      placeholder="Ex: Gol G5 1.6 Power"
-                      className="w-full bg-white rounded-xl p-3 font-medium text-[#1A1A1A] outline-none border border-yellow-200 focus:ring-2 focus:ring-[#FACC15]"
+                      className="w-full bg-[#F8F7F2] p-4 rounded-2xl border-2 border-stone-300 focus:border-[#FACC15] outline-none font-bold"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-stone-400 ml-2">OBSERVAÇÕES (Opcional)</label>
+                    <label className="text-xs font-bold text-stone-400 ml-2 uppercase">Observações (Opcional)</label>
                     <input
-                      type="text"
+                      placeholder={vehicleCategory === 'barco' ? "Ex: Chave no console / Bateria embaixo do banco" : "Ex: Arranhão porta esquerda"}
                       value={obsVeiculoInput}
                       onChange={(e) => setObsVeiculoInput(e.target.value)}
-                      placeholder="Ex: Arranhão porta esquerda"
-                      className="w-full bg-white rounded-xl p-3 font-medium text-[#1A1A1A] outline-none border border-yellow-200 focus:ring-2 focus:ring-[#FACC15]"
+                      className="w-full bg-[#F8F7F2] p-4 rounded-2xl border-2 border-stone-300 focus:border-[#FACC15] outline-none font-bold"
                     />
                   </div>
 
@@ -557,11 +612,11 @@ export default function NovaOS() {
               {!veiculoNaoEncontrado && (
                 <button
                   onClick={handleBuscarVeiculo}
-                  disabled={searchingVehicle || placaInput.length < 6}
+                  disabled={searchingVehicle || (vehicleCategory !== 'barco' ? placaInput.length < 6 : placaInput.length < 2)}
                   className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl shadow-lg hover:scale-105 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {searchingVehicle ? <Loader2 className="animate-spin" /> : <Search size={20} />}
-                  Buscar Veículo
+                  {vehicleCategory === 'barco' ? 'Buscar Embarcação' : 'Buscar Veículo'}
                 </button>
               )}
             </div>
@@ -660,10 +715,10 @@ export default function NovaOS() {
                 {/* Input oculto para câmera do painel */}
                 <input type="file" ref={painelInputRef} accept="image/*" capture="environment" className="hidden" onChange={handleFotoPainel} />
 
-                {/* Odômetro com câmera */}
+                {/* Odômetro / Horímetro com câmera */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
-                    <Gauge size={12} /> ODÔMETRO (KM)
+                    <Gauge size={12} /> {vehicleCategory === 'barco' ? 'HORÍMETRO (HORAS)' : 'ODÔMETRO (KM)'}
                   </label>
                   <div className="relative">
                     <input
@@ -671,7 +726,7 @@ export default function NovaOS() {
                       inputMode="numeric"
                       value={odometro}
                       onChange={(e) => setOdometro(e.target.value.replace(/\D/g, ''))}
-                      placeholder="Ex: 45230"
+                      placeholder={vehicleCategory === 'barco' ? 'Ex: 1250' : 'Ex: 45230'}
                       className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-[#1A1A1A] font-bold outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] pr-14"
                     />
                     <button

@@ -9,7 +9,7 @@ export async function POST(req: Request) {
     }
 
     try {
-        const { imageBase64 } = await req.json();
+        const { imageBase64, categoria } = await req.json();
 
         if (!imageBase64) {
             return NextResponse.json({ error: 'Imagem não fornecida.' }, { status: 400 });
@@ -17,7 +17,13 @@ export async function POST(req: Request) {
 
         const base64Clean = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
-        const prompt = `Analise esta foto de painel automotivo. Retorne APENAS um JSON (sem markdown) com:
+        const isBarco = categoria === 'barco';
+
+        const prompt = isBarco
+            ? `Analise esta foto de painel de embarcação/barco. Retorne APENAS um JSON (sem markdown) com:
+{"horimetro":"horas","combustivel":"vazio|1/4|1/2|3/4|cheio","voltagem_bateria":"volts ou nao_identificado","alertas":[],"observacao":""}
+Se houver alertas ou indicadores acesos, liste em alertas. Se não identificar um campo, use "nao_identificado".`
+            : `Analise esta foto de painel automotivo. Retorne APENAS um JSON (sem markdown) com:
 {"odometro":"km","combustivel":"vazio|1/4|1/2|3/4|cheio","temperatura":"normal|elevada|critica","luzes_alerta":[],"observacao":""}
 Se houver luzes acesas, liste em luzes_alerta e escreva observacao com tom respeitoso de suporte ao técnico. Se não identificar um campo, use "".`;
 
@@ -71,7 +77,14 @@ Se houver luzes acesas, liste em luzes_alerta e escreva observacao com tom respe
             return match?.[1] || '';
         };
 
-        const resultado = {
+        const resultado = isBarco ? {
+            odometro: extrair('horimetro'),
+            combustivel: extrair('combustivel'),
+            temperatura: '',
+            luzes_alerta: [] as string[],
+            observacao: extrair('observacao'),
+            voltagem_bateria: extrair('voltagem_bateria'),
+        } : {
             odometro: extrair('odometro'),
             combustivel: extrair('combustivel'),
             temperatura: extrair('temperatura'),
