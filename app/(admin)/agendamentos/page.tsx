@@ -605,8 +605,8 @@ export default function AgendamentosPage() {
             {/* MODAL NOVO AGENDAMENTO */}
             {
                 modalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                        <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <div className="bg-white w-full max-w-md rounded-[32px] p-6 pb-24 md:pb-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
                             <div className="flex justify-between items-center">
                                 <h2 className="text-xl font-bold text-[#1A1A1A]">Novo Agendamento</h2>
                                 <button onClick={() => setModalOpen(false)}><X /></button>
