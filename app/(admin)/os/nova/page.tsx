@@ -556,7 +556,7 @@ export default function NovaOS() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-stone-400 ml-2 uppercase">
-                        {vehicleCategory === 'barco' ? 'Estaleiro / Marca' : 'Fabricante'}
+                        {vehicleCategory === 'barco' ? 'Marca' : 'Fabricante'}
                       </label>
                       <input
                         placeholder={vehicleCategory === 'barco' ? "Fibrafort, Ventura..." : "VW, Fiat..."}
@@ -578,7 +578,7 @@ export default function NovaOS() {
 
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-stone-400 ml-2 uppercase">
-                      {vehicleCategory === 'barco' ? 'Modelo / Motorização' : 'Modelo / Versão'}
+                      {vehicleCategory === 'barco' ? 'Modelo / Motor' : 'Modelo / Versão'}
                     </label>
                     <input
                       placeholder={vehicleCategory === 'barco' ? "Ex: Focker 242 GTO / Volvo 250hp" : "Ex: Gol G5 1.6 Power"}
