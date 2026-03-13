@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import heic2any from "heic2any";
 import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
 
@@ -156,8 +157,26 @@ export default function NovaOS() {
 
   // --- FUNÇÕES DE CÂMERA ---
   const abrirCameraPlaca = () => fileInputRef.current?.click();
-  const handleFotoPlaca = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) setPlacaFoto(URL.createObjectURL(e.target.files[0]));
+  const handleFotoPlaca = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      let file = e.target.files[0];
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
+
+      if (fileExt === 'heic' || file.type === 'image/heic') {
+        try {
+          const convertedBlob = await heic2any({
+            blob: file,
+            toType: "image/jpeg",
+            quality: 0.8
+          });
+          const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+          file = new File([blob], file.name.replace(/\.heic$/i, ".jpg"), { type: "image/jpeg" });
+        } catch (error) {
+          console.error("Erro ao converter HEIC:", error);
+        }
+      }
+      setPlacaFoto(URL.createObjectURL(file));
+    }
   };
   const removerFotoPlaca = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -192,7 +211,23 @@ export default function NovaOS() {
   // --- ANÁLISE DO PAINEL COM IA ---
   const handleFotoPainel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
-    const file = e.target.files[0];
+    let file = e.target.files[0];
+    const fileExt = file.name.split('.').pop()?.toLowerCase();
+
+    if (fileExt === 'heic' || file.type === 'image/heic') {
+      try {
+        const convertedBlob = await heic2any({
+          blob: file,
+          toType: "image/jpeg",
+          quality: 0.8
+        });
+        const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+        file = new File([blob], file.name.replace(/\.heic$/i, ".jpg"), { type: "image/jpeg" });
+      } catch (error) {
+        console.error("Erro ao converter HEIC do painel:", error);
+      }
+    }
+
     setPainelFotoPreview(URL.createObjectURL(file));
     setPainelFile(file);
     setAnalisandoPainel(true);

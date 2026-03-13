@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import {
   CheckCircle, Clock, Wrench, Car, Camera,
   MessageCircle, ChevronDown, ChevronUp, ShieldCheck,
-  Package, AlertCircle, Loader2, X, AlertTriangle, Download, FileText
+  Package, AlertCircle, Loader2, X, AlertTriangle, Download, FileText, Play, Video
 } from "lucide-react";
 // eslint-disable-next-line @next/next/no-img-element
 
@@ -60,6 +60,10 @@ function ConteudoPortal() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const isVideo = (url: string) => {
+    return /\.(mp4|webm|ogg|mov)$/i.test(url);
   };
 
   // Verifica se há peça do cliente antes de aprovar
@@ -532,11 +536,21 @@ function ConteudoPortal() {
                     className="relative aspect-square bg-stone-200 rounded-[20px] overflow-hidden shadow-sm border-2 border-stone-300 cursor-pointer group hover:scale-[1.02] transition-transform"
                     onClick={() => setFotoExpandida(url)}
                   >
-                    <img
-                      src={url}
-                      alt={`Evidência ${idx + 1}`}
-                      className="w-full h-full object-cover"
-                    />
+                    {isVideo(url) ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-stone-800 text-white">
+                        <Video size={32} className="opacity-50" />
+                        <span className="text-[10px] mt-1 font-bold opacity-50 uppercase">VÍDEO</span>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <Play size={40} className="text-[#FACC15] fill-[#FACC15] opacity-80" />
+                        </div>
+                      </div>
+                    ) : (
+                      <img
+                        src={url}
+                        alt={`Evidência ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -688,12 +702,21 @@ function ConteudoPortal() {
           <button className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors">
             <X size={40} />
           </button>
-          <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden shadow-2xl border border-white/10">
-            <img
-              src={fotoExpandida}
-              alt="Foto Expandida"
-              className="max-w-screen max-h-screen object-contain"
-            />
+          <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden shadow-2xl border border-white/10" onClick={(e) => e.stopPropagation()}>
+            {isVideo(fotoExpandida) ? (
+              <video
+                src={fotoExpandida}
+                controls
+                autoPlay
+                className="max-w-screen max-h-[85vh] bg-black"
+              />
+            ) : (
+              <img
+                src={fotoExpandida}
+                alt="Foto Expandida"
+                className="max-w-screen max-h-screen object-contain"
+              />
+            )}
           </div>
         </div>
       )}

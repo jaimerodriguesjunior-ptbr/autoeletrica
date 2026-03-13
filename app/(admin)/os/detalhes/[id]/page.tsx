@@ -8,8 +8,9 @@ import {
   ArrowLeft, ArrowRight, CheckCircle, Clock, Wrench, Package, Save,
   CheckSquare, MessageCircle, User, Car, Loader2, DollarSign,
   Plus, Minus, X, Calendar, CreditCard, Trash2, Printer, Camera, UserCheck, ShieldCheck,
-  Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download, Search, AlertTriangle, Mic, AlertCircle
+  Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download, Search, AlertTriangle, Mic, AlertCircle, Play, Video
 } from "lucide-react";
+import heic2any from "heic2any";
 import { createClient } from "../../../../../src/lib/supabase";
 import { useAuth } from "../../../../../src/contexts/AuthContext";
 
@@ -375,6 +376,10 @@ export default function DetalhesOS() {
     }
   };
 
+  const isVideo = (url: string) => {
+    return /\.(mp4|webm|ogg|mov)$/i.test(url);
+  };
+
   useEffect(() => {
     if (id && profile?.organization_id) {
       setLoading(true);
@@ -388,9 +393,29 @@ export default function DetalhesOS() {
     setUploading(true);
 
     try {
-      const file = e.target.files[0];
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${os!.id}/${Date.now()}.${fileExt}`;
+      let file = e.target.files[0];
+
+      // Limite de 10MB
+      if (file.size > 10 * 1024 * 1024) {
+        alert("O arquivo é muito grande! O limite é 10MB.");
+        return;
+      }
+
+      let fileExt = file.name.split('.').pop()?.toLowerCase();
+      let fileName = `${os!.id}/${Date.now()}.${fileExt === 'heic' ? 'jpg' : fileExt}`;
+
+      // Conversão de HEIC para JPEG se necessário
+      if (fileExt === 'heic' || file.type === 'image/heic') {
+        const convertedBlob = await heic2any({
+          blob: file,
+          toType: "image/jpeg",
+          quality: 0.8
+        });
+
+        // Se retornar um array (múltiplas fotos), pega a primeira
+        const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+        file = new File([blob], file.name.replace(/\.heic$/i, ".jpg"), { type: "image/jpeg" });
+      }
 
       // 1. Upload para o bucket 'os-images'
       const { error: uploadError } = await supabase.storage
@@ -1324,19 +1349,29 @@ export default function DetalhesOS() {
               {/* Botão Adicionar */}
               <label className="aspect-square rounded-2xl border-2 border-dashed border-stone-200 flex flex-col items-center justify-center cursor-pointer hover:border-[#FACC15] hover:bg-yellow-50 transition gap-1 relative">
                 {uploading ? <Loader2 className="animate-spin text-stone-400" /> : <Plus size={24} className="text-stone-300" />}
-                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
+                <input type="file" accept="image/*,video/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
               </label>
 
-              {/* Lista de Fotos */}
+              {/* Lista de Fotos/Vídeos */}
               {os!.photos?.map((url, idx) => (
-                <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-stone-100 group cursor-pointer hover:shadow-lg transition">
-                  <Image
-                    src={url}
-                    alt="Foto OS"
-                    fill
-                    className="object-cover"
-                    onClick={() => setSelectedPhoto(url)}
-                  />
+                <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-stone-100 group cursor-pointer hover:shadow-lg transition bg-stone-100">
+                  {isVideo(url) ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-stone-800 text-white" onClick={() => setSelectedPhoto(url)}>
+                      <Video size={24} className="opacity-50" />
+                      <span className="text-[10px] mt-1 font-bold opacity-50 uppercase">VÍDEO</span>
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                        <Play size={32} className="text-[#FACC15] fill-[#FACC15]" />
+                      </div>
+                    </div>
+                  ) : (
+                    <Image
+                      src={url}
+                      alt="Arquivo OS"
+                      fill
+                      className="object-cover"
+                      onClick={() => setSelectedPhoto(url)}
+                    />
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2256,12 +2291,21 @@ export default function DetalhesOS() {
             </button>
 
             <div className="relative w-full h-full flex items-center justify-center">
-              <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden shadow-2xl border border-white/10">
-                <img
-                  src={selectedPhoto}
-                  alt="Foto Carro Ampliada"
-                  className="max-w-screen max-h-screen object-contain"
-                />
+              <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden shadow-2xl border border-white/10" onClick={(e) => e.stopPropagation()}>
+                {isVideo(selectedPhoto) ? (
+                  <video
+                    src={selectedPhoto}
+                    controls
+                    autoPlay
+                    className="max-w-screen max-h-[80vh] bg-black"
+                  />
+                ) : (
+                  <img
+                    src={selectedPhoto}
+                    alt="Arquivo Ampliado"
+                    className="max-w-screen max-h-screen object-contain"
+                  />
+                )}
               </div>
             </div>
           </div>
