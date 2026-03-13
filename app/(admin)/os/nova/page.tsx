@@ -517,13 +517,13 @@ export default function NovaOS() {
                   type="text"
                   value={placaInput}
                   onChange={(e) => {
-                    const val = vehicleCategory === 'barco' ? e.target.value : e.target.value.toUpperCase();
+                    const val = e.target.value.toUpperCase();
                     setPlacaInput(val);
                     setVeiculoNaoEncontrado(false);
                     detectVehicleCategory(val);
                   }}
-                  placeholder={vehicleCategory === 'barco' ? 'Nome ou prefixo do barco' : 'ABC1234'}
-                  className={`w-full text-center font-bold bg-[#F8F7F2] rounded-2xl py-6 outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] placeholder:text-stone-300 pr-16 ${vehicleCategory === 'barco' ? 'text-xl tracking-normal normal-case' : 'text-3xl tracking-widest uppercase'
+                  placeholder={vehicleCategory === 'barco' ? 'NOME OU PREFIXO DO BARCO' : 'ABC1234'}
+                  className={`w-full text-center font-bold bg-[#F8F7F2] rounded-2xl py-6 outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] placeholder:text-stone-300 pr-16 ${vehicleCategory === 'barco' ? 'text-xl tracking-normal uppercase' : 'text-3xl tracking-widest uppercase'
                     }`}
                   maxLength={vehicleCategory === 'barco' ? 40 : 8}
                 />
