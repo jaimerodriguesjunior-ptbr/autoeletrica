@@ -195,13 +195,20 @@ export default function NovaOS() {
 
         if (res.ok) {
           const data = await res.json();
+          
+          let finalCategory = vehicleCategory;
+          if (data.categoria && ['carro', 'moto', 'barco'].includes(data.categoria)) {
+            finalCategory = data.categoria as 'carro' | 'moto' | 'barco';
+            setVehicleCategory(finalCategory);
+            setCategoryManuallySet(true); // A IA definiu, tranca a detecção por regex
+          }
+
           if (data.placa) {
             const placaExtraida = data.placa.toUpperCase();
             setPlacaInput(placaExtraida);
-            detectVehicleCategory(placaExtraida);
             
-            // Simular o evento de busca com a placa nova para não precisar aguardar o re-render
-            buscarVeiculoPorPlaca(placaExtraida);
+            // Simular o evento de busca com a placa nova e a categoria da IA
+            buscarVeiculoPorPlaca(placaExtraida, finalCategory);
           } else {
              alert('Não foi possível identificar a placa na imagem. Por favor, digite manualmente.');
           }
@@ -309,9 +316,11 @@ export default function NovaOS() {
   // PASSO 1: VEÍCULO
   // ============================================================
 
-  const buscarVeiculoPorPlaca = async (placaParaBuscar: string) => {
-    if (!placaParaBuscar || (vehicleCategory !== 'barco' && placaParaBuscar.length < 6)) {
-        return alert(vehicleCategory === 'barco' ? "Digite o nome ou prefixo do barco." : "Digite uma placa válida.");
+  const buscarVeiculoPorPlaca = async (placaParaBuscar: string, forcedCategory?: 'carro' | 'moto' | 'barco') => {
+    const currentCat = forcedCategory || vehicleCategory;
+
+    if (!placaParaBuscar || (currentCat !== 'barco' && placaParaBuscar.length < 6)) {
+        return alert(currentCat === 'barco' ? "Digite o nome ou prefixo do barco." : "Digite uma placa válida.");
     }
 
     setSearchingVehicle(true);

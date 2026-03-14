@@ -12,11 +12,12 @@ export async function POST(req: Request) {
 
         const base64Clean = imageBase64.replace(/^data:image\/\w+;base64,/, '');
 
-        const isBarco = categoria === 'barco';
-
-        const prompt = isBarco
-            ? `Analise esta foto de uma embarcação/barco. Retorne APENAS um JSON (sem formatação markdown, sem crases) com a propriedade "placa" contendo o Nome ou o Prefixo da embarcação identificada na imagem. Se não encontrar nada, retorne vazio: {"placa": ""}`
-            : `Analise esta foto de um veículo automotivo (carro ou moto). Retorne APENAS um JSON (sem formatação markdown, sem crases) com a propriedade "placa" contendo a placa identificada na imagem. A placa deve conter APENAS letras e números (remova traços ou espaços). Se não encontrar nada, retorne vazio: {"placa": ""}`;
+        const prompt = `Analise a foto e identifique o tipo de veículo (carro, moto ou barco).
+Retorne APENAS um JSON (sem formatação markdown, sem crases) com duas propriedades:
+1) "categoria": deve ser "carro", "moto" ou "barco".
+2) "placa": se for carro ou moto, retorne a placa (apenas letras e números). Se for barco, retorne o Nome ou Prefixo escrito no casco.
+Exemplo: {"placa": "ABC1234", "categoria": "carro"}
+Se não encontrar nada válido, retorne a placa vazia: {"placa": "", "categoria": "carro"}`;
 
         // Busca chaves disponíveis
         const apiKeys = [
@@ -95,12 +96,15 @@ export async function POST(req: Request) {
             }
         }
 
-        // Fallback: extrai a propriedade "placa"
-        const match = textResponse.match(/"placa"\s*:\s*"([^"]*)"/i);
-        const placa = match ? match[1] : '';
+        // Fallback: extrai a propriedade "placa" e "categoria"
+        const matchPlaca = textResponse.match(/"placa"\s*:\s*"([^"]*)"/i);
+        const placa = matchPlaca ? matchPlaca[1] : '';
+        
+        const matchCategoria = textResponse.match(/"categoria"\s*:\s*"([^"]*)"/i);
+        const categoriaResposta = matchCategoria ? matchCategoria[1].toLowerCase() : categoria;
 
-        console.log("✅ [Placa IA] Placa via regex:", placa);
-        return NextResponse.json({ placa });
+        console.log("✅ [Placa IA] Placa/Categoria via regex:", placa, categoriaResposta);
+        return NextResponse.json({ placa, categoria: categoriaResposta });
 
     } catch (error: any) {
         console.error("❌ [Placa IA] Erro:", error);
