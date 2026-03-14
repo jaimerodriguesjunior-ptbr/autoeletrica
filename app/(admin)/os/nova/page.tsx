@@ -72,6 +72,7 @@ export default function NovaOS() {
   const [loadingInit, setLoadingInit] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchingVehicle, setSearchingVehicle] = useState(false);
+  const [analisandoPlaca, setAnalisandoPlaca] = useState(false);
 
   // Passo 1: Veículo
   const [placaInput, setPlacaInput] = useState("");
@@ -176,6 +177,41 @@ export default function NovaOS() {
         }
       }
       setPlacaFoto(URL.createObjectURL(file));
+      
+      // Iniciar análise por IA
+      setAnalisandoPlaca(true);
+      try {
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+
+        const res = await fetch('/api/placa-ia', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: base64, categoria: vehicleCategory }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.placa) {
+            const placaExtraida = data.placa.toUpperCase();
+            setPlacaInput(placaExtraida);
+            detectVehicleCategory(placaExtraida);
+            
+            // Simular o evento de busca com a placa nova para não precisar aguardar o re-render
+            buscarVeiculoPorPlaca(placaExtraida);
+          } else {
+             alert('Não foi possível identificar a placa na imagem. Por favor, digite manualmente.');
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao analisar placa:', error);
+        alert('Erro ao processar imagem. Preencha manualmente.');
+      } finally {
+        setAnalisandoPlaca(false);
+      }
     }
   };
   const removerFotoPlaca = (e: React.MouseEvent) => {
@@ -273,8 +309,10 @@ export default function NovaOS() {
   // PASSO 1: VEÍCULO
   // ============================================================
 
-  const handleBuscarVeiculo = async () => {
-    if (!placaInput || (vehicleCategory !== 'barco' && placaInput.length < 6)) return alert(vehicleCategory === 'barco' ? "Digite o nome ou prefixo do barco." : "Digite uma placa válida.");
+  const buscarVeiculoPorPlaca = async (placaParaBuscar: string) => {
+    if (!placaParaBuscar || (vehicleCategory !== 'barco' && placaParaBuscar.length < 6)) {
+        return alert(vehicleCategory === 'barco' ? "Digite o nome ou prefixo do barco." : "Digite uma placa válida.");
+    }
 
     setSearchingVehicle(true);
     setVeiculoNaoEncontrado(false);
@@ -292,7 +330,7 @@ export default function NovaOS() {
           clients ( id, nome, whatsapp )
         `)
         .eq("organization_id", profile?.organization_id)
-        .eq("placa", placaInput.toUpperCase())
+        .eq("placa", placaParaBuscar.toUpperCase())
         .maybeSingle();
 
       if (error) throw error;
@@ -305,7 +343,6 @@ export default function NovaOS() {
           fabricante: data.fabricante,
         });
 
-        // Atualiza categoria do veículo encontrado
         if (data.categoria) {
           setVehicleCategory(data.categoria as 'carro' | 'moto' | 'barco');
         }
@@ -327,7 +364,9 @@ export default function NovaOS() {
     } finally {
       setSearchingVehicle(false);
     }
-  };
+  }
+
+  const handleBuscarVeiculo = () => buscarVeiculoPorPlaca(placaInput);
 
   const handleCadastrarVeiculoAvancar = async () => {
     if (!modeloInput) return alert("Informe o modelo do veículo.");
@@ -564,9 +603,12 @@ export default function NovaOS() {
                 />
                 <button
                   onClick={abrirCameraPlaca}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-stone-200 hover:border-[#FACC15] text-stone-400 hover:text-[#FACC15] transition"
+                  disabled={analisandoPlaca}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-stone-200 hover:border-[#FACC15] text-stone-400 hover:text-[#FACC15] transition disabled:opacity-50"
                 >
-                  {placaFoto ? (
+                  {analisandoPlaca ? (
+                    <Loader2 size={20} className="animate-spin text-[#FACC15]" />
+                  ) : placaFoto ? (
                     <div className="relative w-full h-full group">
                       <Image src={placaFoto} alt="Placa" fill className="object-cover rounded-lg" />
                       <div
@@ -581,6 +623,12 @@ export default function NovaOS() {
                   )}
                 </button>
               </div>
+              
+              {analisandoPlaca && (
+                <p className="text-xs text-[#FACC15] font-bold text-center animate-pulse flex items-center justify-center gap-1 mt-2">
+                  <Eye size={12} /> reconhecendo a placa...
+                </p>
+              )}
 
               {veiculoNaoEncontrado && (
                 <div className="bg-yellow-50 p-6 rounded-[24px] border border-yellow-100 text-left space-y-4 animate-in fade-in slide-in-from-top-2">
