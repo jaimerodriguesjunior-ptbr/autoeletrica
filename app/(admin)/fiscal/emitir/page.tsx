@@ -44,6 +44,8 @@ type PendingOS = {
 
     vehicles: { placa: string; modelo: string } | null;
 
+    pending_documentos?: string[];
+
 };
 
 
@@ -93,6 +95,12 @@ export default function EmitirNotaPage() {
     const [pendingOS, setPendingOS] = useState<PendingOS[]>([]);
 
     const [selectedOS, setSelectedOS] = useState<PendingOS | null>(null);
+
+    const [osSearch, setOsSearch] = useState("");
+
+    const [osStartDate, setOsStartDate] = useState("");
+
+    const [osEndDate, setOsEndDate] = useState("");
 
 
 
@@ -218,6 +226,20 @@ export default function EmitirNotaPage() {
 
         const supabase = createClient();
 
+        const { data: existingInvoices } = await supabase
+
+            .from('fiscal_invoices')
+
+            .select('tipo_documento, status')
+
+            .eq('work_order_id', os.id)
+
+            .not('status', 'in', '(error,cancelled,rejected)');
+
+        const hasExistingNFCe = (existingInvoices || []).some((invoice: any) => invoice.tipo_documento === 'NFCe');
+
+        const hasExistingNFSe = (existingInvoices || []).some((invoice: any) => invoice.tipo_documento === 'NFSe');
+
         const { data: osItems } = await supabase
 
             .from('work_order_items')
@@ -241,6 +263,8 @@ export default function EmitirNotaPage() {
             await Promise.all(osItems.map(async (item: any) => {
 
                 if (item.tipo === 'peca') {
+
+                    if (item.peca_cliente || hasExistingNFCe) return;
 
                     let fiscalData = { ncm: '00000000', cfop: '5102', unidade: 'UN' };
 
@@ -291,6 +315,8 @@ export default function EmitirNotaPage() {
                     });
 
                 } else {
+
+                    if (hasExistingNFSe) return;
 
                     // Para serviços, buscar código e alíquota
 
@@ -355,6 +381,44 @@ export default function EmitirNotaPage() {
         setStep(2);
 
     };
+
+
+
+    const filteredPendingOS = pendingOS.filter((os) => {
+
+        const haystack = [
+
+            String(os.id),
+
+            os.clients?.nome || "",
+
+            os.vehicles?.modelo || "",
+
+            os.vehicles?.placa || "",
+
+        ].join(" ").toLowerCase();
+
+        const matchesSearch = !osSearch || haystack.includes(osSearch.toLowerCase());
+
+        const osDate = new Date(os.created_at);
+
+        let matchesDate = true;
+
+        if (osStartDate) {
+
+            matchesDate = osDate >= new Date(osStartDate + "T00:00:00");
+
+        }
+
+        if (osEndDate && matchesDate) {
+
+            matchesDate = osDate <= new Date(osEndDate + "T23:59:59");
+
+        }
+
+        return matchesSearch && matchesDate;
+
+    });
 
 
 
@@ -558,17 +622,117 @@ export default function EmitirNotaPage() {
 
 
 
+                    <div className="mb-4 flex flex-col lg:flex-row gap-3">
+
+                        <div className="relative flex-1">
+
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
+
+                            <input
+
+                                type="text"
+
+                                value={osSearch}
+
+                                onChange={e => setOsSearch(e.target.value)}
+
+                                placeholder="Buscar por OS, cliente, veÃ­culo ou placa..."
+
+                                className="w-full bg-white border border-stone-200 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] shadow-sm"
+
+                            />
+
+                        </div>
+
+
+
+                        <div className="flex flex-col sm:flex-row gap-3">
+
+                            <input
+
+                                type="date"
+
+                                value={osStartDate}
+
+                                onChange={e => setOsStartDate(e.target.value)}
+
+                                className="bg-white border border-stone-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] shadow-sm text-stone-600"
+
+                                title="Data inicial"
+
+                            />
+
+                            <input
+
+                                type="date"
+
+                                value={osEndDate}
+
+                                onChange={e => setOsEndDate(e.target.value)}
+
+                                className="bg-white border border-stone-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] shadow-sm text-stone-600"
+
+                                title="Data final"
+
+                            />
+
+                            {(osSearch || osStartDate || osEndDate) && (
+
+                                <button
+
+                                    onClick={() => {
+
+                                        setOsSearch("");
+
+                                        setOsStartDate("");
+
+                                        setOsEndDate("");
+
+                                    }}
+
+                                    className="px-4 py-2.5 rounded-xl border border-stone-200 text-sm font-bold text-stone-500 hover:bg-stone-50 transition"
+
+                                >
+
+                                    Limpar
+
+                                </button>
+
+                            )}
+
+                        </div>
+
+                    </div>
+
+
+
+                    <div className="mb-4 flex items-center justify-between text-xs text-stone-400 font-medium">
+
+                        <span>
+
+                            {filteredPendingOS.length} OS exibida(s)
+
+                            {pendingOS.length !== filteredPendingOS.length ? ` de ${pendingOS.length}` : ""}
+
+                        </span>
+
+                        <span>A lista mostra OS sem nota vinculada nos status pronto ou entregue.</span>
+
+                    </div>
+
+
+
                     {loadingOS ? (
 
                         <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={20} /></div>
 
-                    ) : pendingOS.length === 0 ? (
+                    ) : filteredPendingOS.length === 0 ? (
 
                         <div className="text-center py-8 text-stone-400 text-sm">
 
                             <CheckCircle size={28} className="mx-auto mb-2 text-green-200" />
 
-                            <p>Nenhuma OS pendente de nota.</p>
+                            <p>{pendingOS.length === 0 ? "Nenhuma OS pendente de nota." : "Nenhuma OS encontrada para os filtros informados."}</p>
 
                         </div>
 
@@ -576,7 +740,7 @@ export default function EmitirNotaPage() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
 
-                            {pendingOS.map(os => (
+                            {filteredPendingOS.map(os => (
 
                                 <div key={os.id} className="border border-stone-100 p-3 rounded-xl flex justify-between items-center hover:bg-[#F9F8F4] transition cursor-pointer" onClick={() => handleSelectOS(os)}>
 
@@ -589,6 +753,10 @@ export default function EmitirNotaPage() {
                                             <p className="font-bold text-xs text-[#1A1A1A]">{os.vehicles?.modelo} - {os.vehicles?.placa}</p>
 
                                             <p className="text-[10px] text-stone-500">{os.clients?.nome}</p>
+
+                                            <p className="text-[10px] text-blue-600 font-bold mt-0.5">
+                                                Falta: {(os.pending_documentos || []).join(' + ')}
+                                            </p>
 
                                         </div>
 

@@ -57,6 +57,7 @@ export default function Financeiro() {
   const [cat, setCat] = useState("");
   const [dataMovimentacao, setDataMovimentacao] = useState(new Date().toISOString().split('T')[0]);
   const [efetivado, setEfetivado] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState("pix");
 
   // Estados de Edição
   const [itemParaEditar, setItemParaEditar] = useState<ExtratoItem | null>(null);
@@ -148,11 +149,11 @@ export default function Financeiro() {
 
   // --- Abertura de Modais ---
   const abrirModalDespesa = () => {
-    setDesc(""); setValor(""); setCat(""); setDataMovimentacao(new Date().toISOString().split('T')[0]); setModalDespesaAberto(true);
+    setDesc(""); setValor(""); setCat(""); setDataMovimentacao(new Date().toISOString().split('T')[0]); setPaymentMethod("pix"); setModalDespesaAberto(true);
   };
 
   const abrirModalReceita = () => {
-    setDesc(""); setValor(""); setCat(""); setDataMovimentacao(new Date().toISOString().split('T')[0]); setModalReceitaAberto(true);
+    setDesc(""); setValor(""); setCat(""); setDataMovimentacao(new Date().toISOString().split('T')[0]); setPaymentMethod("pix"); setModalReceitaAberto(true);
   };
 
   const handleSalvarTransacao = async (tipo: 'income' | 'expense') => {
@@ -166,7 +167,8 @@ export default function Financeiro() {
         type: tipo,
         category: cat || (tipo === 'income' ? 'Outras Receitas' : 'Operacional'),
         date: dataMovimentacao,
-        status: efetivado ? 'paid' : 'pending'
+        status: efetivado ? 'paid' : 'pending',
+        payment_method: tipo === 'income' ? paymentMethod : null
       });
       if (error) throw error;
       setModalDespesaAberto(false); setModalReceitaAberto(false); fetchFinanceiro();
@@ -418,6 +420,18 @@ export default function Financeiro() {
               </div>
               <div><label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label><input type="text" value={desc} onChange={e => setDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none" placeholder="Ex: Venda de Sucata" /></div>
               <div><label className="text-xs font-bold text-stone-400 ml-2">VALOR (R$)</label><input type="number" value={valor} onChange={e => setValor(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 text-2xl font-bold outline-none" placeholder="0.00" /></div>
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-2">FORMA DE RECEBIMENTO</label>
+                <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none">
+                  <option value="pix">Pix</option>
+                  <option value="dinheiro">Dinheiro</option>
+                  <option value="cartao_debito">CartÃ£o de DÃ©bito</option>
+                  <option value="cartao_credito">CartÃ£o de CrÃ©dito</option>
+                  <option value="boleto">Boleto</option>
+                  <option value="cheque_pre">Cheque / A prazo</option>
+                  <option value="outros">Outros</option>
+                </select>
+              </div>
             </div>
             <button onClick={() => handleSalvarTransacao('income')} disabled={saving} className="w-full bg-green-600 text-white font-bold py-4 rounded-2xl flex justify-center gap-2 hover:bg-green-700 transition">{saving ? <Loader2 className="animate-spin" /> : <Save />} Confirmar {efetivado ? "Entrada" : "Agendamento"}</button>
           </div>

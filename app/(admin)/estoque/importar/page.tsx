@@ -244,6 +244,7 @@ export default function ImportarXML() {
                     emitente_cnpj: notaInfo.emitenteCNPJ,
                     data_emissao: notaInfo.dhEmi,
                     direction: 'entry',
+                    environment: 'production',
                     tipo_documento: 'NFe',
                     status: 'authorized'
                 });

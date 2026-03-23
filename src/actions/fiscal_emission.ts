@@ -62,6 +62,69 @@ type EmissionPayload = {
 
 };
 
+function normalizeDocument(value?: string | null) {
+    const normalized = value?.replace(/\D/g, "") || "";
+    return normalized || null;
+}
+
+function buildOutputInvoiceSnapshot(
+    payload: EmissionPayload,
+    company: any,
+    issuedAt: string
+) {
+    return {
+        direction: "output",
+        data_emissao: issuedAt,
+        valor_total: payload.valor_total,
+        emitente_nome: company.razao_social || company.nome_fantasia || null,
+        emitente_cnpj: normalizeDocument(company.cnpj || company.cpf_cnpj),
+        destinatario_nome: payload.cliente.nome || null,
+        destinatario_cnpj: normalizeDocument(payload.cliente.cpf_cnpj),
+    };
+}
+
+async function tryFetchXmlContent(xmlUrl?: string | null) {
+    if (!xmlUrl) return null;
+
+    try {
+        const response = await fetch(xmlUrl);
+        if (!response.ok) return null;
+        return await response.text();
+    } catch (error) {
+        console.warn("[Fiscal] Nao foi possivel baixar XML automaticamente:", error);
+        return null;
+    }
+}
+
+async function ensureNoActiveInvoiceForWorkOrder(
+    supabase: any,
+    payload: EmissionPayload,
+    tipoDocumento: "NFCe" | "NFSe",
+    environment: "production" | "homologation"
+) {
+    if (!payload.work_order_id) return null;
+
+    const { data: existingInvoice, error } = await supabase
+        .from("fiscal_invoices")
+        .select("id, status")
+        .eq("organization_id", payload.organization_id)
+        .eq("work_order_id", payload.work_order_id)
+        .eq("tipo_documento", tipoDocumento)
+        .eq("direction", "output")
+        .eq("environment", environment)
+        .in("status", ["draft", "processing", "authorized"])
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        throw new Error(`Nao foi possivel validar duplicidade de ${tipoDocumento}.`);
+    }
+
+    if (!existingInvoice) return null;
+
+    return `Ja existe ${tipoDocumento} ${environment === "production" ? "de producao" : "de homologacao"} para esta OS.`;
+}
+
 
 
 export async function emitirNFCe(payload: EmissionPayload) {
@@ -83,6 +146,11 @@ export async function emitirNFCe(payload: EmissionPayload) {
         // 1. Buscar Token Nuvem Fiscal
 
         const env = payload.environment || 'production';
+
+        const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFCe", env);
+        if (duplicateError) {
+            return { success: false, error: duplicateError };
+        }
 
         const token = await getNuvemFiscalToken(env);
 
@@ -404,6 +472,8 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                 work_order_id: payload.work_order_id || null,
 
+                ...buildOutputInvoiceSnapshot(payload, company, nfePayload.infNFe.ide.dhEmi),
+
                 tipo_documento: "NFCe",
 
                 status: "processing",
@@ -420,7 +490,12 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
 
 
-        if (dbError) throw dbError;
+        if (dbError) {
+            if (dbError.code === "23505") {
+                return { success: false, error: "Ja existe NFCe ativa para esta OS neste ambiente." };
+            }
+            throw dbError;
+        }
 
         invoiceId = invoice.id;
 
@@ -551,17 +626,24 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
         if (realStatus === 'autorizado') {
             // AUTORIZADO pela SEFAZ - sucesso real
+            const xmlContent = await tryFetchXmlContent(result.xml_url);
+            const authorizedUpdate: Record<string, any> = {
+                status: "authorized",
+                nuvemfiscal_uuid: result.id,
+                chave_acesso: result.chave,
+                numero: result.numero,
+                serie: result.serie,
+                xml_url: result.xml_url,
+                pdf_url: result.pdf_url
+            };
+
+            if (xmlContent) {
+                authorizedUpdate.xml_content = xmlContent;
+            }
+
             await supabase
                 .from("fiscal_invoices")
-                .update({
-                    status: "authorized",
-                    nuvemfiscal_uuid: result.id,
-                    chave_acesso: result.chave,
-                    numero: result.numero,
-                    serie: result.serie,
-                    xml_url: result.xml_url,
-                    pdf_url: result.pdf_url
-                })
+                .update(authorizedUpdate)
                 .eq("id", invoice.id);
 
             return { success: true, invoiceId: invoice.id };
@@ -636,6 +718,11 @@ export async function emitirNFSe(payload: EmissionPayload) {
         // 1. Buscar Token Nuvem Fiscal
 
         const env = payload.environment || 'production';
+
+        const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFSe", env);
+        if (duplicateError) {
+            return { success: false, error: duplicateError };
+        }
 
         const token = await getNuvemFiscalToken(env);
 
@@ -872,6 +959,8 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
                 work_order_id: payload.work_order_id || null,
 
+                ...buildOutputInvoiceSnapshot(payload, company, dpsPayload.infDPS.dhEmi),
+
                 tipo_documento: "NFSe",
 
                 status: "processing",
@@ -888,7 +977,12 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
 
 
-        if (dbError) throw dbError;
+        if (dbError) {
+            if (dbError.code === "23505") {
+                return { success: false, error: "Ja existe NFSe ativa para esta OS neste ambiente." };
+            }
+            throw dbError;
+        }
 
         invoiceId = invoice.id;
 

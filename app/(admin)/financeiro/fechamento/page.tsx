@@ -74,6 +74,19 @@ export default function FechamentoMensal() {
 
     const [data, setData] = useState<ClosingData | null>(null);
 
+    const fetchXmlText = useCallback(async (xmlUrl?: string | null) => {
+        if (!xmlUrl) return null;
+
+        try {
+            const response = await fetch(xmlUrl);
+            if (!response.ok) return null;
+            return await response.text();
+        } catch (error) {
+            console.warn("Nao foi possivel baixar XML para o ZIP:", error);
+            return null;
+        }
+    }, []);
+
     const fetchClosingData = useCallback(async () => {
         if (!profile?.organization_id) return;
         setLoading(true);
@@ -189,30 +202,50 @@ export default function FechamentoMensal() {
             const startDate = new Date(year, month, 1).toISOString();
             const endDate = new Date(year, month + 1, 1).toISOString();
 
-            const { data: fiscalFiles } = await supabase
-                .from('fiscal_invoices')
-                .select('direction, xml_content, chave_acesso, numero, status')
-                .eq('organization_id', profile.organization_id)
-                .gte('data_emissao', startDate)
-                .lt('data_emissao', endDate);
+            const baseFields = 'id, direction, xml_content, xml_url, chave_acesso, numero, status, data_emissao, created_at';
+            const [{ data: datedFiscalFiles }, { data: fallbackFiscalFiles }] = await Promise.all([
+                supabase
+                    .from('fiscal_invoices')
+                    .select(baseFields)
+                    .eq('organization_id', profile.organization_id)
+                    .neq('environment', 'homologation')
+                    .gte('data_emissao', startDate)
+                    .lt('data_emissao', endDate),
+                supabase
+                    .from('fiscal_invoices')
+                    .select(baseFields)
+                    .eq('organization_id', profile.organization_id)
+                    .neq('environment', 'homologation')
+                    .is('data_emissao', null)
+                    .gte('created_at', startDate)
+                    .lt('created_at', endDate)
+            ]);
 
-            if (fiscalFiles && fiscalFiles.length > 0) {
+            const fiscalFiles = [...(datedFiscalFiles || []), ...(fallbackFiscalFiles || [])]
+                .filter((doc, index, array) => array.findIndex(item => item.id === doc.id) === index);
+
+            if (fiscalFiles.length > 0) {
                 const outFolder = root.folder("XMLs_Saida_Vendas");
                 const inFolder = root.folder("XMLs_Entrada_Compras");
                 const cancelFolder = root.folder("XMLs_Cancelados");
 
-                fiscalFiles.forEach(doc => {
-                    if (doc.xml_content) {
+                for (const doc of fiscalFiles) {
+                    let xmlContent = doc.xml_content;
+                    if (!xmlContent && doc.xml_url) {
+                        xmlContent = await fetchXmlText(doc.xml_url);
+                    }
+
+                    if (xmlContent) {
                         const fileName = `${doc.numero || doc.chave_acesso || 'doc'}.xml`;
                         if (doc.status === 'cancelled' && cancelFolder) {
-                            cancelFolder.file(`Cancelado_${fileName}`, doc.xml_content);
+                            cancelFolder.file(`Cancelado_${fileName}`, xmlContent);
                         } else if (doc.direction === 'output' && outFolder) {
-                            outFolder.file(fileName, doc.xml_content);
+                            outFolder.file(fileName, xmlContent);
                         } else if (doc.direction === 'entry' && inFolder) {
-                            inFolder.file(fileName, doc.xml_content);
+                            inFolder.file(fileName, xmlContent);
                         }
                     }
-                });
+                }
             }
 
             // 3. Gerar o arquivo final

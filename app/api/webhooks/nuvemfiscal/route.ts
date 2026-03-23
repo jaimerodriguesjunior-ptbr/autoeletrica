@@ -1,62 +1,98 @@
 import { createClient } from "@/src/utils/supabase/server";
 import { NextResponse } from "next/server";
 
+async function tryFetchXmlContent(xmlUrl?: string | null) {
+    if (!xmlUrl) return null;
+
+    try {
+        const response = await fetch(xmlUrl);
+        if (!response.ok) return null;
+        return await response.text();
+    } catch (error) {
+        console.warn("[Webhook] Nao foi possivel baixar XML automaticamente:", error);
+        return null;
+    }
+}
+
+function getIssueDateFromWebhook(body: any) {
+    return (
+        body.data_emissao ||
+        body.data?.data_emissao ||
+        body.dhEmi ||
+        body.data?.dhEmi ||
+        body.dh_emi ||
+        body.data?.dh_emi ||
+        body.infNFe?.ide?.dhEmi ||
+        body.data?.infNFe?.ide?.dhEmi ||
+        null
+    );
+}
+
 export async function POST(request: Request) {
     try {
-        // 1. Validação de Segurança
-        const authHeader = request.headers.get('authorization');
+        const authHeader = request.headers.get("authorization");
         const webhookSecret = process.env.NUVEMFISCAL_WEBHOOK_SECRET;
 
         if (webhookSecret && authHeader !== `Bearer ${webhookSecret}`) {
-            console.warn("[Webhook] Tentativa não autorizada.");
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            console.warn("[Webhook] Tentativa nao autorizada.");
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
         const body = await request.json();
         console.log("[Webhook NuvemFiscal] Recebido:", JSON.stringify(body, null, 2));
 
-        // Estrutura esperada do Webhook da Nuvem Fiscal (exemplo genérico, ajustar conforme doc real)
-        // Geralmente vem: { id: "...", status: "autorizado", ... } ou dentro de um objeto "data"
-
         const nuvemFiscalId = body.id || body.data?.id;
         const statusNuvem = body.status || body.data?.status;
         const motivo = body.motivo_status || body.data?.motivo_status;
+        const pdfUrl = body.pdf_url || body.data?.pdf_url || null;
+        const xmlUrl = body.xml_url || body.data?.xml_url || null;
 
         if (!nuvemFiscalId) {
-            return NextResponse.json({ message: "ID não encontrado no payload" }, { status: 400 });
+            return NextResponse.json({ message: "ID nao encontrado no payload" }, { status: 400 });
         }
 
         const supabase = createClient();
 
-        // 2. Mapear Status
-        let novoStatus = 'processing';
+        let novoStatus = "processing";
         let errorMessage = null;
 
-        if (statusNuvem === 'autorizado') novoStatus = 'authorized';
-        else if (['erro', 'rejeitado', 'negado'].includes(statusNuvem)) {
-            novoStatus = 'error';
+        if (statusNuvem === "autorizado") {
+            novoStatus = "authorized";
+        } else if (["erro", "rejeitado", "negado"].includes(statusNuvem)) {
+            novoStatus = "error";
             errorMessage = motivo || "Erro reportado via Webhook";
-        }
-        else if (statusNuvem === 'cancelado') novoStatus = 'cancelled';
-        else {
-            // Status desconhecido ou intermediário, ignorar ou manter processing
+        } else if (statusNuvem === "cancelado") {
+            novoStatus = "cancelled";
+        } else {
             console.log("[Webhook] Status ignorado:", statusNuvem);
             return NextResponse.json({ message: "Status ignorado" });
         }
 
-        // 3. Atualizar Banco
+        const updatePayload: Record<string, any> = {
+            status: novoStatus,
+            error_message: errorMessage,
+            pdf_url: pdfUrl,
+            xml_url: xmlUrl,
+            numero: body.numero || body.data?.numero,
+            serie: body.serie || body.data?.serie,
+            chave_acesso: body.chave || body.data?.chave,
+        };
+
+        const issueDate = getIssueDateFromWebhook(body);
+        if (issueDate) {
+            updatePayload.data_emissao = issueDate;
+        }
+
+        if (novoStatus === "authorized" && xmlUrl) {
+            const xmlContent = await tryFetchXmlContent(xmlUrl);
+            if (xmlContent) {
+                updatePayload.xml_content = xmlContent;
+            }
+        }
+
         const { error } = await supabase
             .from("fiscal_invoices")
-            .update({
-                status: novoStatus,
-                error_message: errorMessage,
-                // Se o webhook trouxer URL do PDF/XML, atualizar também
-                pdf_url: body.pdf_url || body.data?.pdf_url,
-                xml_url: body.xml_url || body.data?.xml_url,
-                numero: body.numero || body.data?.numero,
-                serie: body.serie || body.data?.serie,
-                chave_acesso: body.chave || body.data?.chave
-            })
+            .update(updatePayload)
             .eq("nuvemfiscal_uuid", nuvemFiscalId);
 
         if (error) {
@@ -65,7 +101,6 @@ export async function POST(request: Request) {
         }
 
         return NextResponse.json({ message: "Status atualizado com sucesso" });
-
     } catch (error: any) {
         console.error("[Webhook] Erro interno:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
