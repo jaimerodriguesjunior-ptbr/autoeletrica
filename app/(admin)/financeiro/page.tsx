@@ -220,12 +220,20 @@ export default function Financeiro() {
         </div>
 
         {/* Filtro Mês */}
-        <input
-          type="month"
-          value={filtroMes}
-          onChange={(e) => setFiltroMes(e.target.value)}
-          className="bg-white px-4 py-2 rounded-xl text-sm font-bold text-[#1A1A1A] outline-none border-2 border-stone-300 shadow-sm focus:border-[#1A1A1A] focus:ring-4 focus:ring-[#FACC15]/30"
-        />
+        <div className="flex items-center gap-2 bg-stone-200 p-1 rounded-xl border-2 border-stone-300 shadow-inner">
+          <button
+            onClick={() => setFiltroMes('')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border-2 ${!filtroMes ? 'bg-white shadow-md text-[#1A1A1A] border-stone-300' : 'text-stone-500 hover:text-[#1A1A1A] border-transparent'}`}
+          >
+            Tudo
+          </button>
+          <input
+            type="month"
+            value={filtroMes}
+            onChange={(e) => setFiltroMes(e.target.value)}
+            className={`bg-transparent px-2 py-1.5 rounded-lg text-xs font-bold outline-none cursor-pointer transition border-2 ${filtroMes ? 'bg-white shadow-md text-[#1A1A1A] border-stone-300' : 'text-stone-500 border-transparent hover:text-[#1A1A1A]'}`}
+          />
+        </div>
 
         {/* Filtro Status */}
         <div className="flex bg-stone-200 p-1 rounded-xl border-2 border-stone-300 shadow-inner gap-1">
