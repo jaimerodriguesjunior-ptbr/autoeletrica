@@ -198,6 +198,29 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
 
 
+        // 2.5 Buscar próxima numeração sequencial
+        // Buscamos a série ativa para a organização
+        const { data: sequenceData } = await supabase
+            .from("nfce_sequences")
+            .select("serie")
+            .eq("organization_id", payload.organization_id)
+            .order("serie", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        const currentSerie = sequenceData?.serie || 1;
+
+        // Obtém e incrementa o número de forma atômica via RPC
+        const { data: nextNumber, error: rpcError } = await supabase.rpc("get_next_nfce_number", {
+            p_org_id: payload.organization_id,
+            p_serie: currentSerie
+        });
+
+        if (rpcError || !nextNumber) {
+            console.error("Erro ao obter numeração NFCe:", rpcError);
+            throw new Error("Não foi possível obter a numeração sequencial para a NFCe.");
+        }
+
         // 3. Montar JSON para Nuvem Fiscal (NFC-e)
 
         // Documentação: https://dev.nuvemfiscal.com.br/docs/api#tag/Nfe/operation/EmitirNfe
@@ -218,9 +241,9 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                     mod: 65, // 65 = NFC-e
 
-                    serie: 1,
+                    serie: currentSerie,
 
-                    nNF: Math.floor(Math.random() * 100000) + 1, // TODO: Controle sequencial real
+                    nNF: nextNumber,
 
                     dhEmi: new Date().toISOString(),
 
