@@ -1,0 +1,12 @@
+﻿<?xml version='1.0' encoding='utf-8'?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><ns:esRecepcionarLoteRpsResponse xmlns:ns="http://services.enfsws.es"><ns:return>&lt;?xml version="1.0" encoding="UTF-8"?>&#xd;
+&lt;es:esEnviarLoteRpsResposta xmlns:es="http://www.equiplano.com.br/esnfs" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.equiplano.com.br/esnfs enviarLoteRpsResposta_v01.xsd">&#xd;
+  &lt;mensagemRetorno>&#xd;
+    &lt;listaErros>&#xd;
+      &lt;erro>&#xd;
+        &lt;cdMensagem>1204&lt;/cdMensagem>&#xd;
+        &lt;dsMensagem>Valor Total de ServiÃ§os nÃ£o confere com o enviado (&amp;lt;somatÃ³rio do valor dos serviÃ§os presentes no arquivo&amp;gt;).&lt;/dsMensagem>&#xd;
+      &lt;/erro>&#xd;
+    &lt;/listaErros>&#xd;
+  &lt;/mensagemRetorno>&#xd;
+&lt;/es:esEnviarLoteRpsResposta>&#xd;
+</ns:return></ns:esRecepcionarLoteRpsResponse></soapenv:Body></soapenv:Envelope>

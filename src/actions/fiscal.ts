@@ -4,6 +4,7 @@ import { createClient } from "@/src/utils/supabase/server";
 import { getNuvemFiscalToken } from "@/src/lib/nuvemfiscal";
 
 type CompanyData = {
+    organization_id?: string;
     cpf_cnpj: string;
     razao_social: string;
     nome_fantasia: string;
@@ -38,25 +39,32 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
     try {
         // 1. Validar login e organzação
         const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError || !user) throw new Error("Usuário não autenticado.");
+        let organizationId = data.organization_id;
 
-        const { data: profile } = await supabase
-            .from("profiles")
-            .select("organization_id")
-            .eq("id", user.id)
-            .single();
+        if (!authError && user) {
+            const { data: profile } = await supabase
+                .from("profiles")
+                .select("organization_id")
+                .eq("id", user.id)
+                .single();
 
-        if (!profile?.organization_id) throw new Error("Organização não encontrada para o usuário.");
+            organizationId = profile?.organization_id || organizationId;
+        }
 
-        let { data: existingCompany } = await supabase
+        if (!organizationId) throw new Error("Usuário não autenticado.");
+
+        const { createAdminClient } = await import('@/src/utils/supabase/admin');
+        const supabaseAdmin = createAdminClient();
+
+        let { data: existingCompany } = await supabaseAdmin
             .from("company_settings")
             .select("*")
-            .eq("organization_id", profile.organization_id)
+            .eq("organization_id", organizationId)
             .limit(1)
             .single();
 
         if (!existingCompany && data.cpf_cnpj) {
-            const { data: existingByCnpj } = await supabase
+            const { data: existingByCnpj } = await supabaseAdmin
                 .from("company_settings")
                 .select("*")
                 .eq("cnpj", data.cpf_cnpj)
@@ -77,7 +85,7 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
 
         const upsertData: any = {
             id: companyId,
-            organization_id: profile.organization_id,
+            organization_id: organizationId,
             cnpj: data.cpf_cnpj,
             cpf_cnpj: data.cpf_cnpj,
             razao_social: data.razao_social,
@@ -108,7 +116,7 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
         if (!isPlaceholder(data.csc_token_homologation)) upsertData.csc_token_homologation = data.csc_token_homologation;
         if (!isPlaceholder(data.nfse_password)) upsertData.nfse_password = data.nfse_password;
 
-        const { error: dbError } = await supabase
+        const { error: dbError } = await supabaseAdmin
             .from("company_settings")
             .upsert(upsertData);
 

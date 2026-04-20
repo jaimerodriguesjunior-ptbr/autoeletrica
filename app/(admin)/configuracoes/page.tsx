@@ -8,7 +8,7 @@ import {
   Users, Plus, Ban, Save, X, Loader2, Key, Unlock,
   Building2, MapPin, Phone, FileText, Hash, Settings
 } from "lucide-react";
-import { registerCompanyInNuvemFiscal, getCompanySettings, toggleCompanyModule } from "@/src/actions/fiscal";
+import { getCompanySettings, toggleCompanyModule } from "@/src/actions/fiscal";
 
 // Tipos
 type Profile = {
@@ -203,8 +203,8 @@ export default function Configuracoes() {
   const handleSaveCompany = async () => {
     setSaving(true);
     try {
-      // Mapear para o formato esperado pela Server Action
-      const result = await registerCompanyInNuvemFiscal({
+      const payload = {
+        organization_id: profile?.organization_id || undefined,
         cpf_cnpj: company.cnpj,
         razao_social: company.razao_social,
         nome_fantasia: company.nome_fantasia,
@@ -231,8 +231,15 @@ export default function Configuracoes() {
         usa_caixa: company.usa_caixa !== undefined ? company.usa_caixa : true,
         logo_url: company.logo_url,
         endereco: company.endereco
+      };
+
+      const response = await fetch("/api/fiscal/company-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
       });
 
+      const result = await response.json();
       if (!result.success) throw new Error(result.error);
 
       alert(result.message);
@@ -254,6 +261,7 @@ export default function Configuracoes() {
       formData.append("file", certFile);
       formData.append("cnpj", company.cnpj);
       formData.append("password", certPassword);
+      formData.append("environment", "production");
 
       const res = await fetch("/api/fiscal/certificado", {
         method: "POST",
@@ -262,7 +270,7 @@ export default function Configuracoes() {
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error?.message || "Erro no upload");
+        throw new Error(err.error || err.details?.error?.message || err.details?.message || "Erro no upload");
       }
       alert("Certificado enviado com sucesso!");
       setCertFile(null);

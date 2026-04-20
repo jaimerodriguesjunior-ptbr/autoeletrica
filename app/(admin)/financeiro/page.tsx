@@ -433,8 +433,8 @@ export default function Financeiro() {
                 <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none">
                   <option value="pix">Pix</option>
                   <option value="dinheiro">Dinheiro</option>
-                  <option value="cartao_debito">CartÃ£o de DÃ©bito</option>
-                  <option value="cartao_credito">CartÃ£o de CrÃ©dito</option>
+                  <option value="cartao_debito">Cartão de Débito</option>
+                  <option value="cartao_credito">Cartão de Crédito</option>
                   <option value="boleto">Boleto</option>
                   <option value="cheque_pre">Cheque / A prazo</option>
                   <option value="outros">Outros</option>

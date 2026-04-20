@@ -83,6 +83,34 @@ export default function EmitirNotaPage() {
     const searchParams = useSearchParams();
 
     const environment = (searchParams.get('env') as 'production' | 'homologation') || 'production';
+    const isHomologation = environment === 'homologation';
+
+    const defaultTomadorHomologacao = {
+        nome: "",
+        cpf_cnpj: "",
+        endereco: {
+            cep: "",
+            logradouro: "",
+            numero: "",
+            bairro: "",
+            cidade: "",
+            uf: "",
+            codigo_municipio: ""
+        }
+    };
+    const defaultTomadorProducao = {
+        nome: "",
+        cpf_cnpj: "",
+        endereco: {
+            cep: "",
+            logradouro: "",
+            numero: "",
+            bairro: "",
+            cidade: "",
+            uf: "",
+            codigo_municipio: ""
+        }
+    };
 
 
 
@@ -107,9 +135,15 @@ export default function EmitirNotaPage() {
     // Formulário de Emissão
 
     // HARDCODED TEST DATA FOR EASIER TESTING
-    const [clienteNome, setClienteNome] = useState("");
-    const [clienteDoc, setClienteDoc] = useState("");
-    const [clienteEndereco, setClienteEndereco] = useState<any>({});
+    const [clienteNome, setClienteNome] = useState(
+        isHomologation ? defaultTomadorHomologacao.nome : defaultTomadorProducao.nome
+    );
+    const [clienteDoc, setClienteDoc] = useState(
+        isHomologation ? defaultTomadorHomologacao.cpf_cnpj : defaultTomadorProducao.cpf_cnpj
+    );
+    const [clienteEndereco, setClienteEndereco] = useState<any>(
+        isHomologation ? defaultTomadorHomologacao.endereco : defaultTomadorProducao.endereco
+    );
 
     const [itens, setItens] = useState<InvoiceItem[]>([]);
     const [itensServico, setItensServico] = useState<any[]>([]);
@@ -133,6 +167,25 @@ export default function EmitirNotaPage() {
         }
 
     }, [profile]);
+
+    useEffect(() => {
+        if (!isHomologation) return;
+        if (clienteNome || clienteDoc) return;
+
+        setClienteNome(defaultTomadorHomologacao.nome);
+        setClienteDoc(defaultTomadorHomologacao.cpf_cnpj);
+        setClienteEndereco(defaultTomadorHomologacao.endereco);
+    }, [isHomologation, clienteNome, clienteDoc]);
+
+    useEffect(() => {
+        if (isHomologation) return;
+        if (clienteNome || clienteDoc) return;
+
+        setClienteNome(defaultTomadorProducao.nome);
+        setClienteDoc(defaultTomadorProducao.cpf_cnpj);
+        setClienteEndereco(defaultTomadorProducao.endereco);
+    }, [isHomologation, clienteNome, clienteDoc]);
+
 
 
 
@@ -520,9 +573,9 @@ export default function EmitirNotaPage() {
 
                             bairro: "CENTRO",
 
-                            codigo_municipio: "4108809",
+                            codigo_municipio: "",
 
-                            cep: "85980000"
+                            cep: ""
 
                         }
 
@@ -636,7 +689,7 @@ export default function EmitirNotaPage() {
 
                                 onChange={e => setOsSearch(e.target.value)}
 
-                                placeholder="Buscar por OS, cliente, veÃ­culo ou placa..."
+                                placeholder="Buscar por OS, cliente, veículo ou placa..."
 
                                 className="w-full bg-white border border-stone-200 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] shadow-sm"
 

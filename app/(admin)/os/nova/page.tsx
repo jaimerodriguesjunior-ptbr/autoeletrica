@@ -315,9 +315,43 @@ export default function NovaOS() {
   // ============================================================
   // PASSO 1: VEÍCULO
   // ============================================================
+  const preencherDadosVeiculoPorApi = async (placaParaBuscar: string) => {
+    try {
+      const response = await fetch("/api/consulta-placa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placa: placaParaBuscar }),
+      });
+
+      if (!response.ok) return;
+
+      const payload = await response.json();
+      if (!payload?.success || !payload?.data) return;
+
+      const dados = payload.data;
+      const raw = dados.raw || {};
+
+      const fabricante = String(dados.fabricante || raw.marca || raw.MARCA || "").trim();
+      const modelo = String(dados.modelo || raw.modelo || raw.MODELO || raw.marcaModelo || "").trim();
+      const ano = String(
+        dados.ano || raw.anoModelo || raw.ano_modelo || raw.ano || raw.ANO || raw.model_year || ""
+      ).trim();
+      const cor = String(dados.cor || raw.cor || raw.COR || "").trim();
+
+      if (fabricante) setFabricanteInput(fabricante);
+      if (modelo) setModeloInput(modelo);
+      if (ano) setAnoInput(ano);
+      if (cor) setObsVeiculoInput(`Cor: ${cor}`);
+
+      console.log("[Nova OS] Consulta placa preenchida:", { placaParaBuscar, fabricante, modelo, ano, cor });
+    } catch (error) {
+      console.warn("Falha ao consultar API externa de placa:", error);
+    }
+  };
 
   const buscarVeiculoPorPlaca = async (placaParaBuscar: string, forcedCategory?: 'carro' | 'moto' | 'barco') => {
     const currentCat = forcedCategory || vehicleCategory;
+    const placaNormalizada = placaParaBuscar.toUpperCase();
 
     if (!placaParaBuscar || (currentCat !== 'barco' && placaParaBuscar.length < 6)) {
         return alert(currentCat === 'barco' ? "Digite o nome ou prefixo do barco." : "Digite uma placa válida.");
@@ -332,6 +366,11 @@ export default function NovaOS() {
     setObsVeiculoInput("");
 
     try {
+      const consultaApiPromise =
+        currentCat !== 'barco'
+          ? preencherDadosVeiculoPorApi(placaNormalizada)
+          : Promise.resolve();
+
       const { data, error } = await supabase
         .from("vehicles")
         .select(`
@@ -339,7 +378,7 @@ export default function NovaOS() {
           clients ( id, nome, whatsapp )
         `)
         .eq("organization_id", profile?.organization_id)
-        .eq("placa", placaParaBuscar.toUpperCase())
+        .eq("placa", placaNormalizada)
         .maybeSingle();
 
       if (error) throw error;
@@ -364,6 +403,7 @@ export default function NovaOS() {
 
         setStep(2);
       } else {
+        await consultaApiPromise;
         setVeiculoNaoEncontrado(true);
       }
 
@@ -604,6 +644,12 @@ export default function NovaOS() {
                     setPlacaInput(val);
                     setVeiculoNaoEncontrado(false);
                     detectVehicleCategory(val);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !searchingVehicle) {
+                      e.preventDefault();
+                      handleBuscarVeiculo();
+                    }
                   }}
                   placeholder={vehicleCategory === 'barco' ? 'NOME OU PREFIXO DO BARCO' : 'ABC1234'}
                   className={`w-full text-center font-bold bg-[#F8F7F2] rounded-2xl py-6 outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] placeholder:text-stone-300 pr-16 ${vehicleCategory === 'barco' ? 'text-xl tracking-normal uppercase' : 'text-3xl tracking-widest uppercase'
@@ -1070,3 +1116,4 @@ export default function NovaOS() {
     </div>
   );
 }
+

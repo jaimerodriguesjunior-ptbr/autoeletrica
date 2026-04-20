@@ -134,7 +134,7 @@ export default function FiscalDashboard() {
             try {
                 iframe.contentWindow?.print();
             } catch (e) {
-                console.error("Erro ao abrir dialog de impressao", e);
+                console.error("Erro ao abrir dialog de impressão", e);
                 window.open(url, "_blank");
             }
             setTimeout(() => document.body.removeChild(iframe), 60000);
@@ -147,9 +147,9 @@ export default function FiscalDashboard() {
         const link = `${baseUrl}/api/fiscal/print/${invoice.id}?download=true`;
 
         const tipoText = invoice.tipo_documento === "NFSe"
-            ? "Nota Fiscal de Servico (NFS-e)"
+            ? "Nota Fiscal de Serviço (NFS-e)"
             : "Nota Fiscal (NFC-e)";
-        const text = `Ola, segue o link para baixar a sua ${tipoText}:\n\n${link}`;
+        const text = `Olá, segue o link para baixar a sua ${tipoText}:\n\n${link}`;
 
         let url = `https://wa.me/?text=${encodeURIComponent(text)}`;
         if (phone && phone.length >= 10) {
@@ -185,11 +185,11 @@ export default function FiscalDashboard() {
     };
 
     const handleCancelar = async (invoiceId: string) => {
-        const justificativa = prompt("Motivo do cancelamento (Minimo 15 caracteres):");
+        const justificativa = prompt("Motivo do cancelamento (Mínimo 15 caracteres):");
         if (!justificativa) return;
         if (justificativa.length < 15) return alert("Justificativa muito curta.");
 
-        if (!confirm("Tem certeza que deseja cancelar esta nota? Acao irreversivel.")) return;
+        if (!confirm("Tem certeza que deseja cancelar esta nota? Ação irreversível.")) return;
 
         try {
             const res = await cancelarNota(invoiceId, justificativa);
@@ -220,14 +220,7 @@ export default function FiscalDashboard() {
         }
     };
 
-    const filteredInvoices = invoices.filter((inv) => {
-        const matchesSearch =
-            !searchTerm ||
-            (inv.numero || "").includes(searchTerm) ||
-            (inv.status || "").includes(searchTerm) ||
-            displayType(inv).toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
-
+    const dateFilteredInvoices = invoices.filter((inv) => {
         const invoiceDate = new Date(displayDate(inv));
         let matchesDate = true;
         if (startDate) {
@@ -236,12 +229,22 @@ export default function FiscalDashboard() {
         if (endDate && matchesDate) {
             matchesDate = invoiceDate <= new Date(endDate + "T23:59:59");
         }
-        return matchesSearch && matchesStatus && matchesDate;
+        return matchesDate;
     });
 
-    const authorizedOutputs = invoices.filter((i) => isOutputInvoice(i) && i.status === "authorized").length;
-    const erroredOutputs = invoices.filter((i) => isOutputInvoice(i) && (i.status === "error" || i.status === "rejected")).length;
-    const pendingOutputs = invoices.filter((i) => isOutputInvoice(i) && (i.status === "processing" || i.status === "draft")).length;
+    const filteredInvoices = dateFilteredInvoices.filter((inv) => {
+        const matchesSearch =
+            !searchTerm ||
+            (inv.numero || "").includes(searchTerm) ||
+            (inv.status || "").includes(searchTerm) ||
+            displayType(inv).toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
+        return matchesSearch && matchesStatus;
+    });
+
+    const authorizedOutputs = dateFilteredInvoices.filter((i) => isOutputInvoice(i) && i.status === "authorized").length;
+    const erroredOutputs = dateFilteredInvoices.filter((i) => isOutputInvoice(i) && (i.status === "error" || i.status === "rejected")).length;
+    const pendingOutputs = dateFilteredInvoices.filter((i) => isOutputInvoice(i) && (i.status === "processing" || i.status === "draft")).length;
 
     return (
         <div className="space-y-6 pb-32">
@@ -256,13 +259,13 @@ export default function FiscalDashboard() {
                         onClick={() => setEnvironment("homologation")}
                         className={`px-4 py-2 rounded-lg text-sm font-bold transition ${environment === "homologation" ? "bg-yellow-100 text-yellow-700" : "text-stone-400 hover:text-stone-600"}`}
                     >
-                        Homologacao
+                        Homologação
                     </button>
                     <button
                         onClick={() => setEnvironment("production")}
                         className={`px-4 py-2 rounded-lg text-sm font-bold transition ${environment === "production" ? "bg-green-100 text-green-700" : "text-stone-400 hover:text-stone-600"}`}
                     >
-                        Producao
+                        Produção
                     </button>
                 </div>
             </div>
@@ -307,7 +310,7 @@ export default function FiscalDashboard() {
             <div className="bg-white rounded-[32px] border border-stone-100 shadow-sm overflow-hidden min-h-[400px]">
                 <div className="p-6 border-b border-stone-100 flex flex-col gap-4">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2"><FileText size={20} /> Historico Fiscal</h3>
+                        <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2"><FileText size={20} /> Histórico Fiscal</h3>
                         <div className="flex flex-wrap items-center gap-3">
                             <select
                                 value={statusFilter}
@@ -328,7 +331,7 @@ export default function FiscalDashboard() {
                                 className="bg-white border border-stone-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] shadow-sm text-stone-600"
                                 title="Data Inicial"
                             />
-                            <span className="text-stone-300 text-sm">ate</span>
+                            <span className="text-stone-300 text-sm">até</span>
                             <input
                                 type="date"
                                 value={endDate}
@@ -355,11 +358,11 @@ export default function FiscalDashboard() {
                     <table className="w-full text-left">
                         <thead className="bg-[#F8F7F2] text-stone-500 text-xs uppercase font-bold">
                             <tr>
-                                <th className="px-6 py-4">Numero / Serie</th>
+                                <th className="px-6 py-4">Número / Série</th>
                                 <th className="px-6 py-4">Tipo</th>
                                 <th className="px-6 py-4">Data</th>
                                 <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4 text-right">Acoes</th>
+                                <th className="px-6 py-4 text-right">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="text-sm">
@@ -372,7 +375,7 @@ export default function FiscalDashboard() {
                                     <tr key={inv.id} className="border-b border-stone-50 hover:bg-[#F9F8F4] transition">
                                         <td className="px-6 py-4">
                                             <p className="font-bold text-[#1A1A1A]">{inv.numero ? `#${inv.numero}` : "S/N"}</p>
-                                            <p className="text-xs text-stone-400">Serie {inv.serie || "-"}</p>
+                                            <p className="text-xs text-stone-400">Série {inv.serie || "-"}</p>
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${isEntryInvoice(inv) ? "bg-blue-50 text-blue-700" : "bg-stone-100 text-stone-600"}`}>
@@ -394,7 +397,7 @@ export default function FiscalDashboard() {
                                             )}
                                             {inv.tipo_documento === "NFSe" && inv.chave_acesso && (
                                                 <div className="mt-1">
-                                                    <p className="text-[10px] text-stone-400 font-bold">Cod. Verificacao:</p>
+                                                    <p className="text-[10px] text-stone-400 font-bold">Cód. Verificação:</p>
                                                     <p className="text-[10px] text-stone-600 font-mono select-all bg-stone-100 p-1 rounded w-fit">{inv.chave_acesso}</p>
                                                 </div>
                                             )}
@@ -455,7 +458,7 @@ export default function FiscalDashboard() {
 
                                                 {(inv.status === "error" || inv.status === "rejected") && (
                                                     <button
-                                                        onClick={() => alert(`Detalhes do Erro:\n\n${inv.error_message || inv.motivo_rejeicao || "Sem detalhes disponiveis."}`)}
+                                                        onClick={() => alert(`Detalhes do Erro:\n\n${inv.error_message || inv.motivo_rejeicao || "Sem detalhes disponíveis."}`)}
                                                         className="p-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg transition"
                                                         title="Ver detalhes do erro"
                                                     >
