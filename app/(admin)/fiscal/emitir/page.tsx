@@ -14,7 +14,7 @@ import {
 
     ArrowLeft, FileText, Loader2, CheckCircle,
 
-    ShoppingCart, Wrench, User, Trash2, Plus, MapPin, Search, X
+    ShoppingCart, Wrench, User, Trash2, Plus, MapPin, Search, X, Sparkles
 
 } from "lucide-react";
 
@@ -22,7 +22,7 @@ import Link from "next/link";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { getPendingWorkOrders, searchProducts, searchServices, getProductFiscalData, getServiceFiscalData } from "@/src/actions/fiscal_db";
+import { getPendingWorkOrders, searchProducts, searchServices, getProductFiscalData, getServiceFiscalData, updateProductNCM } from "@/src/actions/fiscal_db";
 
 
 
@@ -151,6 +151,61 @@ export default function EmitirNotaPage() {
     const [emitting, setEmitting] = useState(false);
 
     const [focusedField, setFocusedField] = useState<{ type: 'prod' | 'serv', idx: number } | null>(null);
+
+    const [fetchingNCM, setFetchingNCM] = useState<number | null>(null);
+    const [ncmModalData, setNcmModalData] = useState<{ idx: number, options: { code: string, description: string }[] } | null>(null);
+
+    const finalizeNCM = async (idx: number, ncm: string) => {
+        const item = itens[idx];
+        const newItens = [...itens];
+        newItens[idx].ncm = ncm;
+        setItens(newItens);
+
+        // Persistência automática: só não salva se for "avulso" que o user criou agora com código genérico "NEW"
+        if (item.codigo && item.codigo !== 'GEN' && item.codigo !== 'NEW') {
+            const saveRes = await updateProductNCM(item.codigo, ncm);
+            if (saveRes.success) {
+                console.log(`NCM ${ncm} salvo no BD para o produto ${item.codigo}.`);
+            }
+        }
+        
+        setNcmModalData(null);
+    };
+
+    const handleFetchNCM = async (index: number) => {
+        const item = itens[index];
+        if (!item?.descricao) {
+            alert("Preencha a descrição do produto antes de buscar o NCM.");
+            return;
+        }
+
+        setFetchingNCM(index);
+        try {
+            const res = await fetch('/api/fiscal/ncm-ia', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ descricao: item.descricao })
+            });
+            const data = await res.json();
+            
+            if (data.options && data.options.length > 1) {
+                // Múltiplas opções encontradas, abrir modal
+                setNcmModalData({ idx: index, options: data.options });
+            } else if (data.recommendation) {
+                // Direto à única recomendação
+                await finalizeNCM(index, data.recommendation);
+            } else if (data.ncm) {
+                // Fallback legado (garantia caso o JSON quebre e volte apenas `ncm: val`)
+                await finalizeNCM(index, data.ncm);
+            } else {
+                alert(data.error || "A IA não conseguiu encontrar um NCM válido para esta descrição.");
+            }
+        } catch (e: any) {
+            alert("Erro ao buscar NCM com IA: " + e.message);
+        } finally {
+            setFetchingNCM(null);
+        }
+    };
 
 
 
@@ -863,7 +918,7 @@ export default function EmitirNotaPage() {
 
                                     <label className="text-[10px] font-bold text-stone-400 ml-1">NOME</label>
 
-                                    <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" />
+                                    <input value={clienteNome} onChange={e => setClienteNome(e.target.value)} className="w-full bg-white border border-stone-300 p-2 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all" />
 
                                 </div>
 
@@ -871,7 +926,7 @@ export default function EmitirNotaPage() {
 
                                     <label className="text-[10px] font-bold text-stone-400 ml-1">CPF / CNPJ</label>
 
-                                    <input value={clienteDoc} onChange={e => setClienteDoc(e.target.value)} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" />
+                                    <input value={clienteDoc} onChange={e => setClienteDoc(e.target.value)} className="w-full bg-white border border-stone-300 p-2 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all" />
 
                                 </div>
 
@@ -879,7 +934,7 @@ export default function EmitirNotaPage() {
 
                                     <label className="text-[10px] font-bold text-stone-400 ml-1">CEP</label>
 
-                                    <input value={clienteEndereco?.cep || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, cep: e.target.value })} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" placeholder="00000-000" />
+                                    <input value={clienteEndereco?.cep || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, cep: e.target.value })} className="w-full bg-white border border-stone-300 p-2 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all" placeholder="00000-000" />
 
                                 </div>
 
@@ -899,7 +954,7 @@ export default function EmitirNotaPage() {
 
                                         <label className="text-[10px] font-bold text-stone-400 ml-1">LOGRADOURO</label>
 
-                                        <input value={clienteEndereco?.logradouro || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, logradouro: e.target.value })} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" />
+                                        <input value={clienteEndereco?.logradouro || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, logradouro: e.target.value })} className="w-full bg-white border border-stone-300 p-2 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all" />
 
                                     </div>
 
@@ -907,7 +962,7 @@ export default function EmitirNotaPage() {
 
                                         <label className="text-[10px] font-bold text-stone-400 ml-1">Nº</label>
 
-                                        <input value={clienteEndereco?.numero || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, numero: e.target.value })} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" />
+                                        <input value={clienteEndereco?.numero || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, numero: e.target.value })} className="w-full bg-white border border-stone-300 p-2 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all" />
 
                                     </div>
 
@@ -915,7 +970,7 @@ export default function EmitirNotaPage() {
 
                                         <label className="text-[10px] font-bold text-stone-400 ml-1">BAIRRO</label>
 
-                                        <input value={clienteEndereco?.bairro || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, bairro: e.target.value })} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" />
+                                        <input value={clienteEndereco?.bairro || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, bairro: e.target.value })} className="w-full bg-white border border-stone-300 p-2 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all" />
 
                                     </div>
 
@@ -923,7 +978,7 @@ export default function EmitirNotaPage() {
 
                                         <label className="text-[10px] font-bold text-stone-400 ml-1">CIDADE</label>
 
-                                        <input value={clienteEndereco?.cidade || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, cidade: e.target.value })} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" />
+                                        <input value={clienteEndereco?.cidade || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, cidade: e.target.value })} className="w-full bg-white border border-stone-300 p-2 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all" />
 
                                     </div>
 
@@ -931,7 +986,7 @@ export default function EmitirNotaPage() {
 
                                         <label className="text-[10px] font-bold text-stone-400 ml-1">UF</label>
 
-                                        <input value={clienteEndereco?.uf || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, uf: e.target.value })} className="w-full bg-[#F8F7F2] p-2 rounded-lg text-sm font-medium outline-none" maxLength={2} />
+                                        <input value={clienteEndereco?.uf || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, uf: e.target.value })} className="w-full bg-white border border-stone-300 p-2 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all" maxLength={2} />
 
                                     </div>
 
@@ -989,7 +1044,7 @@ export default function EmitirNotaPage() {
 
                                                     }}
 
-                                                    className="w-full bg-white p-1.5 rounded-lg text-xs font-medium outline-none border border-transparent focus:border-[#FACC15]"
+                                                    className="w-full bg-white p-1.5 rounded-lg text-xs font-medium outline-none border border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all"
 
                                                     placeholder="Buscar Produto..."
 
@@ -1049,13 +1104,22 @@ export default function EmitirNotaPage() {
 
                                             </div>
 
-                                            <div className="col-span-2">
+                                            <div className="col-span-2 relative">
 
                                                 <input value={item.ncm} onChange={e => {
 
                                                     const newItens = [...itens]; newItens[idx].ncm = e.target.value; setItens(newItens);
 
-                                                }} className="w-full bg-white p-1.5 rounded-lg text-xs font-medium outline-none text-center" placeholder="NCM" />
+                                                }} className={`w-full bg-white p-1.5 pr-7 rounded-lg text-xs font-medium outline-none text-center border ${(!item.ncm || item.ncm === '00000000') ? 'border-red-400 bg-red-50' : 'border-stone-300'} focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all`} placeholder="NCM" title={(!item.ncm || item.ncm === '00000000') ? 'NCM obigatório' : ''} />
+
+                                                <button
+                                                    onClick={() => handleFetchNCM(idx)}
+                                                    disabled={fetchingNCM === idx}
+                                                    title="Buscar NCM com IA"
+                                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#FACC15] hover:scale-110 transition disabled:opacity-50"
+                                                >
+                                                    {fetchingNCM === idx ? <Loader2 size={14} className="animate-spin text-stone-400" /> : <Sparkles size={14} />}
+                                                </button>
 
                                             </div>
 
@@ -1073,7 +1137,7 @@ export default function EmitirNotaPage() {
 
                                                     setItens(newItens);
 
-                                                }} className="w-full bg-white p-1.5 rounded-lg text-xs font-medium outline-none text-center" placeholder="Qtd" />
+                                                }} className="w-full bg-white p-1.5 rounded-lg text-xs font-medium outline-none text-center border border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all" placeholder="Qtd" />
 
                                             </div>
 
@@ -1101,7 +1165,7 @@ export default function EmitirNotaPage() {
 
                                                     }}
 
-                                                    className="w-full bg-white p-1.5 rounded-lg text-xs font-medium outline-none text-right"
+                                                    className="w-full bg-white p-1.5 rounded-lg text-xs font-medium outline-none text-right border border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all"
 
                                                     placeholder="Valor Unit."
 
@@ -1322,24 +1386,28 @@ export default function EmitirNotaPage() {
                             </div>
 
 
-
-                            <button
-
-                                onClick={handleEmitir}
-
-                                disabled={emitting}
-
-                                className="w-full bg-[#FACC15] text-[#1A1A1A] py-3 rounded-xl font-bold text-sm hover:bg-white transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
-
-                            >
-
-                                {emitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
-
-                                {emitting ? "Emitindo..." : "Emitir Nota"}
-
-                            </button>
-
-
+                            {(() => {
+                                const hasMissingNCM = itens.some(i => !i.ncm || i.ncm === '00000000');
+                                return (
+                                    <>
+                                        <button
+                                            onClick={handleEmitir}
+                                            disabled={emitting || hasMissingNCM}
+                                            title={hasMissingNCM ? "Algum produto não possui um NCM válido." : ""}
+                                            className="w-full bg-[#FACC15] text-[#1A1A1A] py-3 rounded-xl font-bold text-sm hover:bg-white transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                                        >
+                                            {emitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
+                                            {emitting ? "Emitindo..." : "Emitir Nota"}
+                                        </button>
+                                        
+                                        {hasMissingNCM && (
+                                            <p className="text-[10px] text-red-400 text-center mt-2 font-medium bg-red-900/30 p-2 rounded-lg border border-red-500/20">
+                                                Bloqueado: Preencha todos os NCMs dos produtos (use a IA se necessário).
+                                            </p>
+                                        )}
+                                    </>
+                                );
+                            })()}
 
                             <p className="text-[9px] text-center mt-3 opacity-50">
 
@@ -1364,6 +1432,42 @@ export default function EmitirNotaPage() {
             }
 
 
+
+            {/* MODAL IA NCM */}
+            {ncmModalData && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl relative border border-stone-100">
+                        <button onClick={() => setNcmModalData(null)} className="absolute top-4 right-4 p-2 text-stone-400 hover:text-[#1A1A1A] hover:bg-stone-100 transition rounded-full">
+                            <X size={16} />
+                        </button>
+                        
+                        <div className="flex items-center gap-3 mb-6 pr-8">
+                            <div className="w-12 h-12 bg-[#FACC15]/20 text-[#DCA500] flex items-center justify-center rounded-2xl flex-shrink-0">
+                                <Sparkles size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-lg text-[#1A1A1A] leading-tight mb-1">Qual NCM é mais adequado?</h3>
+                                <p className="text-xs text-stone-500 leading-relaxed">
+                                    Encontramos mais de uma opção para <strong className="text-[#1A1A1A]">{itens[ncmModalData.idx]?.descricao}</strong>. 
+                                    A sua escolha será salva automaticamente no cadastro do produto.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                            {ncmModalData.options.map((opt, i) => (
+                                <button key={i} onClick={() => finalizeNCM(ncmModalData.idx, opt.code)} className="group cursor-pointer border border-stone-200 p-4 rounded-xl hover:border-[#FACC15] hover:bg-[#FACC15]/5 transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-[#FACC15]">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="font-bold text-[#1A1A1A] text-lg font-mono tracking-wider">{opt.code}</span>
+                                        {i === 0 && <span className="bg-[#1A1A1A] text-[#FACC15] text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">Recomendado</span>}
+                                    </div>
+                                    <p className="text-xs text-stone-600 line-clamp-3 leading-relaxed">{opt.description}</p>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </div >
 

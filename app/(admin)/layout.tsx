@@ -127,7 +127,7 @@ export default function AdminLayout({
         </div>
 
         {/* NAVEGAÇÃO */}
-        <div className="flex-1 overflow-y-auto no-scrollbar pb-6 px-4">
+        <div className="flex-1 overflow-y-auto thin-scrollbar pb-6 px-4">
           <nav className="space-y-1.5 flex flex-col items-stretch">
             {menuItems.map((item) => {
               const isActive = pathname === item.path || (pathname.startsWith(item.path + "/") && !(item.path === '/financeiro' && pathname.startsWith('/financeiro/relatorios')));
@@ -235,7 +235,7 @@ export default function AdminLayout({
       </aside>
 
       {/* ÁREA DE CONTEÚDO */}
-      <main className="flex-1 min-w-0 h-screen overflow-y-auto flex flex-col">
+      <main className="flex-1 min-w-0 h-screen overflow-y-auto thin-scrollbar flex flex-col">
         <GlobalAppointmentAlert />
 
         <header className="sticky top-0 z-30 bg-[#F8F7F2]/95 backdrop-blur-md px-6 py-4 lg:hidden flex justify-between items-center shadow-sm">

@@ -1,6 +1,25 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@layer utilities {
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background: #d6d3d1;
+    border-radius: 20px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #a8a29e;
+  }
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #d6d3d1 transparent;
+  }
+}
 
 body {
   font-family: 'Plus Jakarta Sans', sans-serif;

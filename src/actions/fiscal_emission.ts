@@ -1041,21 +1041,30 @@ export async function emitirNFSe(payload: EmissionPayload) {
                     const phoneToSend = clientPhone || companyPhone;
                     const clientEmail = payload.cliente.email?.trim();
 
+                    let blockEnd = undefined;
+                    if (payload.cliente.endereco && payload.cliente.endereco.logradouro) {
+                        const cleanCep = payload.cliente.endereco.cep?.replace(/\D/g, "");
+                        // O CEP deve ter exatos 8 dígitos para a Nuvem Fiscal / NFSe
+                        if (cleanCep && cleanCep.length === 8) {
+                            blockEnd = {
+                                xLgr: payload.cliente.endereco.logradouro,
+                                nro: payload.cliente.endereco.numero || "SN",
+                                xBairro: payload.cliente.endereco.bairro || "Centro",
+                                endNac: {
+                                    cMun: normalizeMunicipio(payload.cliente.endereco.codigo_municipio),
+                                    CEP: cleanCep
+                                }
+                            };
+                        }
+                    }
+
                     return {
                         CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
                         CPF: cleanDoc.length <= 11 ? cleanDoc : undefined,
                         xNome: payload.cliente.nome,
                         email: clientEmail || undefined,
                         fone: phoneToSend || undefined,
-                        end: payload.cliente.endereco ? {
-                            xLgr: payload.cliente.endereco.logradouro,
-                            nro: payload.cliente.endereco.numero,
-                            xBairro: payload.cliente.endereco.bairro,
-                            endNac: {
-                                cMun: normalizeMunicipio(payload.cliente.endereco.codigo_municipio),
-                                CEP: payload.cliente.endereco.cep?.replace(/\D/g, "")
-                            }
-                        } : undefined
+                        end: blockEnd
                     };
                 })(),
 

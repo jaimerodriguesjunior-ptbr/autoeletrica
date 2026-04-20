@@ -170,3 +170,19 @@ export async function getFiscalInvoices(organizationId: string) {
 
     return data;
 }
+
+export async function updateProductNCM(productId: string, ncm: string) {
+    const supabase = createClient();
+
+    const { error } = await supabase
+        .from("products")
+        .update({ ncm })
+        .eq("id", productId);
+
+    if (error) {
+        console.error("Erro ao atualizar NCM do produto:", error);
+        return { success: false, error: error.message };
+    }
+
+    return { success: true };
+}
