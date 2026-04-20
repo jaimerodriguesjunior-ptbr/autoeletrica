@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
         const { data: workOrders, error: woError } = await supabase
             .from('work_orders')
             .select(`
-                id, description, status, total, created_at, 
+                id, public_token, description, status, total, created_at, 
                 vehicles ( modelo, placa ),
                 work_order_items ( name, total_price, tipo, peca_cliente )
             `)

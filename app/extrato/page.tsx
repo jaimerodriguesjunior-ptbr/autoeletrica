@@ -7,6 +7,7 @@ import {
     FileText, DollarSign, Wrench, Package,
     ChevronDown, ChevronUp, MessageCircle, Car
 } from "lucide-react";
+import { useAuth } from "../../src/contexts/AuthContext";
 
 const fmt = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
@@ -35,6 +36,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string; icon: any }>
 function ConteudoExtrato() {
     const searchParams = useSearchParams();
     const token = searchParams.get("token");
+    const { user } = useAuth();
 
     const [loading, setLoading] = useState(true);
     const [erro, setErro] = useState("");
@@ -193,18 +195,20 @@ function ConteudoExtrato() {
                                         )}
                                         {/* STATUS DE PAGAMENTO */}
                                         {wo.status !== 'cancelado' && txOS.length > 0 && (
-                                            <div className="mt-1.5">
-                                                {totalPendenteOS > 0 ? (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
-                                                        <Clock size={10} />
-                                                        Pendente: {fmt(totalPendenteOS)}
-                                                        {proximoPendente && ` — vence ${formatarData(proximoPendente.date)}`}
-                                                    </span>
-                                                ) : (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
-                                                        <CheckCircle size={10} /> Pago
-                                                    </span>
-                                                )}
+                                            <div className="mt-1.5 flex flex-col gap-2">
+                                                <div>
+                                                    {totalPendenteOS > 0 ? (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
+                                                            <Clock size={10} />
+                                                            Pendente: {fmt(totalPendenteOS)}
+                                                            {proximoPendente && ` — vence ${formatarData(proximoPendente.date)}`}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                                                            <CheckCircle size={10} /> Pago
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         )}
                                         {wo.status !== 'cancelado' && txOS.length === 0 && wo.status === 'entregue' && (
@@ -214,8 +218,20 @@ function ConteudoExtrato() {
                                                 </span>
                                             </div>
                                         )}
+
+                                        {/* Botão Apenas para o Admin (quando logado) */}
+                                        {user && (
+                                            <div className="mt-3 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                                <a
+                                                    href={`/os/detalhes/${wo.id}`}
+                                                    className="w-full py-2.5 text-center bg-[#1A1A1A] text-[#FACC15] text-[10px] uppercase tracking-wider font-bold rounded-lg shadow-sm hover:bg-black transition border border-[#1A1A1A]"
+                                                >
+                                                    Mostrar OS/Compra
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="text-right ml-3 flex-shrink-0">
+                                    <div className="text-right ml-3 flex-shrink-0 self-start mt-1">
                                         <p className="font-black text-[#1A1A1A]">{fmt(wo.total)}</p>
                                         {isExpanded ? <ChevronUp size={16} className="text-stone-400 ml-auto" /> : <ChevronDown size={16} className="text-stone-400 ml-auto" />}
                                     </div>
@@ -298,6 +314,7 @@ function ConteudoExtrato() {
                                                 </p>
                                             </div>
                                         )}
+
                                     </div>
                                 )}
                             </div>
@@ -396,3 +413,4 @@ export default function ExtratoPage() {
         </Suspense>
     );
 }
+ 

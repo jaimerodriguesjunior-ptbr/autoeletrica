@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
 import {
-  Search, Plus, Phone, ArrowRight, Loader2, UserX
+  Search, Plus, Phone, ArrowRight, Loader2, UserX, DollarSign
 } from "lucide-react";
 
 // Tipo local para exibição
@@ -17,6 +17,8 @@ type ClientView = {
   veiculos_count: number;
   veiculos: VehicleInfo[];
   created_at: string;
+  saldo_vencido: number;
+  saldo_a_vencer: number;
 };
 
 export default function Clientes() {
@@ -26,6 +28,7 @@ export default function Clientes() {
   const [clients, setClients] = useState<ClientView[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [filtroDevedor, setFiltroDevedor] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -49,13 +52,41 @@ export default function Clientes() {
 
       if (error) throw error;
 
+      // Buscar transações pendentes (vincular por work_order)
+      const { data: pendingTxs } = await supabase
+        .from('transactions')
+        .select('amount, date, work_orders!inner(client_id)')
+        .eq('status', 'pending')
+        .eq('type', 'income');
+
+      const saldosVencidos = new Map<string, number>();
+      const saldosAVencer = new Map<string, number>();
+
+      const today = new Date(new Date().toISOString().split('T')[0]).getTime();
+
+      if (pendingTxs) {
+        pendingTxs.forEach((tx: any) => {
+          const cid = tx.work_orders?.client_id;
+          if (cid) {
+            const isOverdue = tx.date ? new Date(tx.date).getTime() < today : false;
+            if (isOverdue) {
+              saldosVencidos.set(cid, (saldosVencidos.get(cid) || 0) + (tx.amount || 0));
+            } else {
+              saldosAVencer.set(cid, (saldosAVencer.get(cid) || 0) + (tx.amount || 0));
+            }
+          }
+        });
+      }
+
       const formattedData = data?.map((c: any) => ({
         id: c.id,
         nome: c.nome,
         whatsapp: c.whatsapp,
         veiculos_count: c.vehicles ? c.vehicles.length : 0,
         veiculos: (c.vehicles || []) as VehicleInfo[],
-        created_at: c.created_at
+        created_at: c.created_at,
+        saldo_vencido: saldosVencidos.get(c.id) || 0,
+        saldo_a_vencer: saldosAVencer.get(c.id) || 0
       })) || [];
 
       setClients(formattedData);
@@ -68,6 +99,10 @@ export default function Clientes() {
 
   // Filtro local (nome, telefone, placa ou modelo do veículo)
   const filteredClients = clients.filter(c => {
+    if (filtroDevedor && c.saldo_vencido <= 0 && c.saldo_a_vencer <= 0) return false;
+
+    if (!searchTerm) return true;
+
     const term = searchTerm.toLowerCase();
     if (c.nome.toLowerCase().includes(term)) return true;
     if (c.whatsapp && c.whatsapp.includes(searchTerm)) return true;
@@ -96,18 +131,28 @@ export default function Clientes() {
         </Link>
       </div>
 
-      {/* Barra de Busca */}
-      <div className="relative">
-        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-          <Search className="text-stone-400" size={24} />
+      {/* Barra de Busca e Filtros */}
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1">
+          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+            <Search className="text-stone-400" size={24} />
+          </div>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar por nome, telefone, placa ou modelo..."
+            className="w-full bg-white pl-14 pr-4 py-5 rounded-[24px] shadow-sm border-2 border-stone-200 text-lg outline-none focus:border-[#1A1A1A] transition text-[#1A1A1A] placeholder:text-stone-400 font-bold"
+          />
         </div>
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Buscar por nome, telefone, placa ou modelo..."
-          className="w-full bg-white pl-14 pr-4 py-5 rounded-[24px] shadow-sm border-2 border-[#1A1A1A] text-lg outline-none focus:ring-4 focus:ring-[#FACC15]/30 focus:border-[#1A1A1A] transition text-[#1A1A1A] placeholder:text-stone-400 font-bold"
-        />
+
+        <button
+          onClick={() => setFiltroDevedor(!filtroDevedor)}
+          className={`py-4 px-6 rounded-[24px] font-bold text-sm transition-all border-2 flex items-center justify-center md:w-auto w-full gap-2 ${filtroDevedor ? 'bg-red-50 text-red-600 border-red-200 shadow-sm' : 'bg-white text-stone-500 border-stone-200 hover:border-stone-300'}`}
+        >
+          <DollarSign size={18} />
+          {filtroDevedor ? "Com Saldo Devedor" : "Ver Devedores"}
+        </button>
       </div>
 
       {/* Tabela de Clientes */}
@@ -131,6 +176,7 @@ export default function Clientes() {
                 <tr>
                   <th className="px-6 py-5">Nome / Contato</th>
                   <th className="px-6 py-5">Veículos</th>
+                  <th className="px-6 py-5 hidden md:table-cell">Financeiro</th>
                   <th className="px-6 py-5 hidden md:table-cell">Cadastro</th>
                   <th className="px-6 py-5 text-right">Ação</th>
                 </tr>
@@ -152,6 +198,23 @@ export default function Clientes() {
                       ) : (
                         <span className="text-stone-300 text-xs italic">Nenhum</span>
                       )}
+                    </td>
+                    <td className="px-6 py-4 hidden md:table-cell">
+                      <div className="flex flex-col gap-1">
+                        {c.saldo_vencido > 0 && (
+                          <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded-lg border border-red-100 text-[11px] w-max">
+                            Atrasado: R$ {c.saldo_vencido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        )}
+                        {c.saldo_a_vencer > 0 && (
+                          <span className="text-yellow-600 font-bold bg-yellow-50 px-2 py-1 rounded-lg border border-yellow-200 text-[11px] w-max">
+                            A Vencer: R$ {c.saldo_a_vencer.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        )}
+                        {(c.saldo_vencido === 0 && c.saldo_a_vencer === 0) && (
+                          <span className="text-green-600 text-xs font-bold opacity-70">Em dia</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-stone-500 font-mono text-xs hidden md:table-cell">
                       {new Date(c.created_at).toLocaleDateString('pt-BR')}

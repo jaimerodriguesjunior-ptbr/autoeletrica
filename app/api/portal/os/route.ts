@@ -87,7 +87,22 @@ export async function GET(req: NextRequest) {
             .gte('start_time', new Date().toISOString())
             .order('start_time', { ascending: true })
 
-        return NextResponse.json({ os, logoUrl, telefone, isAppointment: false, appointments: futureAppointments || [] })
+        // Buscar notas fiscais autorizadas vinculadas a esta OS
+        const { data: invoices } = await supabase
+            .from('fiscal_invoices')
+            .select('id, tipo_documento, numero, serie, pdf_url, chave_acesso')
+            .eq('work_order_id', os.id)
+            .eq('status', 'authorized')
+            .eq('direction', 'output')
+
+        return NextResponse.json({ 
+            os, 
+            logoUrl, 
+            telefone, 
+            isAppointment: false, 
+            appointments: futureAppointments || [],
+            invoices: invoices || []
+        })
     } catch (err: any) {
         console.error('[Portal OS] Erro:', err.message)
         return NextResponse.json({ error: 'Erro interno.' }, { status: 500 })

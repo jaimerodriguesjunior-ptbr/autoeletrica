@@ -418,8 +418,6 @@ export default function EditarCliente() {
                   <div className="grid grid-cols-2 gap-2">
                     <a
                       href={getExtratoUrl()}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       className="flex items-center justify-center gap-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold py-3 rounded-xl text-sm transition"
                     >
                       <ExternalLink size={16} /> Ver Extrato

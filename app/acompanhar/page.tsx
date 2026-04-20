@@ -21,6 +21,8 @@ function ConteudoPortal() {
   const [confirmando, setConfirmando] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string>("/logo.svg");
   const [telefoneEmpresa, setTelefoneEmpresa] = useState<string>("");
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [paymentIntent, setPaymentIntent] = useState<string>("");
 
   // Controle visual
   const [detalhesAbertos, setDetalhesAbertos] = useState(false);
@@ -48,6 +50,7 @@ function ConteudoPortal() {
       setOs(json.os);
       setIsAppointment(json.isAppointment || false);
       setAppointments(json.appointments || []);
+      setInvoices(json.invoices || []);
 
       if (json.logoUrl) {
         setLogoUrl(json.logoUrl);
@@ -69,12 +72,7 @@ function ConteudoPortal() {
   // Verifica se há peça do cliente antes de aprovar
   const handleCliqueAprovar = () => {
     if (!os) return;
-    const temPecaCliente = os.work_order_items?.some((item: any) => item.peca_cliente);
-    if (temPecaCliente) {
-      setDrawerAberto(true);
-    } else {
-      handleAprovar();
-    }
+    setDrawerAberto(true);
   };
 
   const handleAprovar = async () => {
@@ -108,7 +106,8 @@ function ConteudoPortal() {
           token,
           aprovacao_ip,
           aprovacao_dispositivo,
-          aprovacao_versao_hash
+          aprovacao_versao_hash,
+          payment_intent: paymentIntent
         })
       });
 
@@ -585,6 +584,37 @@ function ConteudoPortal() {
         </>
       )}
 
+      {/* DOCUMENTOS FISCAIS */}
+      {!isAppointment && invoices.length > 0 && (
+        <div className="px-4 pt-3 max-w-xl mx-auto">
+          <h3 className="font-extrabold text-[#1A1A1A] ml-1 mb-3 flex items-center gap-2 text-sm">
+            <FileText size={16} /> Documentos Fiscais
+          </h3>
+          <div className="space-y-3">
+            {invoices.map((inv) => (
+              <a
+                key={inv.id}
+                href={inv.pdf_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 p-4 bg-white rounded-[20px] shadow-sm border-2 border-stone-300 hover:border-blue-400 transition"
+              >
+                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+                  <Download size={20} className="text-green-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-sm text-[#1A1A1A]">
+                    {inv.tipo_documento === 'NFCe' ? 'Cupom Fiscal (NFC-e)' : 'Nota Fiscal (NFSe)'} #{inv.numero}
+                  </p>
+                  <p className="text-[10px] text-stone-400 uppercase tracking-tighter">Série {inv.serie} • Chave: {inv.chave_acesso?.slice(0, 20)}...</p>
+                </div>
+                <div className="text-[10px] font-bold text-stone-400">PDF</div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* BARRA FIXA INFERIOR */}
       {!isAppointment && os.status === "orcamento" ? (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t-2 border-stone-300 flex flex-col gap-2 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] z-50 rounded-t-[24px] max-w-xl mx-auto">
@@ -664,13 +694,32 @@ function ConteudoPortal() {
                 Você está aprovando o valor de{' '}
                 <strong className="text-lg">R$ {Number(os.total).toFixed(2)}</strong>.
               </p>
-              <p className="text-sm text-stone-600 mt-2 leading-relaxed">
-                Os itens que você forneceu <strong>não têm garantia da oficina</strong> (CDC art. 40). A garantia se aplica apenas às peças e serviços fornecidos pela oficina.
-              </p>
+              {os.work_order_items?.some((item: any) => item.peca_cliente) && (
+                <p className="text-xs text-stone-600 mt-2 leading-relaxed border-t border-yellow-200 pt-2">
+                  <strong>⚠️ Peça do Cliente:</strong> Os itens que você forneceu não têm garantia da oficina (Art. 40 CDC).
+                </p>
+              )}
+            </div>
+
+            <div className="mb-6">
+              <p className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider mb-2">Como pretende pagar?</p>
+              <div className="grid grid-cols-2 gap-2">
+                {['PIX', 'Cartão', 'Dinheiro', 'Outro'].map((metodo) => (
+                  <button
+                    key={metodo}
+                    onClick={() => setPaymentIntent(metodo)}
+                    className={`py-3 px-2 rounded-xl border-2 font-bold text-xs transition-all ${paymentIntent === metodo 
+                      ? 'border-[#FACC15] bg-[#FACC15]/10 text-[#1A1A1A]' 
+                      : 'border-stone-200 text-stone-400'}`}
+                  >
+                    {metodo}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <p className="text-[10px] text-stone-400 text-center mb-4">
-              Ao clicar em &quot;SIM&quot;, você concorda com os termos acima.
+              Ao clicar em &quot;SIM&quot;, você concorda com os termos e a forma de pagamento escolhida.
             </p>
 
             <div className="flex gap-3">
@@ -682,11 +731,11 @@ function ConteudoPortal() {
               </button>
               <button
                 onClick={handleAprovar}
-                disabled={atualizando}
+                disabled={atualizando || !paymentIntent}
                 className="flex-1 bg-[#1A1A1A] text-[#FACC15] font-extrabold py-3.5 rounded-2xl shadow-lg hover:bg-black transition flex items-center justify-center gap-2 disabled:opacity-70"
               >
                 {atualizando ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-                SIM
+                SIM, APROVAR
               </button>
             </div>
           </div>

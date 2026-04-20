@@ -4,7 +4,7 @@ import { createAdminClient } from '@/src/utils/supabase/admin'
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
-        const { token, aprovacao_ip, aprovacao_dispositivo, aprovacao_versao_hash } = body
+        const { token, aprovacao_ip, aprovacao_dispositivo, aprovacao_versao_hash, payment_intent } = body
 
         if (!token) {
             return NextResponse.json({ error: 'Token não informado.' }, { status: 400 })
@@ -35,7 +35,8 @@ export async function POST(req: NextRequest) {
                 aprovacao_ip: aprovacao_ip || 'desconhecido',
                 aprovacao_dispositivo: aprovacao_dispositivo || 'desconhecido',
                 aprovacao_timestamp: new Date().toISOString(),
-                aprovacao_versao_hash: aprovacao_versao_hash || null
+                aprovacao_versao_hash: aprovacao_versao_hash || null,
+                payment_intent: payment_intent || null
             })
             .eq('id', os.id)
 
