@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
 import {
@@ -16,6 +16,7 @@ type Profile = {
   nome: string;
   email: string;
   cargo: string;
+  comissao_percentual?: number;
   ativo: boolean;
 };
 
@@ -48,16 +49,26 @@ type CompanySettings = {
   usa_fiscal?: boolean;
   usa_caixa?: boolean;
   usa_agendamento?: boolean;
+  usa_comissao?: boolean;
   logo_url?: string;
+  aplicar_markup_importacao?: boolean;
+  markup_valor_importacao?: number;
+  fin_mostrar_portal?: boolean;
+  fin_cartao_com_juros?: boolean;
+  fin_taxa_juros_mes?: number;
+  fin_chave_pix?: string;
+  fin_cidade_pix?: string;
 };
 
 export default function Configuracoes() {
   const supabase = createClient();
   const { profile, updateProfile } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Controle de Abas
   const [activeTab, setActiveTab] = useState<'company' | 'modules' | 'team'>('company');
+  const [initialQueryApplied, setInitialQueryApplied] = useState(false);
 
   // Estados Gerais
   const [loading, setLoading] = useState(true);
@@ -74,6 +85,7 @@ export default function Configuracoes() {
   const [newEmail, setNewEmail] = useState("");
   const [newPass, setNewPass] = useState("");
   const [newCargo, setNewCargo] = useState("employee");
+  const [newComissao, setNewComissao] = useState(0);
   const [resetPass, setResetPass] = useState("");
 
   // --- ESTADOS EMPRESA ---
@@ -85,8 +97,15 @@ export default function Configuracoes() {
     telefone: "", email_contato: "",
     csc_token_production: "", csc_id_production: "",
     csc_token_homologation: "", csc_id_homologation: "",
-    nfse_login: "", nfse_password: "", usa_fiscal: true, usa_caixa: true, usa_agendamento: true,
-    logo_url: ""
+    nfse_login: "", nfse_password: "", usa_fiscal: true, usa_caixa: true, usa_agendamento: true, usa_comissao: false,
+    logo_url: "",
+    aplicar_markup_importacao: false,
+    markup_valor_importacao: 2.0,
+    fin_mostrar_portal: false,
+    fin_cartao_com_juros: false,
+    fin_taxa_juros_mes: 0,
+    fin_chave_pix: "",
+    fin_cidade_pix: ""
   });
   const [certFile, setCertFile] = useState<File | null>(null);
   const [certPassword, setCertPassword] = useState("");
@@ -96,6 +115,29 @@ export default function Configuracoes() {
     fetchUsers();
     fetchCompany();
   }, []);
+
+  // Permite deep-link para abrir aba/modal específicos:
+  // /configuracoes?tab=team&open=new-user
+  useEffect(() => {
+    if (initialQueryApplied) return;
+
+    const rawTab = searchParams.get("tab")?.toLowerCase();
+    let tabFromQuery: 'company' | 'modules' | 'team' | null = null;
+    if (rawTab === "company" || rawTab === "modules" || rawTab === "team") {
+      tabFromQuery = rawTab;
+    }
+    if (tabFromQuery) {
+      setActiveTab(tabFromQuery);
+    }
+
+    const rawOpen = searchParams.get("open")?.toLowerCase();
+    if (rawOpen === "new-user" || rawOpen === "novo-funcionario" || rawOpen === "add-user") {
+      setActiveTab("team");
+      setModalNovoOpen(true);
+    }
+
+    setInitialQueryApplied(true);
+  }, [initialQueryApplied, searchParams]);
 
   // AUTO-PREENCHIMENTO ENDEREÇO (Legado)
   useEffect(() => {
@@ -156,12 +198,31 @@ export default function Configuracoes() {
           password: newPass,
           nome: newNome,
           cargo: newCargo,
+          comissao_percentual: newComissao,
           organization_id: profile.organization_id
         })
       });
       if (!res.ok) throw new Error("Erro ao criar.");
       alert("Sucesso!"); setModalNovoOpen(false); fetchUsers();
+      setNewNome(""); setNewEmail(""); setNewPass(""); setNewCargo("employee"); setNewComissao(0);
     } catch (e) { alert("Erro ao criar usuário."); } finally { setSaving(false); }
+  };
+
+  const handleUpdateComissao = async (user: Profile, novaComissao: number) => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_profile',
+          user_id: user.id,
+          comissao_percentual: novaComissao
+        })
+      });
+      if (!res.ok) throw new Error("Erro ao atualizar.");
+      fetchUsers();
+    } catch (e) { alert("Erro ao atualizar comissão."); } finally { setSaving(false); }
   };
 
   const handleChangePassword = async () => {
@@ -182,7 +243,7 @@ export default function Configuracoes() {
     fetchUsers();
   };
 
-  const handleToggleModule = async (module: 'usa_fiscal' | 'usa_caixa' | 'usa_agendamento', value: boolean) => {
+  const handleToggleModule = async (module: 'usa_fiscal' | 'usa_caixa' | 'usa_agendamento' | 'usa_comissao', value: boolean) => {
     setCompany(prev => ({ ...prev, [module]: value }));
     updateProfile({ [module]: value }); // Atualiza o Profile global p/ o Sidebar reagir na hora
     if (!profile?.organization_id) return;
@@ -230,7 +291,14 @@ export default function Configuracoes() {
         usa_fiscal: company.usa_fiscal !== undefined ? company.usa_fiscal : true,
         usa_caixa: company.usa_caixa !== undefined ? company.usa_caixa : true,
         logo_url: company.logo_url,
-        endereco: company.endereco
+        endereco: company.endereco,
+        aplicar_markup_importacao: company.aplicar_markup_importacao ?? false,
+        markup_valor_importacao: company.markup_valor_importacao ?? 2.0,
+        fin_mostrar_portal: company.fin_mostrar_portal ?? false,
+        fin_cartao_com_juros: company.fin_cartao_com_juros ?? false,
+        fin_taxa_juros_mes: company.fin_taxa_juros_mes ?? 0,
+        fin_chave_pix: company.fin_chave_pix,
+        fin_cidade_pix: company.fin_cidade_pix
       };
 
       const response = await fetch("/api/fiscal/company-settings", {
@@ -252,7 +320,6 @@ export default function Configuracoes() {
       setSaving(false);
     }
   };
-
   const handleUploadCert = async () => {
     if (!certFile || !company.cnpj || !certPassword) return alert("Preencha CNPJ, selecione o arquivo e digite a senha.");
     setSaving(true);
@@ -330,6 +397,7 @@ export default function Configuracoes() {
                     <tr>
                       <th className="px-3 md:px-6 py-4">Nome / Email</th>
                       <th className="px-3 md:px-6 py-4">Cargo</th>
+                      <th className="px-3 md:px-6 py-4 text-center">Comissão</th>
                       <th className="px-3 md:px-6 py-4 text-center">Status</th>
                       <th className="px-3 md:px-6 py-4 text-right">Ações</th>
                     </tr>
@@ -343,6 +411,22 @@ export default function Configuracoes() {
                         </td>
                         <td className="px-3 md:px-6 py-4">
                           {u.cargo === 'owner' ? <span className="text-[#FACC15] font-bold text-[10px] border border-[#FACC15] px-2 py-1 rounded">GERENTE</span> : <span className="bg-stone-100 text-stone-500 px-2 py-1 rounded text-[10px]">COLABORADOR</span>}
+                        </td>
+                        <td className="px-3 md:px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <input
+                              type="number"
+                              defaultValue={u.comissao_percentual || 0}
+                              onBlur={(e) => {
+                                const val = parseFloat(e.target.value);
+                                if (!isNaN(val) && val !== (u.comissao_percentual || 0)) {
+                                  handleUpdateComissao(u, val);
+                                }
+                              }}
+                              className="w-16 bg-stone-50 border border-stone-200 rounded px-2 py-1 text-center font-bold text-[#1A1A1A] outline-none focus:border-[#FACC15] transition"
+                            />
+                            <span className="text-stone-400 text-xs font-bold">%</span>
+                          </div>
                         </td>
                         <td className="px-3 md:px-6 py-4 text-center">
                           {u.ativo ? <span className="text-green-600 font-bold text-xs bg-green-50 px-2 py-1 rounded">ATIVO</span> : <span className="text-red-500 font-bold text-xs bg-red-50 px-2 py-1 rounded">BLOQUEADO</span>}
@@ -802,6 +886,180 @@ export default function Configuracoes() {
               />
             </label>
 
+            {/* Toggle Módulo de Comissões */}
+            <label className="flex items-center justify-between p-5 bg-stone-50 border border-stone-200 rounded-3xl cursor-pointer hover:bg-stone-100 transition shadow-sm group">
+              <div>
+                <p className="font-bold text-[#1A1A1A]">Módulo de Comissões</p>
+                <p className="text-sm text-stone-500">Ativa o controle de comissões por funcionário. Permite atribuir profissionais aos serviços e gerar comissões após o pagamento.</p>
+              </div>
+              <div className={`w-14 h-8 rounded-full p-1 transition-colors duration-200 ease-in-out shrink-0 ${(company.usa_comissao ?? false) ? 'bg-green-500' : 'bg-stone-300 group-hover:bg-stone-400'}`}>
+                <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${(company.usa_comissao ?? false) ? 'translate-x-6' : 'translate-x-0'}`} />
+              </div>
+              <input
+                type="checkbox"
+                className="hidden"
+                checked={company.usa_comissao ?? false}
+                onChange={(e) => handleToggleModule('usa_comissao', e.target.checked)}
+              />
+            </label>
+
+          </div>
+
+          {/* --- SEÇÃO: PRECIFICAÇÃO --- */}
+          <div className="mt-8 pt-6 border-t border-stone-200">
+            <div className="mb-6">
+              <h2 className="text-xl font-bold text-[#1A1A1A] mb-1">Precificação Automática</h2>
+              <p className="text-sm text-stone-500">Configure se o sistema deve aplicar markup automaticamente ao importar notas fiscais ou cadastrar produtos.</p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Toggle Aplicar Markup */}
+              <label className="flex items-center justify-between p-5 bg-stone-50 border border-stone-200 rounded-3xl cursor-pointer hover:bg-stone-100 transition shadow-sm group">
+                <div>
+                  <p className="font-bold text-[#1A1A1A]">Aplicar Markup na Importação</p>
+                  <p className="text-sm text-stone-500">Ao importar uma nota fiscal (XML) ou cadastrar um produto com custo, o preço de venda será calculado automaticamente usando o multiplicador abaixo.</p>
+                </div>
+                <div className={`w-14 h-8 rounded-full p-1 transition-colors duration-200 ease-in-out shrink-0 ${(company.aplicar_markup_importacao ?? false) ? 'bg-green-500' : 'bg-stone-300 group-hover:bg-stone-400'}`}>
+                  <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${(company.aplicar_markup_importacao ?? false) ? 'translate-x-6' : 'translate-x-0'}`} />
+                </div>
+                <input
+                  type="checkbox"
+                  className="hidden"
+                  checked={company.aplicar_markup_importacao ?? false}
+                  onChange={(e) => setCompany(prev => ({ ...prev, aplicar_markup_importacao: e.target.checked }))}
+                />
+              </label>
+
+              {/* Campo do Multiplicador - visível quando ativo */}
+              {(company.aplicar_markup_importacao ?? false) && (
+                <div className="p-5 bg-stone-50 border border-stone-200 rounded-3xl shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                  <label className="text-xs font-bold text-stone-400 ml-2 mb-2 block">VALOR DO MULTIPLICADOR (MARKUP)</label>
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-1 max-w-xs">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-500 font-bold">×</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="1"
+                        value={company.markup_valor_importacao ?? 2.0}
+                        onChange={(e) => setCompany(prev => ({ ...prev, markup_valor_importacao: parseFloat(e.target.value) || 2.0 }))}
+                        className="w-full bg-white rounded-2xl py-3 pl-10 pr-4 font-bold text-lg text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                      />
+                    </div>
+                    <div className="text-sm text-stone-500">
+                      <p>Exemplo: Custo <strong>R$ 10,00</strong> × <strong>{company.markup_valor_importacao ?? 2.0}</strong> = <strong className="text-[#1A1A1A]">R$ {(10 * (company.markup_valor_importacao ?? 2.0)).toFixed(2).replace('.', ',')}</strong></p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* --- SEÇÃO: PAGAMENTOS --- */}
+            <div className="mt-8 pt-6 border-t border-stone-200">
+              <div className="mb-6">
+                <h2 className="text-xl font-bold text-[#1A1A1A] mb-1">Pagamentos no Portal</h2>
+                <p className="text-sm text-stone-500">Configure as regras de pagamento que os clientes visualizarão no Portal do Cliente (ex: Limite de parcelas, juros).</p>
+              </div>
+
+              <div className="space-y-4">
+                <label className="flex items-center justify-between p-5 bg-stone-50 border border-stone-200 rounded-3xl cursor-pointer hover:bg-stone-100 transition shadow-sm group">
+                  <div>
+                    <p className="font-bold text-[#1A1A1A]">Mostrar formas de pagamento no portal do cliente?</p>
+                    <p className="text-sm text-stone-500">Exibe uma tabela com opções de PIX, Dinheiro e Cartão de Crédito.</p>
+                  </div>
+                  <div className={`w-14 h-8 rounded-full p-1 transition-colors duration-200 ease-in-out shrink-0 ${company.fin_mostrar_portal ? 'bg-green-500' : 'bg-stone-300 group-hover:bg-stone-400'}`}>
+                    <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${company.fin_mostrar_portal ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="hidden"
+                    checked={company.fin_mostrar_portal ?? false}
+                    onChange={(e) => setCompany(prev => ({ ...prev, fin_mostrar_portal: e.target.checked }))}
+                  />
+                </label>
+
+                {(company.fin_mostrar_portal ?? false) && (
+                  <>
+                    <label className="flex items-center justify-between p-5 bg-stone-50 border border-stone-200 rounded-3xl cursor-pointer hover:bg-stone-100 transition shadow-sm group animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div>
+                        <p className="font-bold text-[#1A1A1A]">O parcelamento do cartão gera juros para o seu cliente?</p>
+                        <p className="text-sm text-stone-500">Se ativo, será repassada ou adicionada uma taxa mensal (Juros Simples) nas parcelas do cliente.</p>
+                      </div>
+                      <div className={`w-14 h-8 rounded-full p-1 transition-colors duration-200 ease-in-out shrink-0 ${company.fin_cartao_com_juros ? 'bg-green-500' : 'bg-stone-300 group-hover:bg-stone-400'}`}>
+                        <div className={`bg-white w-6 h-6 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${company.fin_cartao_com_juros ? 'translate-x-6' : 'translate-x-0'}`} />
+                      </div>
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={company.fin_cartao_com_juros ?? false}
+                        onChange={(e) => setCompany(prev => ({ ...prev, fin_cartao_com_juros: e.target.checked }))}
+                      />
+                    </label>
+
+                    {(company.fin_cartao_com_juros ?? false) && (
+                      <div className="p-5 bg-stone-50 border border-stone-200 rounded-3xl shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                        <label className="text-xs font-bold text-stone-400 ml-2 mb-2 block">TAXA DE JUROS DO CARTÃO (%) AO MÊS</label>
+                        <div className="flex items-center gap-4">
+                          <div className="relative flex-1 max-w-xs">
+                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-500 font-bold">%</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={company.fin_taxa_juros_mes ?? 0}
+                              onChange={(e) => setCompany(prev => ({ ...prev, fin_taxa_juros_mes: parseFloat(e.target.value) || 0 }))}
+                              className="w-full bg-white rounded-2xl py-3 pl-4 pr-10 font-bold text-lg text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                            />
+                          </div>
+                          <div className="text-sm text-stone-500">
+                            <p>Isso afetará os cálculos exibidos no portal.</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="p-5 bg-stone-50 border border-stone-200 rounded-3xl shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+                      <label className="text-xs font-bold text-stone-400 ml-2 mb-2 block">DADOS PARA RECEBIMENTO PIX</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[10px] font-bold text-stone-500 ml-1 mb-1.5 uppercase">Chave PIX</p>
+                          <input
+                            type="text"
+                            placeholder="CPF, CNPJ, Email ou Chave Aleatória"
+                            value={company.fin_chave_pix || ''}
+                            onChange={(e) => setCompany(prev => ({ ...prev, fin_chave_pix: e.target.value }))}
+                            className="w-full bg-white rounded-2xl py-3 px-4 font-bold text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-stone-500 ml-1 mb-1.5 uppercase">Cidade da Empresa</p>
+                          <input
+                            type="text"
+                            placeholder="Ex: Sao Paulo (Sem acentos)"
+                            value={company.fin_cidade_pix || ''}
+                            onChange={(e) => setCompany(prev => ({ ...prev, fin_cidade_pix: e.target.value }))}
+                            className="w-full bg-white rounded-2xl py-3 px-4 font-bold text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                          />
+                          <p className="text-[10px] text-stone-400 px-2 mt-1">Obrigatório para gerar o QR Code (Padrão BCB).</p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Botão Salvar Precificação */}
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={handleSaveCompany}
+                disabled={saving}
+                className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-8 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg transition hover:scale-105 disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="animate-spin" /> : <Save />}
+                Salvar Configurações
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -814,6 +1072,10 @@ export default function Configuracoes() {
             <input value={newNome} onChange={e => setNewNome(e.target.value)} placeholder="Nome" className="w-full bg-gray-100 p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none" />
             <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="Email" className="w-full bg-gray-100 p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none" />
             <input value={newPass} onChange={e => setNewPass(e.target.value)} placeholder="Senha" type="password" className="w-full bg-gray-100 p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none" />
+            <div className="flex gap-2 items-center bg-gray-100 p-3 rounded-xl border-2 border-stone-300">
+              <span className="text-[10px] font-bold text-stone-400 shrink-0 uppercase">Comissão (%)</span>
+              <input type="number" value={newComissao} onChange={e => setNewComissao(parseFloat(e.target.value) || 0)} className="w-full bg-transparent outline-none font-bold text-[#1A1A1A] text-right" />
+            </div>
             <select value={newCargo} onChange={e => setNewCargo(e.target.value)} className="w-full bg-gray-100 p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"><option value="employee">Colaborador</option><option value="owner">Gerente</option></select>
             <button onClick={handleCreateUser} disabled={saving} className="w-full bg-black text-yellow-400 p-3 rounded-xl font-bold">{saving ? "Salvando..." : "Criar"}</button>
           </div>

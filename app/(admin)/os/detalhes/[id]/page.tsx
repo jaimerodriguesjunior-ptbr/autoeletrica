@@ -8,11 +8,13 @@ import {
   ArrowLeft, ArrowRight, CheckCircle, Clock, Wrench, Package, Save,
   CheckSquare, MessageCircle, User, Car, Loader2, DollarSign,
   Plus, Minus, X, Calendar, CreditCard, Trash2, Printer, Camera, UserCheck, ShieldCheck,
-  Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download, Search, AlertTriangle, Mic, AlertCircle, Play, Video
+  Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download, Search, AlertTriangle, Mic, AlertCircle, Play, Video, Users2
 } from "lucide-react";
 import heic2any from "heic2any";
 import { createClient } from "../../../../../src/lib/supabase";
 import { useAuth } from "../../../../../src/contexts/AuthContext";
+import { ScannerModal } from "@/components/ui/ScannerModal";
+import { fetchProductFromCosmos, normalizeBarcode } from "@/src/services/cosmosService";
 
 // Tipos
 type WorkOrderItem = {
@@ -31,6 +33,7 @@ type WorkOrderFull = {
   status: string;
   description: string;
   total: number;
+  employee_id?: string | null;
   created_at: string;
   updated_at: string;
   tipo?: string;
@@ -71,18 +74,20 @@ type WorkOrderFull = {
   }[];
 };
 
-type CatalogItem = { id: string; nome: string; price?: number; preco_venda?: number; estoque_atual?: number };
+type CatalogItem = { id: string; nome: string; price?: number; preco_venda?: number; estoque_atual?: number; ean?: string };
 
 export default function DetalhesOS() {
   const { id } = useParams();
   const router = useRouter();
   const supabase = createClient();
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [os, setOs] = useState<WorkOrderFull | null>(null);
   const [updating, setUpdating] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [videoWarningOpen, setVideoWarningOpen] = useState(false);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   // Laudo Técnico (Novos Campos)
   const [defeitosConstatados, setDefeitosConstatados] = useState("");
@@ -158,6 +163,11 @@ export default function DetalhesOS() {
   const [termoBusca, setTermoBusca] = useState("");
   const [adicionandoItem, setAdicionandoItem] = useState(false);
 
+  // Scanner de código de barras
+  const [scannerAberto, setScannerAberto] = useState(false);
+  const [buscandoEAN, setBuscandoEAN] = useState(false);
+  const [avisoEAN, setAvisoEAN] = useState<{ tipo: 'sucesso' | 'erro' | 'info'; msg: string } | null>(null);
+
   const [modalAdicionarTipo, setModalAdicionarTipo] = useState<'peca' | 'servico' | null>(null);
   const [modalEditarItemAberto, setModalEditarItemAberto] = useState(false);
   const [itemEditando, setItemEditando] = useState<WorkOrderItem | null>(null);
@@ -180,6 +190,14 @@ export default function DetalhesOS() {
   const [dataCheque, setDataCheque] = useState("");
   const [valorFinal, setValorFinal] = useState("");
   const [parcelas, setParcelas] = useState(1);
+
+  // Adiantamento
+  const [modalAdiantamentoAberto, setModalAdiantamentoAberto] = useState(false);
+  const [adiantamentos, setAdiantamentos] = useState<{ id: string; amount: number; payment_method: string; created_at: string }[]>([]);
+  const [valorAdiantamento, setValorAdiantamento] = useState("");
+  const [formaPagamentoAdiantamento, setFormaPagamentoAdiantamento] = useState("pix");
+  const [parcelasAdiantamento, setParcelasAdiantamento] = useState(1);
+  const [dataChequeAdiantamento, setDataChequeAdiantamento] = useState("");
 
   // Modal Metadados de Aprovação
   const [modalMetadados, setModalMetadados] = useState(false);
@@ -205,6 +223,14 @@ export default function DetalhesOS() {
   });
   const [salvandoAgendamento, setSalvandoAgendamento] = useState(false);
 
+  // Comissões
+  const usaComissao = profile?.usa_comissao === true;
+  const [listaFuncionarios, setListaFuncionarios] = useState<{ id: string; nome: string; comissao_percentual: number }[]>([]);
+  const [assignmentsMap, setAssignmentsMap] = useState<Record<string, string[]>>({}); // item_id -> employee_ids[]
+  const [modalEquipeItemId, setModalEquipeItemId] = useState<string | null>(null);
+  const [salvandoEquipe, setSalvandoEquipe] = useState(false);
+  const [osCreatorIsEmployee, setOsCreatorIsEmployee] = useState(false);
+
   // 1. Busca Dados da OS
   const fetchOS = useCallback(async () => {
     try {
@@ -225,13 +251,21 @@ export default function DetalhesOS() {
 
       if (data) {
         setValorFinal(data.total.toString());
-        // Formata data para o input type="date" (YYYY-MM-DD)
         if (data.previsao_entrega) {
           setPrevisao(new Date(data.previsao_entrega).toISOString().split('T')[0]);
         }
         setDescricaoLocal(data.description || "");
         setDefeitosConstatados(data.defeitos_constatados || "");
         setServicosExecutados(data.servicos_executados || "");
+
+        // Busca adiantamentos já lançados
+        const { data: adiantData } = await supabase
+          .from('transactions')
+          .select('id, amount, payment_method, created_at')
+          .eq('work_order_id', data.id)
+          .eq('category', 'Adiantamento')
+          .order('created_at', { ascending: true });
+        setAdiantamentos(adiantData || []);
       }
 
     } catch (error) {
@@ -246,7 +280,7 @@ export default function DetalhesOS() {
     if (!profile?.organization_id) return;
     try {
       const [prodRes, servRes] = await Promise.all([
-        supabase.from("products").select("id, nome, preco_venda, estoque_atual").order("nome"),
+        supabase.from("products").select("id, nome, preco_venda, estoque_atual, ean").order("nome"),
         supabase.from("services").select("id, nome, price").order("nome"),
       ]);
       setListaProdutos(prodRes.data || []);
@@ -380,12 +414,92 @@ export default function DetalhesOS() {
     return /\.(mp4|webm|ogg|mov)$/i.test(url);
   };
 
+  // Comissões: Buscar funcionários ativos
+  const fetchFuncionarios = useCallback(async () => {
+    if (!usaComissao || !profile?.organization_id) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, nome, comissao_percentual')
+      .eq('organization_id', profile.organization_id)
+      .eq('ativo', true)
+      .order('nome');
+    if (data) setListaFuncionarios(data as any);
+  }, [supabase, profile, usaComissao]);
+
+  // Comissões: Buscar atribuições existentes
+  const fetchAssignments = useCallback(async () => {
+    if (!usaComissao || !os) return;
+    const itemIds = os.work_order_items?.filter(i => i.tipo === 'servico').map(i => i.id) || [];
+    if (itemIds.length === 0) { setAssignmentsMap({}); return; }
+
+    const { data } = await supabase
+      .from('work_order_item_assignments')
+      .select('work_order_item_id, employee_id')
+      .in('work_order_item_id', itemIds);
+
+    const map: Record<string, string[]> = {};
+    (data || []).forEach((a: any) => {
+      if (!map[a.work_order_item_id]) map[a.work_order_item_id] = [];
+      map[a.work_order_item_id].push(a.employee_id);
+    });
+    setAssignmentsMap(map);
+  }, [supabase, os, usaComissao]);
+
+  // Comissões: Salvar equipe de um item
+  const handleSalvarEquipeItem = async (itemId: string, selectedIds: string[]) => {
+    if (!profile?.organization_id) return;
+    if (!isAdmin) return alert('Apenas administradores e gerentes podem alterar a equipe responsável.');
+    setSalvandoEquipe(true);
+    try {
+      // Remove todas as atribuições atuais do item
+      await supabase.from('work_order_item_assignments').delete().eq('work_order_item_id', itemId);
+
+      // Insere as novas
+      if (selectedIds.length > 0) {
+        const inserts = selectedIds.map(empId => ({
+          organization_id: profile.organization_id,
+          work_order_item_id: itemId,
+          employee_id: empId,
+        }));
+        const { error } = await supabase.from('work_order_item_assignments').insert(inserts);
+        if (error) throw error;
+      }
+
+      // Atualiza local
+      setAssignmentsMap(prev => ({ ...prev, [itemId]: selectedIds }));
+      setModalEquipeItemId(null);
+    } catch (err: any) {
+      alert('Erro ao salvar equipe: ' + err.message);
+    } finally {
+      setSalvandoEquipe(false);
+    }
+  };
+
   useEffect(() => {
     if (id && profile?.organization_id) {
       setLoading(true);
-      Promise.all([fetchOS(), fetchCatalogo(), fetchDtcsSalvos()]).finally(() => setLoading(false));
+      Promise.all([fetchOS(), fetchCatalogo(), fetchDtcsSalvos(), fetchFuncionarios()]).finally(() => setLoading(false));
     }
-  }, [fetchOS, fetchCatalogo, fetchDtcsSalvos, id, profile]);
+  }, [fetchOS, fetchCatalogo, fetchDtcsSalvos, fetchFuncionarios, id, profile]);
+
+  // Comissões: Buscar atribuições quando os dados da OS mudam
+  useEffect(() => {
+    if (os && usaComissao) fetchAssignments();
+  }, [os, usaComissao, fetchAssignments]);
+
+  // Comissões: Verificar se o criador da OS é funcionário (não admin/gerente)
+  useEffect(() => {
+    if (!usaComissao || !os?.employee_id) return;
+    supabase
+      .from('profiles')
+      .select('cargo')
+      .eq('id', os.employee_id)
+      .single()
+      .then(({ data }) => {
+        const cargo = data?.cargo?.toUpperCase();
+        setOsCreatorIsEmployee(!!cargo && cargo !== 'ADMIN' && cargo !== 'GERENTE');
+      });
+  }, [os?.employee_id, usaComissao, supabase]);
 
   // --- FUNÇÕES DE FOTO (CÓDIGO NOVO) ---
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -395,9 +509,13 @@ export default function DetalhesOS() {
     try {
       let file = e.target.files[0];
 
-      // Limite de 10MB
-      if (file.size > 10 * 1024 * 1024) {
-        alert("O arquivo é muito grande! O limite é 10MB.");
+      const isVideoFile = file.type.startsWith('video/');
+      const maxSize = isVideoFile ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+      if (file.size > maxSize) {
+        alert(isVideoFile
+          ? "Vídeo muito grande. Grave no máximo 30 segundos em qualidade HD (720p) e tente novamente."
+          : "Imagem muito grande. O limite é 10MB."
+        );
         return;
       }
 
@@ -821,12 +939,119 @@ export default function DetalhesOS() {
 
       if (transError) throw transError;
 
+      // --- GERAR COMISSÕES (se módulo ativo) ---
+      if (usaComissao) {
+        const servicoItems = os!.work_order_items?.filter(i => i.tipo === 'servico') || [];
+        const comissoesParaInserir: any[] = [];
+
+        for (const item of servicoItems) {
+          const assignedIds = assignmentsMap[item.id] || [];
+          if (assignedIds.length === 0) continue;
+
+          for (const empId of assignedIds) {
+            const func = listaFuncionarios.find(f => f.id === empId);
+            const pct = func?.comissao_percentual || 0;
+            if (pct <= 0) continue;
+
+            const comissaoTotal = (item.total_price * pct) / 100;
+            const comissaoRateada = comissaoTotal / assignedIds.length;
+
+            comissoesParaInserir.push({
+              organization_id: profile.organization_id,
+              work_order_id: os!.id,
+              work_order_item_id: item.id,
+              employee_id: empId,
+              amount: Math.round(comissaoRateada * 100) / 100,
+              status: 'pending',
+            });
+          }
+        }
+
+        if (comissoesParaInserir.length > 0) {
+          await supabase.from('commissions').insert(comissoesParaInserir);
+        }
+      }
+
       alert("OS Finalizada e Financeiro Lançado!");
       setModalCheckoutAberto(false);
       setOs({ ...os, status: 'entregue', total: valorTotal });
 
     } catch (error: any) {
       alert("Erro no checkout: " + error.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleAdiantamento = async () => {
+    if (!os || !profile?.organization_id) return;
+    if (formaPagamentoAdiantamento === 'cheque_pre' && !dataChequeAdiantamento) {
+      return alert("Para A prazo, informe a data de depósito.");
+    }
+    const valor = parseFloat(valorAdiantamento);
+    if (!valor || valor <= 0) return alert("Informe um valor válido.");
+    if (valor > saldoRestante + 0.01) return alert("O valor não pode exceder o saldo restante.");
+
+    setUpdating(true);
+    try {
+      const hoje = new Date();
+      const transacoes: any[] = [];
+
+      if (formaPagamentoAdiantamento === 'cartao_credito') {
+        const valorParcela = valor / parcelasAdiantamento;
+        for (let i = 1; i <= parcelasAdiantamento; i++) {
+          const dataVenc = new Date(hoje);
+          dataVenc.setDate(hoje.getDate() + (i * 30));
+          transacoes.push({
+            organization_id: profile.organization_id,
+            work_order_id: os.id,
+            description: `Adiantamento OS #${os.id} - ${os.clients?.nome} (Parc ${i}/${parcelasAdiantamento})`,
+            amount: valorParcela,
+            type: 'income',
+            category: 'Adiantamento',
+            status: 'pending',
+            payment_method: formaPagamentoAdiantamento,
+            date: new Date(dataVenc.getTime() - dataVenc.getTimezoneOffset() * 60000).toISOString().split('T')[0]
+          });
+        }
+      } else if (formaPagamentoAdiantamento === 'cheque_pre') {
+        transacoes.push({
+          organization_id: profile.organization_id,
+          work_order_id: os.id,
+          description: `Adiantamento OS #${os.id} - ${os.clients?.nome} (Cheque)`,
+          amount: valor,
+          type: 'income',
+          category: 'Adiantamento',
+          status: 'pending',
+          payment_method: formaPagamentoAdiantamento,
+          date: dataChequeAdiantamento
+        });
+      } else {
+        transacoes.push({
+          organization_id: profile.organization_id,
+          work_order_id: os.id,
+          description: `Adiantamento OS #${os.id} - ${os.clients?.nome}`,
+          amount: valor,
+          type: 'income',
+          category: 'Adiantamento',
+          status: 'paid',
+          payment_method: formaPagamentoAdiantamento,
+          date: new Date(hoje.getTime() - hoje.getTimezoneOffset() * 60000).toISOString().split('T')[0]
+        });
+      }
+
+      const { error } = await supabase.from('transactions').insert(transacoes);
+      if (error) throw error;
+
+      alert("Adiantamento lançado com sucesso!");
+      setModalAdiantamentoAberto(false);
+      setValorAdiantamento("");
+      setFormaPagamentoAdiantamento("pix");
+      setParcelasAdiantamento(1);
+      setDataChequeAdiantamento("");
+      fetchOS();
+    } catch (err: any) {
+      alert("Erro: " + err.message);
     } finally {
       setUpdating(false);
     }
@@ -841,7 +1066,7 @@ export default function DetalhesOS() {
     const totalItem = valorUnitario * quantidade;
 
     try {
-      const { error: itemError } = await supabase
+      const { data: itemData, error: itemError } = await supabase
         .from("work_order_items")
         .insert({
           work_order_id: os!.id,
@@ -854,9 +1079,21 @@ export default function DetalhesOS() {
           unit_price: valorUnitario,
           total_price: totalItem,
           peca_cliente: false
-        });
+        })
+        .select('id')
+        .single();
 
       if (itemError) throw itemError;
+
+      // Auto-atribuição: se é serviço e a OS foi criada por um funcionário
+      if (tipo === 'servico' && usaComissao && osCreatorIsEmployee && os!.employee_id && itemData?.id) {
+        await supabase.from('work_order_item_assignments').insert({
+          organization_id: profile.organization_id,
+          work_order_item_id: itemData.id,
+          employee_id: os!.employee_id,
+        });
+        setAssignmentsMap(prev => ({ ...prev, [itemData.id]: [os!.employee_id!] }));
+      }
 
       if (tipo === "peca") {
         const { data: prodData } = await supabase
@@ -894,6 +1131,99 @@ export default function DetalhesOS() {
     }
   };
 
+  // --- SCANNER: Lógica de busca por código de barras ---
+  const handleBarcodeScanned = async (code: string) => {
+    setScannerAberto(false);
+    setBuscandoEAN(true);
+    setAvisoEAN(null);
+    const barcode = normalizeBarcode(code);
+
+    if (!barcode) {
+      setAvisoEAN({
+        tipo: "erro",
+        msg: "Código de barras inválido."
+      });
+      setBuscandoEAN(false);
+      return;
+    }
+
+    try {
+      // 1. Busca no catálogo local por EAN
+      const produtoLocal = listaProdutos.find(p => normalizeBarcode(p.ean || "") === barcode);
+      if (produtoLocal) {
+        // Adiciona direto na OS
+        await handleAdicionarItem(produtoLocal, "peca");
+        return;
+      }
+
+      // 2. Busca nas APIs externas (Cosmos Brasil + Internacional)
+      const cosmosData = await fetchProductFromCosmos(barcode);
+
+      if (!cosmosData) {
+        setAvisoEAN({
+          tipo: 'erro',
+          msg: `Peça com código ${barcode} não encontrada no seu estoque e nem na internet. Cadastre manualmente.`
+        });
+        // Pre-fill the search with the code
+        setTermoBusca(barcode);
+        if (!modalAdicionarTipo) setModalAdicionarTipo('peca');
+        return;
+      }
+
+      // 3. Encontrou na API! Cadastra no banco local
+      if (!profile?.organization_id) {
+        setAvisoEAN({
+          tipo: "erro",
+          msg: "Sessão expirada. Atualize a página e tente novamente."
+        });
+        return;
+      }
+
+      const nomeProduto = cosmosData.description || `Produto EAN ${barcode}`;
+      const marcaProduto = typeof cosmosData.brand === 'string'
+        ? cosmosData.brand
+        : cosmosData.brand?.name || '';
+      const ncmProduto = cosmosData.ncm?.code || '';
+
+      const { data: novoProduto, error: insertError } = await supabase
+        .from('products')
+        .insert({
+          organization_id: profile.organization_id,
+          nome: nomeProduto,
+          marca: marcaProduto,
+          ean: barcode,
+          ncm: ncmProduto,
+          estoque_atual: 0,
+          estoque_min: 0,
+          custo_reposicao: 0,
+          custo_contabil: 0,
+          preco_venda: 0,
+        })
+        .select('id, nome, preco_venda, estoque_atual, ean')
+        .single();
+
+      if (insertError) throw insertError;
+
+      // Atualiza o catálogo local
+      setListaProdutos(prev => [...prev, novoProduto as CatalogItem]);
+
+      setAvisoEAN({
+        tipo: 'sucesso',
+        msg: `✅ Peça "${nomeProduto}" encontrada na internet e adicionada ao seu estoque! Lembre-se de conferir o preço de venda.`
+      });
+
+      // Adiciona na OS
+      await handleAdicionarItem(novoProduto as CatalogItem, "peca");
+
+    } catch (err: any) {
+      setAvisoEAN({
+        tipo: 'erro',
+        msg: 'Erro ao buscar peça: ' + (err.message || 'Tente novamente.')
+      });
+    } finally {
+      setBuscandoEAN(false);
+    }
+  };
   const handleCadastroRapido = async () => {
     if (!profile?.organization_id) return;
     if (!nomeNovoItem.trim()) {
@@ -985,6 +1315,9 @@ export default function DetalhesOS() {
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
+  const totalAdiantado = adiantamentos.reduce((acc, a) => acc + a.amount, 0);
+  const saldoRestante = (os?.total || 0) - totalAdiantado;
+
   const getStatusColor = (stepStatus: string) => {
     if (!os) return "";
     const currentStatus = os!.status;
@@ -1006,13 +1339,7 @@ export default function DetalhesOS() {
       const baseUrl = window.location.origin;
       const trackingLink = `${baseUrl}/acompanhar?token=${os!.public_token}`;
 
-      let message = `Olá ${os!.clients.nome}, tudo bem? 👋\n\n`;
-      if (os!.vehicles) {
-        message += `Sobre o seu veículo: *${os!.vehicles?.modelo}* (OS #${osId}).\n`;
-      } else {
-        message += `Sobre o seu serviço (OS #${osId}).\n`;
-      }
-      message += `Você pode acompanhar o status e o orçamento clicando aqui:\n\n${trackingLink}`;
+      let message = `Olá ${os!.clients.nome}. Para aprovar e acompanhar o serviço clique no link abaixo ${trackingLink}`;
 
       window.open(`https://wa.me/55${number}?text=${encodeURIComponent(message)}`, '_blank');
     } else {
@@ -1188,7 +1515,7 @@ export default function DetalhesOS() {
                     <div><p className="font-bold text-sm">Pronto p/ Entrega</p><p className="text-xs opacity-80">Veículo testado e liberado</p></div>
                   </div>
                   {os!.status === 'pronto' && (
-                    <button onClick={() => setModalCheckoutAberto(true)} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                    <button onClick={() => { setValorFinal(Math.max(0, saldoRestante).toFixed(2)); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
                       Entregar & Fechar
                     </button>
                   )}
@@ -1232,7 +1559,7 @@ export default function DetalhesOS() {
                     <div><p className="font-bold text-sm">Serviço Pronto</p><p className="text-xs opacity-80">Aguardando retirada</p></div>
                   </div>
                   {os!.status === 'pronto' && (
-                    <button onClick={() => setModalCheckoutAberto(true)} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                    <button onClick={() => { setValorFinal(Math.max(0, saldoRestante).toFixed(2)); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
                       Receber & Fechar
                     </button>
                   )}
@@ -1347,10 +1674,22 @@ export default function DetalhesOS() {
 
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {/* Botão Adicionar */}
+              {/* Botão Foto */}
               <label className="aspect-square rounded-2xl border-2 border-dashed border-stone-200 flex flex-col items-center justify-center cursor-pointer hover:border-[#FACC15] hover:bg-yellow-50 transition gap-1 relative">
-                {uploading ? <Loader2 className="animate-spin text-stone-400" /> : <Plus size={24} className="text-stone-300" />}
-                <input type="file" accept="image/*,video/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
+                {uploading ? <Loader2 className="animate-spin text-stone-400" size={20} /> : <Camera size={20} className="text-stone-300" />}
+                <span className="text-[9px] text-stone-300 font-bold uppercase tracking-wide">Foto</span>
+                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
               </label>
+
+              {/* Botão Vídeo */}
+              <div
+                onClick={() => !uploading && setVideoWarningOpen(true)}
+                className="aspect-square rounded-2xl border-2 border-dashed border-stone-200 flex flex-col items-center justify-center cursor-pointer hover:border-[#FACC15] hover:bg-yellow-50 transition gap-1"
+              >
+                <Video size={20} className="text-stone-300" />
+                <span className="text-[9px] text-stone-300 font-bold uppercase tracking-wide">Vídeo</span>
+                <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
+              </div>
 
               {/* Lista de Fotos/Vídeos */}
               {os!.photos?.map((url, idx) => (
@@ -1500,8 +1839,36 @@ export default function DetalhesOS() {
                       <p className="text-[10px] text-stone-400">
                         {item.quantity}x R$ {(item.unit_price || 0).toFixed(2)}
                       </p>
+                      {/* Comissões: badges dos profissionais atribuídos */}
+                      {usaComissao && assignmentsMap[item.id]?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {assignmentsMap[item.id].map(empId => {
+                            const func = listaFuncionarios.find(f => f.id === empId);
+                            return func ? (
+                              <span key={empId} className="inline-flex items-center gap-1 text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-full border border-blue-200">
+                                {func.nome.split(' ')[0]}
+                              </span>
+                            ) : null;
+                          })}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
+                      {/* Comissões: botão de atribuir equipe — apenas admin/gerente */}
+                      {usaComissao && isAdmin && os!.status !== 'cancelado' && os!.status !== 'entregue' && (
+                        <button
+                          onClick={() => setModalEquipeItemId(item.id)}
+                          className={`p-1.5 rounded-lg transition border ${
+                            assignmentsMap[item.id]?.length > 0
+                              ? 'bg-blue-50 text-blue-600 border-blue-200'
+                              : 'bg-white text-stone-400 border-stone-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200'
+                          }`}
+                          title="Gerenciar equipe responsável"
+                        >
+                          <Users2 size={16} />
+                        </button>
+                      )}
+
                       {os!.status !== 'cancelado' && os!.status !== 'entregue' ? (
                         <button
                           onClick={() => {
@@ -1636,6 +2003,36 @@ export default function DetalhesOS() {
                 <span className="font-bold text-[#1A1A1A]">Total Geral</span>
                 <span className="font-bold text-[#1A1A1A]">{formatCurrency(os!.total)}</span>
               </div>
+
+              {/* ADIANTAMENTOS */}
+              {adiantamentos.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 space-y-1.5 text-xs">
+                  {adiantamentos.map(a => (
+                    <div key={a.id} className="flex justify-between text-stone-600">
+                      <span>↳ Adiantamento ({a.payment_method}) – {new Date(a.created_at).toLocaleDateString('pt-BR')}</span>
+                      <span className="text-green-700 font-bold">– {formatCurrency(a.amount)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between font-bold border-t border-green-200 pt-1.5 text-sm">
+                    <span className="text-[#1A1A1A]">Saldo Restante</span>
+                    <span className={saldoRestante <= 0.01 ? 'text-green-600' : 'text-[#1A1A1A]'}>
+                      {saldoRestante <= 0.01 ? '✓ Quitado' : formatCurrency(saldoRestante)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {os!.status !== 'cancelado' && os!.status !== 'entregue' && (
+                <button
+                  onClick={() => {
+                    setValorAdiantamento(Math.max(0, saldoRestante).toFixed(2));
+                    setModalAdiantamentoAberto(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition mt-1"
+                >
+                  <DollarSign size={16} /> Lançar Adiantamento
+                </button>
+              )}
 
               {/* RELATÓRIO DE SCANNER */}
               <div className="border-t border-stone-200 mt-4 pt-4">
@@ -1915,16 +2312,49 @@ export default function DetalhesOS() {
                 </button>
               </div>
 
-              <div className="relative">
-                <input
-                  autoFocus
-                  placeholder={`Buscar ${modalAdicionarTipo === 'servico' ? 'serviço...' : 'peça...'}`}
-                  value={termoBusca}
-                  onChange={(e) => setTermoBusca(e.target.value)}
-                  className="w-full bg-[#F8F7F2] p-4 pl-10 rounded-2xl border-2 border-stone-300 focus:border-[#FACC15] outline-none text-sm text-[#1A1A1A] placeholder:text-stone-400 font-medium transition"
-                />
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+              <div className="relative flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    autoFocus
+                    placeholder={`Buscar ${modalAdicionarTipo === 'servico' ? 'serviço...' : 'peça por nome ou código de barras...'}`}
+                    value={termoBusca}
+                    onChange={(e) => setTermoBusca(e.target.value)}
+                    className="w-full bg-[#F8F7F2] p-4 pl-10 rounded-2xl border-2 border-stone-300 focus:border-[#FACC15] outline-none text-sm text-[#1A1A1A] placeholder:text-stone-400 font-medium transition"
+                  />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                </div>
+                {modalAdicionarTipo === 'peca' && (
+                  <button
+                    onClick={() => setScannerAberto(true)}
+                    className="w-14 h-14 bg-[#1A1A1A] text-[#FACC15] rounded-2xl flex items-center justify-center hover:bg-black transition shrink-0 shadow-lg hover:scale-105 active:scale-95"
+                    title="Escanear código de barras"
+                  >
+                    <Camera size={22} />
+                  </button>
+                )}
               </div>
+
+              {/* Aviso do Scanner */}
+              {avisoEAN && (
+                <div className={`p-3 rounded-2xl text-sm font-medium flex items-start gap-2 ${
+                  avisoEAN.tipo === 'sucesso' ? 'bg-green-50 text-green-700 border border-green-200' :
+                  avisoEAN.tipo === 'erro' ? 'bg-red-50 text-red-700 border border-red-200' :
+                  'bg-blue-50 text-blue-700 border border-blue-200'
+                }`}>
+                  <span className="shrink-0 mt-0.5">{avisoEAN.tipo === 'sucesso' ? '✅' : avisoEAN.tipo === 'erro' ? '❌' : 'ℹ️'}</span>
+                  <span>{avisoEAN.msg}</span>
+                  <button onClick={() => setAvisoEAN(null)} className="ml-auto shrink-0 text-stone-400 hover:text-stone-600"><X size={14} /></button>
+                </div>
+              )}
+
+              {/* Buscando EAN */}
+              {buscandoEAN && (
+                <div className="text-center py-4 text-stone-500 flex flex-col items-center gap-2 bg-stone-50 rounded-2xl border border-stone-200">
+                  <Loader2 className="animate-spin text-[#FACC15]" size={28} />
+                  <p className="text-sm font-medium">Procurando peça pelo código de barras...</p>
+                  <p className="text-xs text-stone-400">Buscando no estoque e na internet</p>
+                </div>
+              )}
 
               <div className="flex-1 overflow-auto space-y-2 pb-4">
                 {adicionandoItem && (
@@ -1933,9 +2363,12 @@ export default function DetalhesOS() {
                   </div>
                 )}
 
-                {!adicionandoItem && modalAdicionarTipo === "peca" &&
+                {!adicionandoItem && !buscandoEAN && modalAdicionarTipo === "peca" &&
                   listaProdutos
-                    .filter((p) => p.nome.toLowerCase().includes(termoBusca.toLowerCase()))
+                    .filter((p) => {
+                      const termo = termoBusca.toLowerCase();
+                      return p.nome.toLowerCase().includes(termo) || (p.ean && p.ean.includes(termoBusca));
+                    })
                     .map((p) => (
                       <button
                         key={p.id}
@@ -1986,6 +2419,14 @@ export default function DetalhesOS() {
           </div>
         )
       }
+
+      {/* SCANNER DE CÓDIGO DE BARRAS */}
+      {scannerAberto && (
+        <ScannerModal
+          onCodeScanned={handleBarcodeScanned}
+          onClose={() => setScannerAberto(false)}
+        />
+      )}
 
       {/* MODAL CADASTRO RÁPIDO */}
       {
@@ -2045,6 +2486,107 @@ export default function DetalhesOS() {
         )
       }
 
+      {/* MODAL ADIANTAMENTO */}
+      {modalAdiantamentoAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-5">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-blue-700 flex items-center gap-2">
+                <DollarSign /> Adiantamento
+              </h2>
+              <button onClick={() => setModalAdiantamentoAberto(false)}><X /></button>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-xs space-y-1">
+              <div className="flex justify-between text-stone-500">
+                <span>Total OS</span>
+                <span>{formatCurrency(os!.total)}</span>
+              </div>
+              {adiantamentos.length > 0 && (
+                <div className="flex justify-between text-green-700 font-bold">
+                  <span>Já adiantado</span>
+                  <span>– {formatCurrency(totalAdiantado)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold border-t border-blue-200 pt-1 text-stone-700">
+                <span>Saldo Restante</span>
+                <span>{formatCurrency(Math.max(0, saldoRestante))}</span>
+              </div>
+            </div>
+
+            <div className="bg-stone-50 p-4 rounded-2xl text-center">
+              <p className="text-xs text-stone-500 uppercase font-bold">Valor do Adiantamento</p>
+              <div className="flex items-center justify-center gap-1 mt-1">
+                <span className="text-stone-400 font-bold">R$</span>
+                <input
+                  type="number"
+                  value={valorAdiantamento}
+                  onChange={(e) => setValorAdiantamento(e.target.value)}
+                  className="bg-transparent text-3xl font-bold text-[#1A1A1A] w-32 text-center outline-none border-b border-stone-300 focus:border-[#FACC15] transition"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-2">FORMA DE PAGAMENTO</label>
+                <select
+                  value={formaPagamentoAdiantamento}
+                  onChange={(e) => setFormaPagamentoAdiantamento(e.target.value)}
+                  className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
+                >
+                  <option value="pix">Pix</option>
+                  <option value="dinheiro">Dinheiro</option>
+                  <option value="cartao_debito">Cartão de Débito</option>
+                  <option value="cartao_credito">Cartão de Crédito</option>
+                  <option value="cheque_pre">A prazo</option>
+                </select>
+              </div>
+
+              {formaPagamentoAdiantamento === 'cartao_credito' && (
+                <div className="animate-in slide-in-from-top-2">
+                  <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                    <CreditCard size={12} /> PARCELAS
+                  </label>
+                  <select
+                    value={parcelasAdiantamento}
+                    onChange={(e) => setParcelasAdiantamento(Number(e.target.value))}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 10, 12].map(n => (
+                      <option key={n} value={n}>{n}x de {formatCurrency(parseFloat(valorAdiantamento || '0') / n)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {formaPagamentoAdiantamento === 'cheque_pre' && (
+                <div className="animate-in slide-in-from-top-2">
+                  <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1">
+                    <Calendar size={12} /> DATA DE DEPÓSITO
+                  </label>
+                  <input
+                    type="date"
+                    value={dataChequeAdiantamento}
+                    onChange={(e) => setDataChequeAdiantamento(e.target.value)}
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium text-[#1A1A1A] border-2 border-stone-300 focus:border-[#FACC15]"
+                  />
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={handleAdiantamento}
+              disabled={updating}
+              className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 hover:bg-blue-700 transition"
+            >
+              {updating ? <Loader2 className="animate-spin" /> : <CheckCircle />}
+              Confirmar Adiantamento
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* MODAL CHECKOUT FINANCEIRO */}
       {
         modalCheckoutAberto && (
@@ -2057,8 +2599,27 @@ export default function DetalhesOS() {
                 <button onClick={() => setModalCheckoutAberto(false)}><X /></button>
               </div>
 
+              {adiantamentos.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-2xl p-3 text-xs space-y-1">
+                  <div className="flex justify-between text-stone-500">
+                    <span>Total OS</span>
+                    <span>{formatCurrency(os!.total)}</span>
+                  </div>
+                  <div className="flex justify-between text-green-700 font-bold">
+                    <span>Adiantamentos recebidos</span>
+                    <span>– {formatCurrency(totalAdiantado)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold border-t border-green-200 pt-1 text-stone-700">
+                    <span>Saldo</span>
+                    <span>{formatCurrency(Math.max(0, saldoRestante))}</span>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-stone-50 p-4 rounded-2xl text-center">
-                <p className="text-xs text-stone-500 uppercase font-bold">Total a Receber</p>
+                <p className="text-xs text-stone-500 uppercase font-bold">
+                  {adiantamentos.length > 0 ? 'Saldo a Receber' : 'Total a Receber'}
+                </p>
                 <div className="flex items-center justify-center gap-1 mt-1">
                   <span className="text-stone-400 font-bold">R$</span>
                   <input
@@ -2275,6 +2836,96 @@ export default function DetalhesOS() {
         )
       }
 
+
+      {/* MODAL ATRIBUIÇÃO DE EQUIPE (COMISSÕES) */}
+      {modalEquipeItemId && (() => {
+        const currentAssigned = assignmentsMap[modalEquipeItemId] || [];
+        const itemName = os?.work_order_items?.find(i => i.id === modalEquipeItemId)?.name || 'Serviço';
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="font-bold text-lg text-[#1A1A1A] flex items-center gap-2">
+                  <Users2 size={20} className="text-blue-600" /> Equipe Responsável
+                </h2>
+                <button onClick={() => setModalEquipeItemId(null)}><X size={20} className="text-stone-400" /></button>
+              </div>
+
+              <p className="text-sm text-stone-500">Selecione quem participou do serviço <strong>{itemName}</strong>:</p>
+
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {listaFuncionarios.map(func => {
+                  const isChecked = currentAssigned.includes(func.id);
+                  return (
+                    <label key={func.id} className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition ${isChecked ? 'bg-blue-50 border-blue-300' : 'bg-stone-50 border-stone-200 hover:bg-stone-100'}`}>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            const updated = isChecked
+                              ? currentAssigned.filter(id => id !== func.id)
+                              : [...currentAssigned, func.id];
+                            setAssignmentsMap(prev => ({ ...prev, [modalEquipeItemId]: updated }));
+                          }}
+                          className="w-5 h-5 accent-blue-600 rounded"
+                        />
+                        <span className="font-bold text-sm text-[#1A1A1A]">{func.nome}</span>
+                      </div>
+                      {isChecked && (
+                        <span className="text-xs font-bold text-blue-600">
+                          {Math.round(100 / currentAssigned.length)}%
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => handleSalvarEquipeItem(modalEquipeItemId, assignmentsMap[modalEquipeItemId] || [])}
+                disabled={salvandoEquipe}
+                className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-xl shadow-md hover:scale-105 transition flex items-center justify-center gap-2 disabled:opacity-70"
+              >
+                {salvandoEquipe ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Salvar Equipe
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL AVISO VÍDEO */}
+      {videoWarningOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-yellow-50 flex items-center justify-center shrink-0">
+                <Video size={20} className="text-yellow-600" />
+              </div>
+              <div>
+                <p className="font-bold text-[#1A1A1A]">Antes de gravar</p>
+                <p className="text-sm text-stone-500 mt-1 leading-relaxed">
+                  Grave no máximo <strong>30 segundos</strong> e, se possível, use a qualidade <strong>HD (720p)</strong> nas configurações da câmera. Vídeos grandes podem falhar no envio.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setVideoWarningOpen(false)}
+                className="flex-1 py-2.5 rounded-xl border border-stone-200 text-stone-500 text-sm font-bold hover:bg-stone-50 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { setVideoWarningOpen(false); videoInputRef.current?.click(); }}
+                className="flex-1 py-2.5 rounded-xl bg-[#1A1A1A] text-[#FACC15] text-sm font-bold hover:bg-black transition"
+              >
+                Entendi, gravar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL VISUALIZAÇÃO DE FOTO (LIGHTBOX) */}
       {

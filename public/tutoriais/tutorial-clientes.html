@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial: Clientes</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #1a1a1a;
+      --yellow: #facc15;
+      --yellow-light: #fef9c3;
+      --green: #16a34a;
+      --green-light: #dcfce7;
+      --blue: #1d4ed8;
+      --blue-light: #dbeafe;
+      --orange: #ea580c;
+      --orange-light: #ffedd5;
+      --red: #dc2626;
+      --red-light: #fee2e2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 24px 16px;
+    }
+    .container { max-width: 780px; margin: 0 auto; }
+    .header {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px 28px 24px;
+      margin-bottom: 28px;
+    }
+    .header h1 { margin: 0 0 6px; font-size: 1.7rem; color: var(--yellow); line-height: 1.2; }
+    .header p { margin: 0; color: #d1d5db; font-size: 0.95rem; }
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--accent);
+      color: var(--yellow);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .section-header { display: flex; align-items: center; margin-bottom: 14px; }
+    .section-header h2 { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--accent); }
+    .section p { margin: 6px 0; font-size: 0.95rem; }
+    ol, ul { margin: 10px 0 10px 20px; padding: 0; }
+    li { margin: 7px 0; font-size: 0.95rem; }
+    .callout {
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.tip   { background: var(--yellow-light); border-left: 4px solid #ca8a04; }
+    .callout.info  { background: var(--blue-light);   border-left: 4px solid var(--blue); }
+    .callout.warn  { background: var(--orange-light); border-left: 4px solid var(--orange); }
+    .callout.good  { background: var(--green-light);  border-left: 4px solid var(--green); }
+    .callout.danger{ background: var(--red-light);    border-left: 4px solid var(--red); }
+    .field-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      padding: 8px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-name { font-weight: 700; min-width: 160px; font-size: 0.88rem; color: var(--accent); }
+    .field-desc { font-size: 0.88rem; color: var(--muted); }
+    .link-saiba-mais {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 14px;
+      padding: 18px 22px;
+      margin: 14px 0;
+      text-decoration: none;
+      transition: opacity .18s;
+    }
+    .link-saiba-mais:hover { opacity: 0.88; }
+    .link-saiba-mais .lsm-icon { font-size: 1.8rem; flex-shrink: 0; }
+    .link-saiba-mais .lsm-title { font-weight: 800; font-size: 1rem; color: var(--yellow); margin: 0; }
+    .link-saiba-mais .lsm-sub { font-size: 0.82rem; color: #d1d5db; margin: 2px 0 0; }
+    .link-saiba-mais .lsm-arrow { margin-left: auto; font-size: 1.4rem; color: var(--yellow); flex-shrink: 0; }
+    @media (max-width: 520px) {
+      .field-row { flex-direction: column; gap: 2px; }
+      .field-name { min-width: unset; }
+    }
+    /* ── ACORDEÃO DE PASSOS ── */
+    .section-header {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 22px;
+    }
+    .section-header::after {
+      content: "▸";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.9rem;
+      transition: transform .18s ease;
+    }
+    .section.open .section-header::after {
+      transform: translateY(-50%) rotate(90deg);
+    }
+    .section-content { display: none; }
+    .section.open .section-content { display: block; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Clientes</h1>
+    <p>Como buscar, cadastrar e gerenciar clientes — incluindo ficha financeira e extrato.</p>
+  </div>
+
+  <!-- 1. LISTA DE CLIENTES -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">1</span><h2>Acessar a lista de clientes</h2></div>
+    <p>Acesse pelo menu <strong>Clientes</strong> (menu inferior no celular, menu lateral no computador). A tela exibe uma tabela com todos os clientes — nome, contato, veículos vinculados e situação financeira.</p>
+  </div>
+
+  <!-- 2. BUSCAR E FILTRAR -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">2</span><h2>Buscar e filtrar clientes</h2></div>
+    <p>A barra de busca no topo filtra em tempo real por <strong>nome</strong>, <strong>WhatsApp</strong>, <strong>placa</strong> ou <strong>modelo do veículo</strong>.</p>
+    <p>O botão <strong>Ver Devedores</strong> ao lado exibe apenas clientes com saldo em aberto — útil para cobranças. Quando ativo, o botão fica vermelho claro.</p>
+    <p>Na coluna <strong>Financeiro</strong> da tabela cada cliente mostra:</p>
+    <ul>
+      <li><strong style="color:#dc2626;">Atrasado</strong> — valor com vencimento passado ainda não pago.</li>
+      <li><strong style="color:#ca8a04;">A Vencer</strong> — parcela futura (cartão parcelado, cheque, a prazo).</li>
+      <li><strong style="color:#16a34a;">Em dia</strong> — sem pendências financeiras.</li>
+    </ul>
+  </div>
+
+  <!-- 3. NOVO CLIENTE -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">3</span><h2>Criar um novo cliente</h2></div>
+    <p>Clique no botão preto <strong>+ Novo Cliente</strong> no canto superior da tela.</p>
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Você também pode cadastrar um cliente diretamente ao abrir uma nova OS ou Venda Direta, sem precisar acessar a tela de Clientes.</span>
+    </div>
+  </div>
+
+  <!-- 4. ABRIR A FICHA -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">4</span><h2>Abrir a ficha de um cliente</h2></div>
+    <p>Clique na seta <strong>→</strong> à direita da linha do cliente na tabela. A ficha tem quatro seções: <strong>Dados Básicos</strong>, <strong>Endereço</strong>, <strong>Financeiro &amp; Portal</strong> e <strong>Veículos</strong>.</p>
+  </div>
+
+  <!-- 5. DADOS PESSOAIS -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">5</span><h2>Editar dados pessoais</h2></div>
+    <div class="field-row">
+      <div class="field-name">Nome Completo</div>
+      <div class="field-desc">Aparece na OS e no extrato do cliente.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-name">CPF / CNPJ</div>
+      <div class="field-desc">Opcional. Usado na emissão de nota fiscal.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-name">WhatsApp</div>
+      <div class="field-desc">Número para envio do link de rastreamento e extrato.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-name">E-mail</div>
+      <div class="field-desc">Campo opcional para referência interna.</div>
+    </div>
+    <p style="margin-top:12px;">Após alterar qualquer campo, toque em <strong>Salvar Alterações</strong> no botão flutuante na parte inferior da tela.</p>
+  </div>
+
+  <!-- 6. ENDEREÇO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">6</span><h2>Endereço</h2></div>
+    <p>Preencha CEP, Rua, Número e Bairro. Usado para referência e emissão de nota fiscal. Salve com o botão flutuante.</p>
+  </div>
+
+  <!-- 7. FINANCEIRO & EXTRATO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">7</span><h2>Financeiro e Extrato do Cliente</h2></div>
+    <p>A seção <strong>Financeiro &amp; Portal</strong> mostra dois cards de resumo:</p>
+    <ul>
+      <li><strong style="color:#16a34a;">Total Pago</strong> — soma de todos os valores já quitados pelo cliente em OS fechadas.</li>
+      <li><strong style="color:#dc2626;">Saldo Devedor</strong> — total ainda pendente (parcelas futuras, a prazo, cheques não compensados).</li>
+    </ul>
+    <p style="margin-top:14px;">Abaixo dos cards, na subseção <strong>Extrato do Cliente</strong>, há dois botões:</p>
+    <div class="field-row">
+      <div class="field-name">🔗 Ver Extrato</div>
+      <div class="field-desc">Abre o extrato completo em nova aba — todas as OS, itens e pagamentos do cliente.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-name">💬 Enviar WhatsApp</div>
+      <div class="field-desc">Gera automaticamente a mensagem com o link do extrato e abre o WhatsApp do cliente.</div>
+    </div>
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <span>O link é único por cliente e não expira. O cliente pode abri-lo quantas vezes quiser — os dados são sempre atualizados em tempo real.</span>
+    </div>
+
+    <a href="/tutoriais/tutorial-extrato-cliente.html" target="_blank" rel="noopener noreferrer" class="link-saiba-mais">
+      <span class="lsm-icon">📋</span>
+      <div>
+        <p class="lsm-title">Saiba mais sobre o Extrato do Cliente</p>
+        <p class="lsm-sub">O que o cliente vê: resumo financeiro, pendências, histórico por mês e detalhes de cada OS.</p>
+      </div>
+      <span class="lsm-arrow">→</span>
+    </a>
+  </div>
+
+  <!-- 8. VEÍCULOS -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">8</span><h2>Veículos vinculados</h2></div>
+    <p>A seção <strong>Veículos Cadastrados</strong> lista todos os veículos do cliente.</p>
+    <p><strong>Adicionar:</strong> toque em <strong>+ Incluir</strong>, preencha Placa, Fabricante, Modelo, Cor, Ano e Observações, salve.</p>
+    <p><strong>Editar:</strong> toque no ícone de lápis ao lado do veículo.</p>
+    <div class="callout warn">
+      <span class="callout-icon">⚠️</span>
+      <span>Veículos adicionados aqui ficam disponíveis na abertura de novas OS para este cliente.</span>
+    </div>
+  </div>
+
+  <!-- 9. EXCLUIR -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">9</span><h2>Excluir um cliente</h2></div>
+    <p>No topo da ficha clique em <strong>Excluir</strong> (texto vermelho ao lado do título).</p>
+    <div class="callout danger">
+      <span class="callout-icon">🚨</span>
+      <span>A exclusão remove o cliente <strong>e todos os veículos vinculados</strong> de forma permanente e irreversível. O histórico de OS permanece nos registros de atendimento, mas sem vínculo ao cadastro. Prefira manter o cadastro e cancelar OS quando necessário.</span>
+    </div>
+  </div>
+
+</div>
+<script>
+  (function initTutorialAccordion() {
+    const sections = document.querySelectorAll('.section');
+    sections.forEach((section, index) => {
+      if (section.dataset.accordionReady === '1') return;
+      const header = section.querySelector(':scope > .section-header');
+      if (!header) return;
+      const sectionNum = header.querySelector('.section-num');
+      if (sectionNum) sectionNum.textContent = String(index + 1);
+      const content = document.createElement('div');
+      content.className = 'section-content';
+      Array.from(section.children).forEach((child) => {
+        if (child !== header) content.appendChild(child);
+      });
+      section.appendChild(content);
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-expanded', 'false');
+      const toggle = () => {
+        const open = !section.classList.contains('open');
+        section.classList.toggle('open', open);
+        header.setAttribute('aria-expanded', String(open));
+      };
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      section.dataset.accordionReady = '1';
+    });
+  })();
+</script>
+</body>
+</html>

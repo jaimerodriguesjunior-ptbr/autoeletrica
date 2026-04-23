@@ -31,6 +31,13 @@ type CompanyData = {
     usa_caixa?: boolean;
     logo_url?: string;
     endereco?: string;
+    aplicar_markup_importacao?: boolean;
+    markup_valor_importacao?: number;
+    fin_mostrar_portal?: boolean;
+    fin_cartao_com_juros?: boolean;
+    fin_taxa_juros_mes?: number;
+    fin_chave_pix?: string;
+    fin_cidade_pix?: string;
 };
 
 export async function registerCompanyInNuvemFiscal(data: CompanyData) {
@@ -109,7 +116,14 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
             usa_fiscal: data.usa_fiscal !== undefined ? data.usa_fiscal : true,
             usa_caixa: data.usa_caixa !== undefined ? data.usa_caixa : true,
             logo_url: data.logo_url,
-            endereco: data.endereco
+            endereco: data.endereco,
+            aplicar_markup_importacao: data.aplicar_markup_importacao ?? false,
+            markup_valor_importacao: data.markup_valor_importacao ?? 2.0,
+            fin_mostrar_portal: data.fin_mostrar_portal ?? false,
+            fin_cartao_com_juros: data.fin_cartao_com_juros ?? false,
+            fin_taxa_juros_mes: data.fin_taxa_juros_mes ?? 0,
+            fin_chave_pix: data.fin_chave_pix,
+            fin_cidade_pix: data.fin_cidade_pix
         };
 
         if (!isPlaceholder(data.csc_token_production)) upsertData.csc_token_production = data.csc_token_production;
@@ -237,10 +251,10 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
                 configureEnvironment('production'),
                 configureEnvironment('homologation')
             ]);
-            return { success: true, message: "Empresa salva e configurada na Nuvem Fiscal!" };
+            return { success: true, message: "Empresa salva" };
         }
 
-        return { success: true, message: "Dados da oficina salvos com sucesso (Módulo Fiscal desativado)!" };
+        return { success: true, message: "Empresa salva" };
 
     } catch (error: any) {
         console.error("Erro em registerCompanyInNuvemFiscal:", error);
@@ -285,7 +299,7 @@ export async function getCompanySettings() {
     return company;
 }
 
-export async function toggleCompanyModule(module: 'usa_fiscal' | 'usa_caixa' | 'usa_agendamento', value: boolean) {
+export async function toggleCompanyModule(module: 'usa_fiscal' | 'usa_caixa' | 'usa_agendamento' | 'usa_comissao', value: boolean) {
     const supabase = createClient();
 
     // Validar autenticação

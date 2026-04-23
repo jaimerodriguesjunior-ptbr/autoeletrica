@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial: Estoque e Serviços</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #1a1a1a;
+      --yellow: #facc15;
+      --yellow-light: #fef9c3;
+      --green: #16a34a;
+      --green-light: #dcfce7;
+      --blue: #1d4ed8;
+      --blue-light: #dbeafe;
+      --orange: #ea580c;
+      --orange-light: #ffedd5;
+      --red: #dc2626;
+      --red-light: #fee2e2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 24px 16px;
+    }
+    .container { max-width: 780px; margin: 0 auto; }
+
+    .header {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px 28px 24px;
+      margin-bottom: 28px;
+    }
+    .header h1 { margin: 0 0 6px; font-size: 1.7rem; color: var(--yellow); line-height: 1.2; }
+    .header p { margin: 0; color: #d1d5db; font-size: 0.95rem; }
+
+    /* PERGUNTA */
+    .question-block {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 22px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .question-label { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin-bottom: 12px; }
+    .question-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 14px; color: var(--accent); }
+    .options { display: flex; gap: 10px; flex-wrap: wrap; }
+    .option-btn {
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 22px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--bg);
+      color: var(--text);
+      transition: all .18s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      justify-content: center;
+    }
+    .option-btn:hover { border-color: #9ca3af; background: #f3f4f6; }
+    .option-btn.selected { border-color: var(--accent); background: var(--accent); color: var(--yellow); }
+    .option-btn .icon { font-size: 1.3rem; }
+
+    #reset-btn {
+      display: none;
+      margin-bottom: 20px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    #reset-btn:hover { background: #f3f4f6; }
+
+    /* CONTEÚDO */
+    .flow { display: none; }
+    .flow.active { display: block; }
+
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--accent);
+      color: var(--yellow);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .section-header { display: flex; align-items: center; margin-bottom: 14px; }
+    .section-header h2 { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--accent); }
+    .section p { margin: 6px 0; font-size: 0.95rem; }
+
+    ol, ul { margin: 10px 0 10px 20px; padding: 0; }
+    li { margin: 7px 0; font-size: 0.95rem; }
+
+    .callout {
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.tip   { background: var(--yellow-light); border-left: 4px solid #ca8a04; }
+    .callout.info  { background: var(--blue-light);   border-left: 4px solid var(--blue); }
+    .callout.warn  { background: var(--orange-light); border-left: 4px solid var(--orange); }
+    .callout.good  { background: var(--green-light);  border-left: 4px solid var(--green); }
+    .callout.danger{ background: var(--red-light);    border-left: 4px solid var(--red); }
+
+    .field-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      padding: 8px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-name { font-weight: 700; min-width: 170px; font-size: 0.88rem; color: var(--accent); }
+    .field-desc { font-size: 0.88rem; color: var(--muted); }
+
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      border-radius: 20px;
+      padding: 4px 12px;
+    }
+    .badge.ok     { background: #dcfce7; color: #166534; }
+    .badge.baixo  { background: #fee2e2; color: #991b1b; }
+    .badge.defas  { background: #fef9c3; color: #92400e; }
+    .badge.revisar{ background: #dbeafe; color: #1e3a8a; }
+
+    .link-saiba-mais {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 14px;
+      padding: 18px 22px;
+      margin: 14px 0;
+      text-decoration: none;
+      transition: opacity .18s;
+    }
+    .link-saiba-mais:hover { opacity: 0.88; }
+    .link-saiba-mais .lsm-icon { font-size: 1.8rem; flex-shrink: 0; }
+    .link-saiba-mais .lsm-title { font-weight: 800; font-size: 1rem; color: var(--yellow); margin: 0; }
+    .link-saiba-mais .lsm-sub { font-size: 0.82rem; color: #d1d5db; margin: 2px 0 0; }
+    .link-saiba-mais .lsm-arrow { margin-left: auto; font-size: 1.4rem; color: var(--yellow); flex-shrink: 0; }
+
+    @media (max-width: 520px) {
+      .options { flex-direction: column; }
+      .field-row { flex-direction: column; gap: 2px; }
+      .field-name { min-width: unset; }
+    }
+    /* ── ACORDEÃO DE PASSOS ── */
+    .section-header {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 22px;
+    }
+    .section-header::after {
+      content: "▸";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.9rem;
+      transition: transform .18s ease;
+    }
+    .section.open .section-header::after {
+      transform: translateY(-50%) rotate(90deg);
+    }
+    .section-content { display: none; }
+    .section.open .section-content { display: block; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Estoque e Serviços</h1>
+    <p>Gerencie o catálogo de peças e os serviços de mão de obra da oficina.</p>
+  </div>
+
+  <div class="question-block">
+    <div class="question-label">O que você quer saber?</div>
+    <div class="question-title">Escolha o assunto</div>
+    <div class="options">
+      <button class="option-btn" data-flow="pecas" onclick="selectFlow(this)">
+        <span class="icon">📦</span> Produtos e Peças
+      </button>
+      <button class="option-btn" data-flow="servicos" onclick="selectFlow(this)">
+        <span class="icon">🔧</span> Mão de Obra / Serviços
+      </button>
+    </div>
+  </div>
+
+  <button id="reset-btn" onclick="resetAll()">↩ Recomeçar</button>
+
+  <!-- ══════════════════════════════════════
+       FLUXO: PRODUTOS E PEÇAS
+  ══════════════════════════════════════ -->
+  <div class="flow" id="flow-pecas">
+
+    <!-- 1. TELA INICIAL -->
+    <div class="section">
+      <div class="section-header"><span class="section-num">1</span><h2>A tela de Estoque</h2></div>
+      <p>Acesse pelo menu <strong>Estoque</strong>. A tela abre na aba <strong>Produtos / Peças</strong> por padrão.</p>
+      <p>No topo há três cards de alerta rápido:</p>
+      <div class="field-row">
+        <div class="field-name">📦 Total de Itens</div>
+        <div class="field-desc">Quantidade total de produtos cadastrados no sistema.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">🔴 Reposição Urgente</div>
+        <div class="field-desc">Produtos com estoque atual igual ou abaixo do mínimo definido.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">🟡 Preço Defasado</div>
+        <div class="field-desc">Produtos cujo custo de reposição atual é maior que o custo contábil registrado, ou sem compra há mais de 90 dias.</div>
+      </div>
+    </div>
+
+    <!-- 2. BUSCA E FILTROS -->
+    <div class="section">
+      <div class="section-header"><span class="section-num">2</span><h2>Busca e filtros</h2></div>
+      <p>A barra de busca filtra em tempo real por <strong>nome</strong>, <strong>marca</strong> ou <strong>código EAN</strong>.</p>
+      <p>Abaixo da busca há três botões de filtro rápido:</p>
+      <ul>
+        <li><strong>Todos</strong> — exibe o catálogo completo.</li>
+        <li><strong>Estoque Baixo</strong> — apenas produtos em ou abaixo do mínimo.</li>
+        <li><strong>Alerta de Preço</strong> — produtos com custo defasado ou sem compra recente.</li>
+      </ul>
+      <p>Cada linha da tabela mostra o <strong>status</strong> do produto à direita:</p>
+      <div class="badge-row">
+        <span class="badge ok">✓ OK</span>
+        <span class="badge baixo">⚠ Baixo</span>
+        <span class="badge defas">↑ Defasado</span>
+        <span class="badge revisar">⏱ Revisar Custo</span>
+      </div>
+      <p>Clique na seta <strong>→</strong> de qualquer produto para abrir a ficha de edição.</p>
+    </div>
+
+    <!-- 3. CADASTRAR NOVO PRODUTO -->
+    <div class="section">
+      <div class="section-header"><span class="section-num">3</span><h2>Cadastrar novo produto</h2></div>
+      <p>Clique em <strong>+ Novo Produto</strong> no canto superior da tela. O formulário tem três blocos:</p>
+
+      <p style="margin-top:14px;"><strong>Identificação</strong></p>
+      <div class="field-row">
+        <div class="field-name">Nome da Peça</div>
+        <div class="field-desc">Obrigatório. Ex: "Lâmpada H4", "Filtro de Óleo".</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Marca</div>
+        <div class="field-desc">Ex: Philips, Bosch. Aparece abaixo do nome na lista.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Código (REF)</div>
+        <div class="field-desc">Referência interna ou do fabricante. Opcional.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">EAN (Código de Barras)</div>
+        <div class="field-desc">Código numérico da embalagem. Permite busca por câmera na OS.</div>
+      </div>
+
+      <p style="margin-top:14px;"><strong>Estoque Inicial</strong></p>
+      <div class="field-row">
+        <div class="field-name">Qtd Atual</div>
+        <div class="field-desc">Quantas unidades você tem agora no estoque.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Mínimo</div>
+        <div class="field-desc">Quando o estoque chegar neste valor, o produto aparece no alerta de "Reposição Urgente". Padrão: 5.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Local</div>
+        <div class="field-desc">Localização física no estoque. Ex: "A-12", "Prateleira 3". Facilita encontrar a peça.</div>
+      </div>
+
+      <p style="margin-top:14px;"><strong>Formação de Preço</strong> (painel escuro à direita)</p>
+      <div class="field-row">
+        <div class="field-name">Custo Real de Compra</div>
+        <div class="field-desc">O que você pagou pela peça. Ao preencher, o sistema copia automaticamente para o Custo de Reposição.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Custo de Reposição</div>
+        <div class="field-desc">Quanto custaria comprar hoje. Pode ser diferente do custo real. Usado para detectar defasagem de preço.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Margem de Lucro %</div>
+        <div class="field-desc">Percentual aplicado sobre o Custo de Reposição. Padrão: 100% (dobra o custo).</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Preço Sugerido</div>
+        <div class="field-desc">Calculado automaticamente: Custo × (1 + Margem). Clique no valor para aplicá-lo ao campo de venda.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Preço de Venda Final</div>
+        <div class="field-desc">Valor cobrado do cliente. Pode ser o sugerido ou qualquer outro valor — edite livremente.</div>
+      </div>
+
+      <div class="callout tip">
+        <span class="callout-icon">💡</span>
+        <span>Se a empresa tiver <strong>markup automático</strong> configurado nas Configurações, ao digitar o Custo Real o Preço de Venda já é preenchido automaticamente.</span>
+      </div>
+
+      <p style="margin-top:12px;">Clique em <strong>Salvar Produto</strong> no botão flutuante na parte inferior.</p>
+    </div>
+
+    <!-- 4. EDITAR OU EXCLUIR PRODUTO -->
+    <div class="section">
+      <div class="section-header"><span class="section-num">4</span><h2>Editar ou excluir um produto</h2></div>
+      <p>Na lista, clique na seta <strong>→</strong> do produto. A ficha de edição é idêntica ao cadastro, com todos os campos preenchidos.</p>
+      <p>Há um campo extra: <strong>Data da Última Compra</strong> — informe a data da compra mais recente para que o sistema possa detectar peças sem reposição há mais de 90 dias.</p>
+      <p>Para excluir, clique em <strong>Excluir</strong> no topo da ficha e confirme.</p>
+      <div class="callout danger">
+        <span class="callout-icon">🚨</span>
+        <span>Produtos usados em OS não podem ser excluídos. O sistema avisa e pede que você os remova dos atendimentos antes. Prefira manter o produto e zerar o estoque.</span>
+      </div>
+    </div>
+
+    <!-- 5. IMPORTAÇÃO XML -->
+    <div class="section">
+      <div class="section-header"><span class="section-num">5</span><h2>Importar nota fiscal (XML)</h2></div>
+      <p>Ao receber uma nota fiscal eletrônica do fornecedor, você pode importar o XML para atualizar o estoque e os custos automaticamente — sem digitar item por item.</p>
+      <p>Clique em <strong>Importar XML</strong> no canto superior da tela de Estoque.</p>
+
+      <a href="/tutoriais/tutorial-importacao-xml.html" target="_blank" rel="noopener noreferrer" class="link-saiba-mais">
+        <span class="lsm-icon">📄</span>
+        <div>
+          <p class="lsm-title">Saiba mais sobre a Importação de XML</p>
+          <p class="lsm-sub">Passo a passo do upload, conciliação de produtos e confirmação da entrada no estoque.</p>
+        </div>
+        <span class="lsm-arrow">→</span>
+      </a>
+    </div>
+
+  </div><!-- /flow-pecas -->
+
+  <!-- ══════════════════════════════════════
+       FLUXO: MÃO DE OBRA / SERVIÇOS
+  ══════════════════════════════════════ -->
+  <div class="flow" id="flow-servicos">
+
+    <!-- 1. ONDE FICA -->
+    <div class="section">
+      <div class="section-header"><span class="section-num">1</span><h2>Acessar a aba de Mão de Obra</h2></div>
+      <p>Acesse pelo menu <strong>Estoque</strong>. Na tela principal, clique na aba <strong>Mão de Obra</strong> (ao lado de "Produtos / Peças").</p>
+      <p>A lista exibe todos os serviços cadastrados com nome e preço. Use a <strong>barra de busca</strong> para filtrar por nome.</p>
+      <div class="callout info">
+        <span class="callout-icon">ℹ️</span>
+        <span>Os serviços cadastrados aqui são os mesmos que aparecem para seleção ao adicionar itens em uma OS. Manter o catálogo atualizado agiliza a abertura de atendimentos.</span>
+      </div>
+    </div>
+
+    <!-- 2. NOVO SERVIÇO -->
+    <div class="section">
+      <div class="section-header"><span class="section-num">2</span><h2>Cadastrar um novo serviço</h2></div>
+      <p>Clique em <strong>+ Novo Serviço</strong> no canto superior. Um modal abre com dois campos:</p>
+      <div class="field-row">
+        <div class="field-name">Nome do Serviço</div>
+        <div class="field-desc">Ex: "Instalação de Som", "Alinhamento", "Troca de Óleo". Aparece na busca da OS.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Preço Base (R$)</div>
+        <div class="field-desc">Valor padrão cobrado. Pode ser ajustado individualmente dentro de cada OS ao adicionar o serviço.</div>
+      </div>
+      <p style="margin-top:12px;">Clique em <strong>Salvar Serviço</strong> para confirmar.</p>
+      <div class="callout tip">
+        <span class="callout-icon">💡</span>
+        <span>Se você não souber o preço na hora, cadastre com R$ 0,00 e ajuste depois. Na OS você pode editar o valor do serviço clicando no lápis ao lado do item.</span>
+      </div>
+    </div>
+
+    <!-- 3. EDITAR SERVIÇO -->
+    <div class="section">
+      <div class="section-header"><span class="section-num">3</span><h2>Editar um serviço</h2></div>
+      <p>Na lista, clique no ícone de <strong>lápis ✏️</strong> ao lado do serviço. O mesmo modal abre com os campos preenchidos. Altere o que precisar e salve.</p>
+    </div>
+
+    <!-- 4. EXCLUIR SERVIÇO -->
+    <div class="section">
+      <div class="section-header"><span class="section-num">4</span><h2>Excluir um serviço</h2></div>
+      <p>Clique no ícone de <strong>lixeira 🗑</strong> ao lado do serviço e confirme a exclusão.</p>
+      <div class="callout warn">
+        <span class="callout-icon">⚠️</span>
+        <span>Excluir um serviço remove apenas o cadastro do catálogo — não afeta OS já abertas que contenham este serviço.</span>
+      </div>
+    </div>
+
+  </div><!-- /flow-servicos -->
+
+</div><!-- /container -->
+
+<script>
+  function selectFlow(btn) {
+    document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+
+    document.querySelectorAll('.flow').forEach(f => f.classList.remove('active'));
+    document.getElementById('flow-' + btn.dataset.flow).classList.add('active');
+
+    document.getElementById('reset-btn').style.display = 'inline-block';
+    document.getElementById('flow-' + btn.dataset.flow).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function resetAll() {
+    document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+    document.querySelectorAll('.flow').forEach(f => f.classList.remove('active'));
+    document.getElementById('reset-btn').style.display = 'none';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+</script>
+<script>
+  (function initTutorialAccordion() {
+    const sections = document.querySelectorAll('.section');
+    sections.forEach((section, index) => {
+      if (section.dataset.accordionReady === '1') return;
+      const header = section.querySelector(':scope > .section-header');
+      if (!header) return;
+      const sectionNum = header.querySelector('.section-num');
+      if (sectionNum) sectionNum.textContent = String(index + 1);
+      const content = document.createElement('div');
+      content.className = 'section-content';
+      Array.from(section.children).forEach((child) => {
+        if (child !== header) content.appendChild(child);
+      });
+      section.appendChild(content);
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-expanded', 'false');
+      const toggle = () => {
+        const open = !section.classList.contains('open');
+        section.classList.toggle('open', open);
+        header.setAttribute('aria-expanded', String(open));
+      };
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      section.dataset.accordionReady = '1';
+    });
+  })();
+</script>
+</body>
+</html>

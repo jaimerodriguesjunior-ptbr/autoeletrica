@@ -5,6 +5,14 @@ import path from 'path';
 
 export async function GET() {
     try {
+        const baseUrl = process.env.NUVEMFISCAL_URL;
+        if (!baseUrl) {
+            return NextResponse.json(
+                { sucesso: false, erro: "NUVEMFISCAL_URL não configurado." },
+                { status: 503 }
+            );
+        }
+
         const token = await getNuvemFiscalToken();
 
         // Payload de teste para NFS-e (Guaíra/PR)
@@ -57,7 +65,7 @@ export async function GET() {
         const debugPath = path.join(process.cwd(), 'debug_payload_v2.json');
         fs.writeFileSync(debugPath, JSON.stringify(payload, null, 2));
 
-        const response = await fetch(`${process.env.NUVEMFISCAL_URL}/nfse/dps`, {
+        const response = await fetch(`${baseUrl}/nfse/dps`, {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${token}`,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
 import {
@@ -12,6 +13,7 @@ type Product = {
   id: string;
   nome: string;
   marca: string | null;
+  ean: string | null;
   estoque_atual: number;
   estoque_min: number;
   custo_contabil: number;
@@ -29,6 +31,7 @@ type Service = {
 export default function EstoqueEServicos() {
   const supabase = createClient();
   const { profile } = useAuth();
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'products' | 'services'>('products');
@@ -49,7 +52,12 @@ export default function EstoqueEServicos() {
   const [servicePrice, setServicePrice] = useState("");
 
   useEffect(() => {
-    if (profile?.organization_id) {
+    if (!profile) return;
+    if (profile.cargo !== 'owner') {
+      router.replace('/dashboard');
+      return;
+    }
+    if (profile.organization_id) {
       fetchData();
     }
   }, [profile]);
@@ -91,7 +99,8 @@ export default function EstoqueEServicos() {
   const filteredProducts = products.filter(p => {
     // 1. Filtro de Texto
     const matchesSearch = p.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.marca && p.marca.toLowerCase().includes(searchTerm.toLowerCase()));
+      (p.marca && p.marca.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (p.ean && p.ean.includes(searchTerm));
 
     if (!matchesSearch) return false;
 

@@ -20,17 +20,20 @@ import {
     CheckCircle,
     DollarSign,
     CreditCard,
-    Calendar
+    Calendar,
+    Camera
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
+import { ScannerModal } from "@/components/ui/ScannerModal";
+import { fetchProductFromCosmos, normalizeBarcode } from "@/src/services/cosmosService";
 
 // --- TIPOS ---
 type Client = { id: string; nome: string; whatsapp: string | null };
-type Product = { id: string; nome: string; preco_venda: number; estoque_atual: number };
+type Product = { id: string; nome: string; preco_venda: number; estoque_atual: number; ean?: string };
 
 type SaleItem = {
     id: string | number;
@@ -87,6 +90,11 @@ function NovaVendaConteudo() {
     const [nomeNovoItem, setNomeNovoItem] = useState("");
     const [salvandoNovoItem, setSalvandoNovoItem] = useState(false);
 
+    // Scanner de código de barras
+    const [scannerAberto, setScannerAberto] = useState(false);
+    const [buscandoEAN, setBuscandoEAN] = useState(false);
+    const [avisoEAN, setAvisoEAN] = useState<{ tipo: 'sucesso' | 'erro' | 'info'; msg: string } | null>(null);
+
     // --- CARREGAMENTO INICIAL ---
     useEffect(() => {
         if (authLoading) return;
@@ -101,7 +109,7 @@ function NovaVendaConteudo() {
         try {
             const [clientsRes, productsRes] = await Promise.all([
                 supabase.from("clients").select("id, nome, whatsapp").order("nome"),
-                supabase.from("products").select("id, nome, preco_venda, estoque_atual").order("nome"),
+                supabase.from("products").select("id, nome, preco_venda, estoque_atual, ean").order("nome"),
             ]);
 
             const clientes = clientsRes.data || [];
@@ -146,6 +154,96 @@ function NovaVendaConteudo() {
         }
         setModalItemAberto(false);
         setTermoBuscaItem("");
+    };
+
+    // --- SCANNER: Lógica de busca por código de barras ---
+    const handleBarcodeScanned = async (code: string) => {
+        setScannerAberto(false);
+        setBuscandoEAN(true);
+        setAvisoEAN(null);
+        const barcode = normalizeBarcode(code);
+
+        if (!barcode) {
+            setAvisoEAN({
+                tipo: 'erro',
+                msg: "Código de barras inválido."
+            });
+            setBuscandoEAN(false);
+            return;
+        }
+
+        try {
+            // 1. Busca no catálogo local por EAN
+            const produtoLocal = listaProdutos.find(p => normalizeBarcode(p.ean || "") === barcode);
+            if (produtoLocal) {
+                selecionarItem(produtoLocal);
+                return;
+            }
+
+            // 2. Busca nas APIs externas
+            const cosmosData = await fetchProductFromCosmos(barcode);
+
+            if (!cosmosData) {
+                setAvisoEAN({
+                    tipo: 'erro',
+                    msg: `Peça com código ${barcode} não encontrada no seu estoque e nem na internet. Cadastre manualmente.`
+                });
+                setTermoBuscaItem(barcode);
+                setModalItemAberto(true);
+                return;
+            }
+
+            // 3. Encontrou na API! Cadastra no banco local
+            if (!profile?.organization_id) {
+                setAvisoEAN({
+                    tipo: "erro",
+                    msg: "Sessão expirada. Atualize a página e tente novamente."
+                });
+                return;
+            }
+
+            const nomeProduto = cosmosData.description || `Produto EAN ${barcode}`;
+            const marcaProduto = typeof cosmosData.brand === 'string'
+                ? cosmosData.brand
+                : cosmosData.brand?.name || '';
+            const ncmProduto = cosmosData.ncm?.code || '';
+
+            const { data: novoProduto, error: insertError } = await supabase
+                .from('products')
+                .insert({
+                    organization_id: profile.organization_id,
+                    nome: nomeProduto,
+                    marca: marcaProduto,
+                    ean: barcode,
+                    ncm: ncmProduto,
+                    estoque_atual: 0,
+                    estoque_min: 0,
+                    custo_reposicao: 0,
+                    custo_contabil: 0,
+                    preco_venda: 0,
+                })
+                .select('id, nome, preco_venda, estoque_atual, ean')
+                .single();
+
+            if (insertError) throw insertError;
+
+            setListaProdutos(prev => [...prev, novoProduto as Product]);
+
+            setAvisoEAN({
+                tipo: 'sucesso',
+                msg: `Peça "${nomeProduto}" encontrada na internet e adicionada ao seu estoque! Lembre-se de conferir o preço de venda.`
+            });
+
+            selecionarItem(novoProduto as Product);
+
+        } catch (err: any) {
+            setAvisoEAN({
+                tipo: 'erro',
+                msg: 'Erro ao buscar peça: ' + (err.message || 'Tente novamente.')
+            });
+        } finally {
+            setBuscandoEAN(false);
+        }
     };
 
     const handleCadastroPecaRapido = async () => {
@@ -605,17 +703,50 @@ function NovaVendaConteudo() {
                             </button>
                         </div>
 
-                        <input
-                            autoFocus
-                            placeholder="Buscar peça..."
-                            value={termoBuscaItem}
-                            onChange={(e) => setTermoBuscaItem(e.target.value)}
-                            className="w-full bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
-                        />
+                        <div className="flex gap-2">
+                            <input
+                                autoFocus
+                                placeholder="Buscar peça por nome ou código de barras..."
+                                value={termoBuscaItem}
+                                onChange={(e) => setTermoBuscaItem(e.target.value)}
+                                className="flex-1 bg-[#F8F7F2] p-3 rounded-xl border-2 border-stone-300 focus:border-[#FACC15] outline-none"
+                            />
+                            <button
+                                onClick={() => setScannerAberto(true)}
+                                className="w-12 h-12 bg-[#1A1A1A] text-[#FACC15] rounded-xl flex items-center justify-center hover:bg-black transition shrink-0 shadow-lg hover:scale-105 active:scale-95"
+                                title="Escanear código de barras"
+                            >
+                                <Camera size={20} />
+                            </button>
+                        </div>
+
+                        {/* Aviso do Scanner */}
+                        {avisoEAN && (
+                            <div className={`p-3 rounded-xl text-sm font-medium flex items-start gap-2 ${
+                                avisoEAN.tipo === 'sucesso' ? 'bg-green-50 text-green-700 border border-green-200' :
+                                avisoEAN.tipo === 'erro' ? 'bg-red-50 text-red-700 border border-red-200' :
+                                'bg-blue-50 text-blue-700 border border-blue-200'
+                            }`}>
+                                <span className="shrink-0 mt-0.5">{avisoEAN.tipo === 'sucesso' ? '✅' : avisoEAN.tipo === 'erro' ? '❌' : 'ℹ️'}</span>
+                                <span>{avisoEAN.msg}</span>
+                                <button onClick={() => setAvisoEAN(null)} className="ml-auto shrink-0"><X size={14} /></button>
+                            </div>
+                        )}
+
+                        {/* Buscando EAN */}
+                        {buscandoEAN && (
+                            <div className="text-center py-4 text-stone-500 flex flex-col items-center gap-2 bg-stone-50 rounded-xl border border-stone-200">
+                                <Loader2 className="animate-spin text-[#FACC15]" size={28} />
+                                <p className="text-sm font-medium">Procurando peça pelo código de barras...</p>
+                            </div>
+                        )}
 
                         <div className="flex-1 overflow-auto space-y-2 pb-4">
-                            {listaProdutos
-                                .filter((p) => p.nome.toLowerCase().includes(termoBuscaItem.toLowerCase()))
+                            {!buscandoEAN && listaProdutos
+                                .filter((p) => {
+                                    const termo = termoBuscaItem.toLowerCase();
+                                    return p.nome.toLowerCase().includes(termo) || (p.ean && p.ean.includes(termoBuscaItem));
+                                })
                                 .map((p) => (
                                     <button
                                         key={p.id}
@@ -646,6 +777,14 @@ function NovaVendaConteudo() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* SCANNER DE CÓDIGO DE BARRAS */}
+            {scannerAberto && (
+                <ScannerModal
+                    onCodeScanned={handleBarcodeScanned}
+                    onClose={() => setScannerAberto(false)}
+                />
             )}
 
             {/* MODAL CADASTRO RÁPIDO DE PEÇA */}

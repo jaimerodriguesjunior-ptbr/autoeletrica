@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial: Configurações</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #1a1a1a;
+      --yellow: #facc15;
+      --yellow-light: #fef9c3;
+      --green: #16a34a;
+      --green-light: #dcfce7;
+      --blue: #1d4ed8;
+      --blue-light: #dbeafe;
+      --orange: #ea580c;
+      --orange-light: #ffedd5;
+      --red: #dc2626;
+      --red-light: #fee2e2;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 24px 16px;
+    }
+
+    .container { max-width: 820px; margin: 0 auto; }
+
+    .header {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px 28px 24px;
+      margin-bottom: 20px;
+    }
+    .header h1 {
+      margin: 0 0 6px;
+      font-size: 1.7rem;
+      color: var(--yellow);
+      line-height: 1.2;
+    }
+    .header p { margin: 0; color: #d1d5db; font-size: 0.95rem; }
+
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--accent);
+      color: var(--yellow);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .section-header h2 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: var(--accent);
+    }
+    .section p { margin: 6px 0; font-size: 0.95rem; }
+    ol, ul { margin: 10px 0 10px 20px; padding: 0; }
+    li { margin: 7px 0; font-size: 0.95rem; }
+
+    .callout {
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.tip   { background: var(--yellow-light); border-left: 4px solid #ca8a04; }
+    .callout.info  { background: var(--blue-light); border-left: 4px solid var(--blue); }
+    .callout.warn  { background: var(--orange-light); border-left: 4px solid var(--orange); }
+    .callout.good  { background: var(--green-light); border-left: 4px solid var(--green); }
+    .callout.danger{ background: var(--red-light); border-left: 4px solid var(--red); }
+
+    .field-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      padding: 8px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-name {
+      font-weight: 700;
+      min-width: 220px;
+      font-size: 0.88rem;
+      color: var(--accent);
+    }
+    .field-desc {
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .tab-picker {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .tab-label {
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .tab-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--bg);
+      color: var(--text);
+      transition: all .18s;
+    }
+    .tab-btn:hover { border-color: #9ca3af; background: #f3f4f6; }
+    .tab-btn.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--yellow);
+    }
+
+    .pane { display: none; }
+    .pane.active { display: block; }
+
+    @media (max-width: 520px) {
+      .field-row { flex-direction: column; gap: 2px; }
+      .field-name { min-width: unset; }
+      .tab-buttons { flex-direction: column; }
+      .tab-btn { width: 100%; text-align: left; }
+    }
+    /* ── ACORDEÃO DE PASSOS ── */
+    .section-header {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 22px;
+    }
+    .section-header::after {
+      content: "▸";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.9rem;
+      transition: transform .18s ease;
+    }
+    .section.open .section-header::after {
+      transform: translateY(-50%) rotate(90deg);
+    }
+    .section-content { display: none; }
+    .section.open .section-content { display: block; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Configurações (3 abas)</h1>
+    <p>Guia completo de Dados da Oficina, Opções de Uso e Gestão de Equipe, com implicações de cada decisão.</p>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">1</span>
+      <h2>Acessar a tela de Configurações</h2>
+    </div>
+    <ol>
+      <li>No menu lateral, clique em <strong>Configurações</strong>.</li>
+      <li>No topo da página, escolha uma das abas:
+        <ul>
+          <li><strong>Dados da Oficina</strong></li>
+          <li><strong>Opções de Uso</strong></li>
+          <li><strong>Gestão de Equipe</strong></li>
+        </ul>
+      </li>
+      <li>Faça os ajustes e salve na própria aba.</li>
+    </ol>
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Use o seletor abaixo para ver só a aba que você quer aprender agora.</span>
+    </div>
+  </div>
+
+  <div class="tab-picker">
+    <div class="tab-label">Escolha a aba do tutorial</div>
+    <div class="tab-buttons">
+      <button class="tab-btn active" data-tab="company" onclick="showTab(this)">🏢 Dados da Oficina</button>
+      <button class="tab-btn" data-tab="modules" onclick="showTab(this)">⚙️ Opções de Uso</button>
+      <button class="tab-btn" data-tab="team" onclick="showTab(this)">👥 Gestão de Equipe</button>
+    </div>
+  </div>
+
+  <div class="pane active" id="pane-company">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-num">2</span>
+        <h2>Dados da Oficina: o que preencher</h2>
+      </div>
+
+      <div class="field-row">
+        <div class="field-name">Nome Fantasia / Razão Social</div>
+        <div class="field-desc">Identificação da empresa nos documentos e telas. Evite abreviações diferentes entre os dois campos.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">URL da Logomarca</div>
+        <div class="field-desc">Deve ser preenchida sempre pelo desenvolvedor. URL incorreta pode quebrar a exibição da marca.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">CNPJ / IE / IM</div>
+        <div class="field-desc">Dados fiscais da empresa. Se houver erro aqui, emissão de nota pode falhar.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Telefone / WhatsApp</div>
+        <div class="field-desc">Preencher com DDD (ex: 11987654321). Sem DDD, integrações e contatos podem ficar incompletos.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Endereço + Cidade + UF + CEP + Cód. IBGE</div>
+        <div class="field-desc">Impacta dados fiscais e consistência cadastral. UF deve ter 2 letras.</div>
+      </div>
+
+      <div class="callout info">
+        <span class="callout-icon">🧾</span>
+        <span>Nessa aba também ficam credenciais de emissão (CSC de produção/homologação), login/senha de NFS-e e envio do certificado digital .pfx.</span>
+      </div>
+
+      <div class="callout warn">
+        <span class="callout-icon">⚠️</span>
+        <span>Sem certificado digital válido + senha correta, a emissão de notas não funciona.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane" id="pane-modules">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-num">2</span>
+        <h2>Opções de Uso: impactos de cada decisão</h2>
+      </div>
+
+      <p><strong>Módulos opcionais:</strong></p>
+      <ul>
+        <li><strong>Módulo Fiscal:</strong> ativo libera painel/notas; inativo oculta recursos fiscais.</li>
+        <li><strong>Módulo de Caixa:</strong> ativo mantém controle financeiro; inativo oculta fluxo de caixa.</li>
+        <li><strong>Módulo de Agendamento:</strong> ativo mostra agenda e atalhos; inativo remove esses recursos.</li>
+        <li><strong>Módulo de Comissões:</strong> ativo permite atribuição e cálculo de comissão; inativo remove controles.</li>
+      </ul>
+
+      <div class="callout warn">
+        <span class="callout-icon">⚠️</span>
+        <span>Desativar módulo não apaga histórico já salvo. O efeito principal é ocultar e bloquear novos usos.</span>
+      </div>
+
+      <p style="margin-top:14px;"><strong>Precificação automática (Markup):</strong></p>
+      <ul>
+        <li>Ativado: calcula preço de venda com multiplicador na importação/cadastro com custo.</li>
+        <li>Desativado: não faz cálculo automático.</li>
+        <li>Exemplo: custo R$ 10,00 e markup 2,00 gera R$ 20,00.</li>
+      </ul>
+
+      <p style="margin-top:14px;"><strong>Pagamentos no Portal:</strong></p>
+      <ul>
+        <li><strong>Mostrar formas de pagamento:</strong> define se o cliente verá opções de pagamento no portal.</li>
+        <li><strong>Cartão com juros:</strong> se ativar, aplica taxa mensal nas parcelas exibidas ao cliente.</li>
+        <li><strong>Taxa de juros (% ao mês):</strong> usada nos cálculos quando a opção de juros está ativa.</li>
+      </ul>
+
+      <p style="margin-top:14px;"><strong>Dados para recebimento Pix:</strong></p>
+      <div class="field-row">
+        <div class="field-name">Chave Pix</div>
+        <div class="field-desc">Pode ser CPF, CNPJ, e-mail, telefone ou chave aleatória. Se for telefone, informe com DDD.</div>
+      </div>
+      <div class="field-row">
+        <div class="field-name">Cidade da empresa (Pix)</div>
+        <div class="field-desc">Somente a cidade, sem estado/UF. Ex: <strong>Sao Paulo</strong> (não usar "São Paulo - SP").</div>
+      </div>
+
+      <div class="callout info">
+        <span class="callout-icon">ℹ️</span>
+        <span>Cidade do Pix é obrigatória para gerar QR Code no padrão do Banco Central.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane" id="pane-team">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-num">2</span>
+        <h2>Gestão de Equipe: como administrar acessos</h2>
+      </div>
+
+      <p><strong>Novo Funcionário</strong> (botão no topo da aba):</p>
+      <ol>
+        <li>Clique em <strong>Novo Funcionário</strong>.</li>
+        <li>Preencha Nome, E-mail, Senha, Cargo e Comissão (%) se usar comissões.</li>
+        <li>Clique em criar para liberar acesso ao usuário.</li>
+      </ol>
+
+      <p style="margin-top:14px;"><strong>Na tabela da equipe você pode:</strong></p>
+      <ul>
+        <li>Editar comissão (%).</li>
+        <li>Trocar senha.</li>
+        <li>Bloquear ou liberar acesso de cada colaborador.</li>
+      </ul>
+
+      <div class="callout good">
+        <span class="callout-icon">✅</span>
+        <span>Use bloqueio em vez de exclusão para manter histórico de operações do usuário.</span>
+      </div>
+
+      <div class="callout warn">
+        <span class="callout-icon">⚠️</span>
+        <span>Ao alterar cargo/comissão de alguém, valide se a política da oficina está correta para evitar cálculo indevido.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">3</span>
+      <h2>Checklist rápido antes de salvar</h2>
+    </div>
+    <ol>
+      <li>Conferir telefone com DDD.</li>
+      <li>Conferir cidade do Pix sem estado.</li>
+      <li>Revisar módulos ativos/inativos.</li>
+      <li>Se usar fiscal, validar CSC, NFS-e e certificado.</li>
+      <li>Clicar em salvar na aba correspondente.</li>
+    </ol>
+  </div>
+
+</div>
+
+<script>
+  function showTab(btn) {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+    const pane = document.getElementById(`pane-${tab}`);
+    if (pane) {
+      pane.classList.add('active');
+      pane.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+</script>
+<script>
+  (function initTutorialAccordion() {
+    const sections = document.querySelectorAll('.section');
+    sections.forEach((section, index) => {
+      if (section.dataset.accordionReady === '1') return;
+      const header = section.querySelector(':scope > .section-header');
+      if (!header) return;
+
+      const sectionNum = header.querySelector('.section-num');
+      if (sectionNum) sectionNum.textContent = String(index + 1);
+
+      const content = document.createElement('div');
+      content.className = 'section-content';
+      Array.from(section.children).forEach((child) => {
+        if (child !== header) content.appendChild(child);
+      });
+      section.appendChild(content);
+
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-expanded', 'false');
+
+      const toggle = () => {
+        const open = !section.classList.contains('open');
+        section.classList.toggle('open', open);
+        header.setAttribute('aria-expanded', String(open));
+      };
+
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+
+      section.dataset.accordionReady = '1';
+    });
+  })();
+</script>
+</body>
+</html>

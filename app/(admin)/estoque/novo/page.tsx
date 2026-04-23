@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
+import { getCompanySettings } from "@/src/actions/fiscal";
 import {
   ArrowLeft, Package, DollarSign, Barcode,
   Save, AlertCircle, Calculator, Loader2, Wallet
@@ -35,11 +36,31 @@ export default function NovoProduto() {
   const [margem, setMargem] = useState("100");
   const [precoVenda, setPrecoVenda] = useState("");
 
+  // Markup da empresa
+  const [markupAtivo, setMarkupAtivo] = useState(false);
+  const [markupValor, setMarkupValor] = useState(2.0);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      const settings = await getCompanySettings();
+      if (settings) {
+        setMarkupAtivo(settings.aplicar_markup_importacao ?? false);
+        setMarkupValor(settings.markup_valor_importacao ?? 2.0);
+      }
+    };
+    loadSettings();
+  }, []);
+
   // --- NOVO: Lógica de Espelhamento ---
   // Quando muda o Custo Real, atualiza também o de Reposição
   const handleCustoRealChange = (valor: string) => {
     setCustoContabil(valor);
     setCustoReposicao(valor);
+    // Auto-aplicar markup se configurado
+    if (markupAtivo && valor) {
+      const custo = parseFloat(valor) || 0;
+      setPrecoVenda((custo * markupValor).toFixed(2));
+    }
   };
 
   // Calculadora Automática
@@ -62,6 +83,7 @@ export default function NovoProduto() {
         nome,
         marca,
         codigo_ref: codigoRef,
+        ean: ean || null,
         estoque_atual: Number(estoqueAtual) || 0,
         estoque_min: Number(estoqueMin) || 0,
         custo_reposicao: Number(custoReposicao) || 0,
@@ -123,6 +145,11 @@ export default function NovoProduto() {
                   <label className="text-xs font-bold text-stone-400 ml-2">CÓDIGO (REF)</label>
                   <input type="text" value={codigoRef} onChange={e => setCodigoRef(e.target.value)} placeholder="REF-1234" className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Barcode size={12} /> EAN (CÓDIGO DE BARRAS)</label>
+                <input type="text" value={ean} onChange={e => setEan(e.target.value)} placeholder="Ex: 7891234567890" className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
               </div>
             </div>
           </div>

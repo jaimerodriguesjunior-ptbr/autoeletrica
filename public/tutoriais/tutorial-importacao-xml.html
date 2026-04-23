@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial: Importação de XML</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #1a1a1a;
+      --yellow: #facc15;
+      --yellow-light: #fef9c3;
+      --green: #16a34a;
+      --green-light: #dcfce7;
+      --blue: #1d4ed8;
+      --blue-light: #dbeafe;
+      --orange: #ea580c;
+      --orange-light: #ffedd5;
+      --red: #dc2626;
+      --red-light: #fee2e2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 24px 16px;
+    }
+    .container { max-width: 780px; margin: 0 auto; }
+    .header {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px 28px 24px;
+      margin-bottom: 28px;
+    }
+    .header h1 { margin: 0 0 6px; font-size: 1.7rem; color: var(--yellow); line-height: 1.2; }
+    .header p { margin: 0; color: #d1d5db; font-size: 0.95rem; }
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--accent);
+      color: var(--yellow);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .section-header { display: flex; align-items: center; margin-bottom: 14px; }
+    .section-header h2 { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--accent); }
+    .section p { margin: 6px 0; font-size: 0.95rem; }
+    ol, ul { margin: 10px 0 10px 20px; padding: 0; }
+    li { margin: 7px 0; font-size: 0.95rem; }
+    .callout {
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.tip   { background: var(--yellow-light); border-left: 4px solid #ca8a04; }
+    .callout.info  { background: var(--blue-light);   border-left: 4px solid var(--blue); }
+    .callout.warn  { background: var(--orange-light); border-left: 4px solid var(--orange); }
+    .callout.good  { background: var(--green-light);  border-left: 4px solid var(--green); }
+    .callout.danger{ background: var(--red-light);    border-left: 4px solid var(--red); }
+
+    .status-grid { display: grid; gap: 10px; margin: 12px 0; }
+    .status-row {
+      display: flex; gap: 12px; align-items: flex-start;
+      border-radius: 10px; padding: 12px 16px; border: 1px solid var(--border);
+    }
+    .status-row.matched { background: #f0fdf4; border-color: #bbf7d0; }
+    .status-row.new     { background: #eff6ff; border-color: #bfdbfe; }
+    .status-row.manual  { background: #fefce8; border-color: #fef08a; }
+    .status-icon { font-size: 1.3rem; flex-shrink: 0; }
+    .status-label { font-weight: 800; font-size: 0.88rem; }
+    .status-desc { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
+
+    .action-grid { display: grid; gap: 8px; margin: 12px 0; }
+    .action-row {
+      display: flex; gap: 10px; align-items: flex-start;
+      background: var(--bg); border-radius: 8px;
+      padding: 10px 14px; border: 1px solid var(--border);
+    }
+    .action-tag {
+      font-size: 0.72rem; font-weight: 800; text-transform: uppercase;
+      border-radius: 6px; padding: 2px 8px; white-space: nowrap; flex-shrink: 0; margin-top: 2px;
+    }
+    .action-tag.update  { background: #dcfce7; color: #166534; }
+    .action-tag.create  { background: #dbeafe; color: #1e3a8a; }
+    .action-tag.ignore  { background: #f3f4f6; color: #6b7280; }
+    .action-desc { font-size: 0.85rem; color: var(--muted); }
+    /* ── ACORDEÃO DE PASSOS ── */
+    .section-header {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 22px;
+    }
+    .section-header::after {
+      content: "▸";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.9rem;
+      transition: transform .18s ease;
+    }
+    .section.open .section-header::after {
+      transform: translateY(-50%) rotate(90deg);
+    }
+    .section-content { display: none; }
+    .section.open .section-content { display: block; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Importação de XML</h1>
+    <p>Como importar uma nota fiscal eletrônica do fornecedor para atualizar o estoque automaticamente.</p>
+  </div>
+
+  <!-- 1. O QUE É -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">1</span><h2>O que é a importação de XML</h2></div>
+    <p>Quando você compra peças de um fornecedor que emite nota fiscal eletrônica (NF-e), ele envia um arquivo <strong>.xml</strong> junto com a nota. Este arquivo contém todos os itens, quantidades e valores da compra.</p>
+    <p>A importação lê esse arquivo e atualiza o estoque automaticamente — sem precisar digitar item por item.</p>
+    <div class="callout good">
+      <span class="callout-icon">⚡</span>
+      <span>Uma compra de 30 itens que levaria 15 minutos para digitar manualmente é processada em menos de 1 minuto com a importação de XML.</span>
+    </div>
+  </div>
+
+  <!-- 2. COMO ACESSAR -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">2</span><h2>Como acessar</h2></div>
+    <p>Na tela de <strong>Estoque</strong>, com a aba <strong>Produtos / Peças</strong> ativa, clique no botão <strong>Importar XML</strong> no canto superior da tela.</p>
+    <div class="callout info">
+      <span class="callout-icon">📂</span>
+      <span>O arquivo XML costuma vir por e-mail do fornecedor, ou pode ser baixado no portal da SEFAZ. Salve-o no celular ou computador antes de começar.</span>
+    </div>
+  </div>
+
+  <!-- 3. UPLOAD DO ARQUIVO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">3</span><h2>Passo 1 — Enviar o arquivo</h2></div>
+    <p>A tela de importação mostra uma área de upload com duas formas de enviar o XML:</p>
+    <ul>
+      <li><strong>Arrastar e soltar</strong> — arraste o arquivo .xml direto para a área destacada (computador).</li>
+      <li><strong>Clique para selecionar</strong> — clique na área e escolha o arquivo no explorador de arquivos.</li>
+    </ul>
+    <p>O sistema lê o arquivo e extrai automaticamente:</p>
+    <ul>
+      <li>Número da nota e data de emissão.</li>
+      <li>Nome e CNPJ do fornecedor (emitente).</li>
+      <li>Valor total da nota.</li>
+      <li>Lista de todos os produtos com código, nome, quantidade e valor unitário.</li>
+    </ul>
+    <div class="callout warn">
+      <span class="callout-icon">⚠️</span>
+      <span>O sistema aceita apenas arquivos <strong>.xml</strong> de NF-e. PDFs, DANFEs e outros formatos não são suportados nesta tela.</span>
+    </div>
+  </div>
+
+  <!-- 4. CONCILIAÇÃO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">4</span><h2>Passo 2 — Conciliação de produtos</h2></div>
+    <p>Após o upload, o sistema tenta cruzar cada item da nota com os produtos já cadastrados no estoque — usando o código EAN e o nome. Cada item recebe um dos três status:</p>
+
+    <div class="status-grid">
+      <div class="status-row matched">
+        <span class="status-icon">✅</span>
+        <div>
+          <div class="status-label" style="color:#166534;">Encontrado automaticamente</div>
+          <div class="status-desc">O sistema encontrou um produto no estoque com o mesmo código EAN. A conciliação é automática.</div>
+        </div>
+      </div>
+      <div class="status-row new">
+        <span class="status-icon">🆕</span>
+        <div>
+          <div class="status-label" style="color:#1e3a8a;">Produto novo</div>
+          <div class="status-desc">O código EAN não existe no catálogo. O sistema vai criar um novo produto se você confirmar.</div>
+        </div>
+      </div>
+      <div class="status-row manual">
+        <span class="status-icon">🔍</span>
+        <div>
+          <div class="status-label" style="color:#92400e;">Vinculação manual</div>
+          <div class="status-desc">O EAN não bateu, mas pode ser um produto já cadastrado com outro nome ou código. Você pode buscar e vincular manualmente pelo campo de busca.</div>
+        </div>
+      </div>
+    </div>
+
+    <p style="margin-top:14px;">Para cada item, você escolhe uma <strong>ação</strong>:</p>
+    <div class="action-grid">
+      <div class="action-row">
+        <span class="action-tag update">Atualizar</span>
+        <div class="action-desc">Adiciona a quantidade ao estoque existente e atualiza o custo de reposição com o valor da nota.</div>
+      </div>
+      <div class="action-row">
+        <span class="action-tag create">Criar novo</span>
+        <div class="action-desc">Cria um produto novo no catálogo com os dados da nota (nome, EAN, NCM, custo). Se o <strong>markup automático</strong> estiver ativo nas configurações, o preço de venda já é calculado automaticamente. Caso contrário, fica zerado — ajuste depois.</div>
+      </div>
+      <div class="action-row">
+        <span class="action-tag ignore">Ignorar</span>
+        <div class="action-desc">Pula este item da nota. O estoque não é alterado para ele.</div>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Se o nome do produto na nota for mais completo que o cadastrado, marque a opção <strong>"Atualizar nome"</strong> para substituir o nome atual pelo da nota.</span>
+    </div>
+  </div>
+
+  <!-- 5. CONFIRMAÇÃO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">5</span><h2>Passo 3 — Confirmar a entrada</h2></div>
+    <p>Após revisar todos os itens e definir as ações, clique em <strong>Confirmar Entrada no Estoque</strong>. O sistema processa cada item conforme a ação escolhida:</p>
+    <ul>
+      <li>Produtos marcados como <strong>Atualizar</strong> têm a quantidade somada e o custo de reposição atualizado.</li>
+      <li>Produtos marcados como <strong>Criar novo</strong> são cadastrados e entram no estoque com a quantidade da nota.</li>
+      <li>Produtos marcados como <strong>Ignorar</strong> não são alterados.</li>
+    </ul>
+    <p>Após a confirmação, você é redirecionado de volta para a lista de estoque — já com as quantidades atualizadas.</p>
+    <div class="callout info">
+      <span class="callout-icon">📅</span>
+      <span>A data da nota fiscal é registrada como <strong>Data da Última Compra</strong> de cada produto atualizado — isso mantém o alerta de "Revisar Custo" preciso.</span>
+    </div>
+  </div>
+
+  <!-- 6. MARKUP AUTOMÁTICO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">6</span><h2>Markup automático na importação</h2></div>
+    <p>Se o <strong>markup automático</strong> estiver ativo nas Configurações da empresa, o sistema calcula o preço de venda sugerido automaticamente ao importar novos produtos.</p>
+    <p>Por exemplo: com markup configurado em <strong>2×</strong>, uma peça com custo de R$ 50,00 na nota terá o preço de venda sugerido de R$ 100,00.</p>
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>O markup automático evita que novos produtos entrem com preço zerado. Configure o valor padrão em <strong>Configurações → Estoque</strong>.</span>
+    </div>
+  </div>
+
+</div>
+<script>
+  (function initTutorialAccordion() {
+    const sections = document.querySelectorAll('.section');
+    sections.forEach((section, index) => {
+      if (section.dataset.accordionReady === '1') return;
+      const header = section.querySelector(':scope > .section-header');
+      if (!header) return;
+
+      const sectionNum = header.querySelector('.section-num');
+      if (sectionNum) sectionNum.textContent = String(index + 1);
+
+      const content = document.createElement('div');
+      content.className = 'section-content';
+      Array.from(section.children).forEach((child) => {
+        if (child !== header) content.appendChild(child);
+      });
+      section.appendChild(content);
+
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-expanded', 'false');
+
+      const toggle = () => {
+        const open = !section.classList.contains('open');
+        section.classList.toggle('open', open);
+        header.setAttribute('aria-expanded', String(open));
+      };
+
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+
+      section.dataset.accordionReady = '1';
+    });
+  })();
+</script>
+</body>
+</html>

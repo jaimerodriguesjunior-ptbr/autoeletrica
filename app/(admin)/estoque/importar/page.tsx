@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/src/lib/supabase";
 import { useAuth } from "@/src/contexts/AuthContext";
 import {
@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { XMLParser } from "fast-xml-parser";
 import { ProductCombobox } from "./ProductCombobox";
+import { getCompanySettings } from "@/src/actions/fiscal";
 
 // Tipos
 type ImportedProduct = {
@@ -47,6 +48,22 @@ export default function ImportarXML() {
     const [notaInfo, setNotaInfo] = useState<{ nNF: string, emitente: string, emitenteCNPJ: string, total: number, chNFe: string, dhEmi: string } | null>(null);
     const [rawXml, setRawXml] = useState<string>("");
     const [isDragging, setIsDragging] = useState(false);
+
+    // Markup settings
+    const [markupAtivo, setMarkupAtivo] = useState(false);
+    const [markupValor, setMarkupValor] = useState(2.0);
+
+    // Fetch company settings on mount
+    useEffect(() => {
+        const loadSettings = async () => {
+            const settings = await getCompanySettings();
+            if (settings) {
+                setMarkupAtivo(settings.aplicar_markup_importacao ?? false);
+                setMarkupValor(settings.markup_valor_importacao ?? 2.0);
+            }
+        };
+        loadSettings();
+    }, []);
 
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
@@ -134,10 +151,12 @@ export default function ImportarXML() {
 
             // Tentar Match Automático
             const conciliated = importedItems.map(item => {
-                // 1. Match por EAN
-                let match = allProducts?.find((p: DatabaseProduct) => p.ean && p.ean === item.cEAN);
+                // 1. Match por EAN (PRIORIDADE)
+                let match = item.cEAN
+                    ? allProducts?.find((p: DatabaseProduct) => p.ean === item.cEAN)
+                    : undefined;
 
-                // 2. Match por Nome (Fuzzy ou Exato) - Aqui Exato por enquanto
+                // 2. Match por Nome (Exato)
                 if (!match) {
                     match = allProducts?.find((p: DatabaseProduct) => p.nome.toLowerCase() === item.xProd.toLowerCase());
                 }
@@ -199,7 +218,7 @@ export default function ImportarXML() {
                         custo_reposicao: item.vUnCom,
                         estoque_atual: item.qCom,
                         estoque_min: 5,
-                        preco_venda: item.vUnCom * 2, // Markup 100%
+                        preco_venda: markupAtivo ? item.vUnCom * markupValor : item.vUnCom * 2, // Markup configurado ou 100% padrão
                         ean: item.cEAN || null,
                         ncm: item.ncm,
                         cfop: item.cfop,
@@ -219,6 +238,8 @@ export default function ImportarXML() {
                     const { error } = await supabase.from('products').update({
                         estoque_atual: newStock,
                         custo_reposicao: item.vUnCom,
+                        // Atualizar preço de venda se markup ativo
+                        ...(markupAtivo ? { preco_venda: item.vUnCom * markupValor } : {}),
                         // Atualiza EAN se não tiver
                         ...(!item.matchedProduct?.ean && item.cEAN ? { ean: item.cEAN } : {}),
                         // Atualiza nome se o usuário optou

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial: Notas Fiscais</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #1a1a1a;
+      --yellow: #facc15;
+      --yellow-light: #fef9c3;
+      --green: #16a34a;
+      --green-light: #dcfce7;
+      --blue: #1d4ed8;
+      --blue-light: #dbeafe;
+      --orange: #ea580c;
+      --orange-light: #ffedd5;
+      --red: #dc2626;
+      --red-light: #fee2e2;
+      --purple: #7c3aed;
+      --purple-light: #ede9fe;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 24px 16px;
+    }
+    .container { max-width: 780px; margin: 0 auto; }
+    .header {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px 28px 24px;
+      margin-bottom: 28px;
+    }
+    .header h1 { margin: 0 0 6px; font-size: 1.7rem; color: var(--yellow); line-height: 1.2; }
+    .header p { margin: 0; color: #d1d5db; font-size: 0.95rem; }
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--accent);
+      color: var(--yellow);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .section-header { display: flex; align-items: center; margin-bottom: 14px; }
+    .section-header h2 { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--accent); }
+    .section p { margin: 6px 0; font-size: 0.95rem; }
+    ol, ul { margin: 10px 0 10px 20px; padding: 0; }
+    li { margin: 7px 0; font-size: 0.95rem; }
+    .callout {
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.tip    { background: var(--yellow-light); border-left: 4px solid #ca8a04; }
+    .callout.info   { background: var(--blue-light);   border-left: 4px solid var(--blue); }
+    .callout.warn   { background: var(--orange-light); border-left: 4px solid var(--orange); }
+    .callout.good   { background: var(--green-light);  border-left: 4px solid var(--green); }
+    .callout.danger { background: var(--red-light);    border-left: 4px solid var(--red); }
+    .callout.purple { background: var(--purple-light); border-left: 4px solid var(--purple); }
+
+    /* Filtro de tipo */
+    .filter-block {
+      background: #f8f7f2;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 18px;
+    }
+    .filter-block p { margin: 0 0 10px; font-size: 0.9rem; font-weight: 700; color: var(--accent); }
+    .filter-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+    .filter-btn {
+      padding: 7px 18px;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      background: #fff;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      color: var(--accent);
+    }
+    .filter-btn:hover { border-color: #facc15; }
+    .filter-btn.active { background: var(--accent); color: var(--yellow); border-color: var(--accent); }
+
+    .content-nfce,
+    .content-nfse { display: none; }
+    .content-nfce.visible,
+    .content-nfse.visible { display: block; }
+
+    /* Tabela de campos obrigatórios */
+    .field-list { margin: 10px 0; }
+    .field-row {
+      display: flex; gap: 10px; align-items: flex-start;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-name { font-weight: 700; min-width: 180px; flex-shrink: 0; }
+    .field-note { color: var(--muted); }
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 5px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .badge.req   { background: #fee2e2; color: #991b1b; }
+    .badge.opt   { background: #f3f4f6; color: #6b7280; }
+    .badge.auto  { background: #dcfce7; color: #166534; }
+
+    /* Status grid */
+    .status-grid { display: grid; gap: 8px; margin: 12px 0; }
+    .status-row {
+      display: flex; gap: 12px; align-items: center;
+      border-radius: 10px; padding: 10px 14px; border: 1px solid var(--border);
+      font-size: 0.88rem;
+    }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .status-dot.green   { background: #16a34a; }
+    .status-dot.yellow  { background: #ca8a04; }
+    .status-dot.red     { background: #dc2626; }
+    .status-dot.gray    { background: #9ca3af; }
+    .status-name { font-weight: 700; min-width: 110px; }
+
+    /* Tipo de nota cards */
+    .type-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+    @media (max-width: 520px) { .type-cards { grid-template-columns: 1fr; } }
+    .type-card {
+      border-radius: 12px; padding: 16px;
+      border: 1px solid var(--border);
+    }
+    .type-card.nfce { background: #eff6ff; border-color: #bfdbfe; }
+    .type-card.nfse { background: #f0fdf4; border-color: #bbf7d0; }
+    .type-card-title { font-weight: 800; font-size: 0.95rem; margin-bottom: 6px; }
+    .type-card-title span { font-size: 1.2rem; margin-right: 6px; }
+    .type-card ul { margin: 4px 0 0 16px; padding: 0; }
+    .type-card li { font-size: 0.82rem; color: var(--muted); margin: 3px 0; }
+    /* ── ACORDEÃO DE PASSOS ── */
+    .section-header {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 22px;
+    }
+    .section-header::after {
+      content: "▸";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.9rem;
+      transition: transform .18s ease;
+    }
+    .section.open .section-header::after {
+      transform: translateY(-50%) rotate(90deg);
+    }
+    .section-content { display: none; }
+    .section.open .section-content { display: block; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Notas Fiscais</h1>
+    <p>Como emitir NFC-e e NFS-e, entender a relação com a OS e usar o painel de notas.</p>
+  </div>
+
+  <!-- 1. TIPOS DE NOTA -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">1</span><h2>Os dois tipos de nota</h2></div>
+    <p>O sistema emite dois tipos de documento fiscal, cada um destinado a uma situação diferente:</p>
+    <div class="type-cards">
+      <div class="type-card nfce">
+        <div class="type-card-title"><span>🧾</span>NFC-e</div>
+        <ul>
+          <li>Nota Fiscal de Consumidor Eletrônica</li>
+          <li>Usada para <strong>venda de peças e produtos</strong></li>
+          <li>Emitida pela SEFAZ (Receita Estadual)</li>
+          <li>Obrigatória em muitos estados para varejo</li>
+        </ul>
+      </div>
+      <div class="type-card nfse">
+        <div class="type-card-title"><span>🔧</span>NFS-e</div>
+        <ul>
+          <li>Nota Fiscal de Serviços Eletrônica</li>
+          <li>Usada para <strong>mão de obra e serviços</strong></li>
+          <li>Emitida pela prefeitura do município</li>
+          <li>Exigida por muitas prefeituras para prestadores de serviço</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout info">
+      <span class="callout-icon">💡</span>
+      <span>Uma OS com peças <em>e</em> serviços pode gerar duas notas: uma NFC-e pelas peças e uma NFS-e pelos serviços. O sistema cuida de cada uma separadamente.</span>
+    </div>
+  </div>
+
+  <!-- 2. AMBIENTE DE HOMOLOGAÇÃO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">2</span><h2>Ambiente de homologação</h2></div>
+    <p>Na tela de Notas Fiscais, você pode alternar entre <strong>Produção</strong> e <strong>Homologação</strong> no canto superior.</p>
+    <div class="callout purple">
+      <span class="callout-icon">🧪</span>
+      <div>
+        <strong>Homologação é o ambiente de testes.</strong> As notas emitidas ali são enviadas para servidores de teste da SEFAZ e das prefeituras — não têm validade fiscal e não entram nos seus registros. Use para treinar o preenchimento, testar uma configuração nova ou tirar dúvidas sem gerar documentos reais.
+      </div>
+    </div>
+    <div class="callout danger">
+      <span class="callout-icon">⚠️</span>
+      <span>Verifique sempre em qual ambiente está antes de emitir. Notas em homologação <strong>não valem como documento fiscal</strong>.</span>
+    </div>
+  </div>
+
+  <!-- 3. NOTA E OS SÃO INDEPENDENTES -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">3</span><h2>A nota e a OS são independentes</h2></div>
+    <p>Ao emitir uma nota vinculada a uma OS, o sistema carrega automaticamente os itens dela como ponto de partida. Mas o que você alterar na tela de emissão <strong>não muda a OS</strong> — e o contrário também é verdade.</p>
+    <p>Isso é intencional. A OS é o registro interno do trabalho realizado. A nota fiscal é o documento comercial que vai para o cliente e para a Receita. Em muitos casos eles são idênticos, mas nem sempre precisam ser:</p>
+    <ul>
+      <li>Um cliente pode pedir nota só pelas peças, mas não pelo serviço.</li>
+      <li>Você pode precisar emitir nota por um serviço rápido feito na hora, sem OS aberta.</li>
+      <li>Pode ser necessário ajustar a descrição de um item para ficar mais clara no documento fiscal.</li>
+      <li>Serviços pequenos que não justificam uma OS separada podem ser incluídos na nota de outra forma.</li>
+    </ul>
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Essa flexibilidade existe para que a nota fiscal possa refletir com precisão a transação comercial acordada com o cliente — independentemente de como o trabalho foi organizado internamente no sistema.</span>
+    </div>
+  </div>
+
+  <!-- 4. O PAINEL DE NOTAS -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">4</span><h2>O painel de notas fiscais</h2></div>
+    <p>A tela principal mostra todas as notas fiscais — tanto as emitidas pelo sistema quanto as notas de entrada dos fornecedores (importadas na tela de Estoque). Use os filtros por período e status para encontrar o que precisa.</p>
+
+    <p><strong>Ações disponíveis para notas emitidas (saída):</strong></p>
+    <ul>
+      <li><strong>Baixar PDF</strong> — o DANFE (NFC-e) ou o documento da NFS-e para enviar ao cliente ou guardar nos registros.</li>
+      <li><strong>Enviar por WhatsApp</strong> — encaminha o link do PDF diretamente para o cliente.</li>
+      <li><strong>Cancelar</strong> — disponível para notas autorizadas dentro do prazo legal (geralmente até 24h).</li>
+      <li><strong>Corrigir</strong> — em caso de rejeição, abre a tela para ajustar e reenviar.</li>
+    </ul>
+
+    <p><strong>Notas de entrada (NFe do fornecedor):</strong></p>
+    <p>Quando você importa um XML de compra na tela de Estoque, o sistema também registra essa nota aqui como "NFe Entrada". Para elas, o botão de download baixa o <strong>XML original</strong> do fornecedor — útil para guardar nos registros fiscais da empresa.</p>
+
+    <div class="callout good">
+      <span class="callout-icon">📱</span>
+      <span><strong>Portal do cliente:</strong> quando uma nota vinculada a uma OS é autorizada, ela aparece automaticamente no portal do cliente (link de acompanhamento) como um botão de download do PDF. O cliente não precisa pedir — ela fica disponível assim que autorizada.</span>
+    </div>
+
+    <p style="margin-top:14px;"><strong>Status possíveis das notas:</strong></p>
+    <div class="status-grid">
+      <div class="status-row">
+        <div class="status-dot green"></div>
+        <div class="status-name">Autorizada</div>
+        <div style="font-size:0.82rem;color:var(--muted);">Nota aprovada pela SEFAZ ou prefeitura. Documento válido.</div>
+      </div>
+      <div class="status-row">
+        <div class="status-dot yellow"></div>
+        <div class="status-name">Em processamento</div>
+        <div style="font-size:0.82rem;color:var(--muted);">Enviada e aguardando retorno. A tela atualiza automaticamente.</div>
+      </div>
+      <div class="status-row">
+        <div class="status-dot red"></div>
+        <div class="status-name">Rejeitada</div>
+        <div style="font-size:0.82rem;color:var(--muted);">A SEFAZ ou prefeitura recusou. O motivo aparece na linha. Use "Corrigir" para reenviar.</div>
+      </div>
+      <div class="status-row">
+        <div class="status-dot gray"></div>
+        <div class="status-name">Cancelada</div>
+        <div style="font-size:0.82rem;color:var(--muted);">Nota cancelada. Fica registrada para histórico, sem validade fiscal.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. EMITIR UMA NOTA -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">5</span><h2>Como emitir uma nota</h2></div>
+    <p>Clique em <strong>+ Nova Nota</strong> no canto superior da tela. A emissão tem dois passos:</p>
+
+    <p><strong>Passo 1 — Escolher a origem</strong></p>
+    <ul>
+      <li><strong>Vinculada a uma OS:</strong> a lista mostra as OS com notas pendentes. Toque ou clique na OS desejada. O sistema carrega automaticamente o cliente, o endereço e os itens da OS como ponto de partida.</li>
+      <li><strong>Nota avulsa:</strong> clique em "Nota Avulsa" para abrir o formulário sem vincular a nenhuma OS. Útil para vendas rápidas, peças usadas, ou serviços extras acordados depois do fechamento da OS.</li>
+    </ul>
+
+    <p style="margin-top:10px;"><strong>Passo 2 — Preencher e emitir</strong></p>
+    <p>Na tela de preenchimento você vê dois blocos: <strong>Peças</strong> (para NFC-e) e <strong>Serviços</strong> (para NFS-e). Preencha os campos de cada item e os dados do cliente, depois clique em <strong>Emitir Nota</strong>.</p>
+
+    <div class="callout info">
+      <span class="callout-icon">🔄</span>
+      <span>Os itens carregados da OS podem ser editados, removidos ou complementados com novos itens antes de emitir. O que for alterado aqui não altera a OS.</span>
+    </div>
+  </div>
+
+  <!-- 6. CAMPOS OBRIGATÓRIOS -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">6</span><h2>Campos obrigatórios</h2></div>
+    <p>Os campos exigidos variam de acordo com o tipo de nota. Selecione abaixo para ver:</p>
+
+    <div class="filter-block">
+      <p>Qual tipo de nota você está emitindo?</p>
+      <div class="filter-buttons">
+        <button class="filter-btn" id="btn-nfce" onclick="setTipoNota('nfce')">🧾 NFC-e (Peças)</button>
+        <button class="filter-btn" id="btn-nfse" onclick="setTipoNota('nfse')">🔧 NFS-e (Serviços)</button>
+      </div>
+    </div>
+
+    <!-- NFC-e -->
+    <div class="content-nfce" id="campos-nfce">
+      <p style="margin-bottom:10px;">Para emitir uma NFC-e, cada item de peça precisa ter:</p>
+      <div class="field-list">
+        <div class="field-row">
+          <div class="field-name">Descrição do produto <span class="badge req">Obrigatório</span></div>
+          <div class="field-note">Nome que vai aparecer na nota. Pode ser diferente do nome na OS.</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">NCM <span class="badge req">Obrigatório</span></div>
+          <div class="field-note">Código de classificação fiscal da mercadoria. Se não souber, use o botão <strong>✨ (IA)</strong> ao lado do campo — o sistema sugere o NCM com base na descrição e salva para futuras notas desse produto.</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">CFOP <span class="badge auto">Preenchido auto</span></div>
+          <div class="field-note">Código da operação fiscal (ex: 5102 para venda dentro do estado). Vem preenchido automaticamente; altere só se necessário.</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">Unidade <span class="badge auto">Preenchido auto</span></div>
+          <div class="field-note">Ex: UN, PC, KG. Vem do cadastro do produto.</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">Quantidade e valor <span class="badge req">Obrigatório</span></div>
+          <div class="field-note">Quantidade e valor unitário do item na nota.</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">CPF/CNPJ do cliente <span class="badge opt">Opcional*</span></div>
+          <div class="field-note">Alguns estados exigem identificação do consumidor acima de determinado valor. Verifique a legislação do seu estado.</div>
+        </div>
+      </div>
+      <div class="callout tip">
+        <span class="callout-icon">💡</span>
+        <span>Peças fornecidas pelo próprio cliente ("peça do cliente" na OS) são excluídas automaticamente da NFC-e — elas não entram na nota.</span>
+      </div>
+    </div>
+
+    <!-- NFS-e -->
+    <div class="content-nfse" id="campos-nfse">
+      <p style="margin-bottom:10px;">Para emitir uma NFS-e, cada serviço precisa ter:</p>
+      <div class="field-list">
+        <div class="field-row">
+          <div class="field-name">Descrição do serviço <span class="badge req">Obrigatório</span></div>
+          <div class="field-note">Descrição do serviço prestado que vai constar na nota.</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">Código do serviço <span class="badge req">Obrigatório</span></div>
+          <div class="field-note">Código LC 116 da lista de serviços da prefeitura (ex: 14.01 — lubrificação, limpeza de veículos). Vem do cadastro do serviço; pode ser ajustado aqui.</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">Alíquota ISS <span class="badge req">Obrigatório</span></div>
+          <div class="field-note">Percentual de ISS do seu município. Vem do cadastro do serviço; varia por cidade (geralmente entre 2% e 5%).</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">Valor do serviço <span class="badge req">Obrigatório</span></div>
+          <div class="field-note">Valor cobrado pelo serviço na nota.</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">CPF/CNPJ do tomador <span class="badge opt">Varia por prefeitura</span></div>
+          <div class="field-note">Algumas prefeituras exigem a identificação do tomador do serviço. Verifique a exigência da sua cidade.</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">Endereço do tomador <span class="badge opt">Varia por prefeitura</span></div>
+          <div class="field-note">Algumas prefeituras exigem o endereço completo. O sistema preenche automaticamente se o cliente tiver endereço cadastrado.</div>
+        </div>
+      </div>
+      <div class="callout warn">
+        <span class="callout-icon">⚠️</span>
+        <span>As exigências de campos variam bastante de uma prefeitura para outra. Se a nota for rejeitada com motivo de "campo obrigatório", verifique o que a prefeitura da sua cidade exige e cadastre essa informação no cliente.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. NOTAS AVULSAS -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">7</span><h2>Notas avulsas</h2></div>
+    <p>Uma nota avulsa é emitida sem estar vinculada a nenhuma OS do sistema. Use para:</p>
+    <ul>
+      <li>Venda de peça usada ou de estoque feita diretamente, sem abertura de OS.</li>
+      <li>Serviço extra combinado com o cliente depois do fechamento da OS original.</li>
+      <li>Qualquer transação que precisa de documento fiscal mas não foi registrada como OS.</li>
+    </ul>
+    <p>Na tela de emissão, clique em <strong>Nota Avulsa</strong> (logo abaixo da lista de OS) para abrir o formulário em branco. Preencha os itens e os dados do cliente normalmente.</p>
+    <div class="callout info">
+      <span class="callout-icon">📋</span>
+      <span>Notas avulsas ficam registradas no painel de notas fiscais como qualquer outra. Elas não aparecem vinculadas a nenhuma OS no histórico do cliente.</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function setTipoNota(tipo) {
+    document.getElementById('campos-nfce').classList.toggle('visible', tipo === 'nfce');
+    document.getElementById('campos-nfse').classList.toggle('visible', tipo === 'nfse');
+    document.getElementById('btn-nfce').classList.toggle('active', tipo === 'nfce');
+    document.getElementById('btn-nfse').classList.toggle('active', tipo === 'nfse');
+  }
+</script>
+<script>
+  (function initTutorialAccordion() {
+    const sections = document.querySelectorAll('.section');
+    sections.forEach((section, index) => {
+      if (section.dataset.accordionReady === '1') return;
+      const header = section.querySelector(':scope > .section-header');
+      if (!header) return;
+
+      const sectionNum = header.querySelector('.section-num');
+      if (sectionNum) sectionNum.textContent = String(index + 1);
+
+      const content = document.createElement('div');
+      content.className = 'section-content';
+      Array.from(section.children).forEach((child) => {
+        if (child !== header) content.appendChild(child);
+      });
+      section.appendChild(content);
+
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-expanded', 'false');
+
+      const toggle = () => {
+        const open = !section.classList.contains('open');
+        section.classList.toggle('open', open);
+        header.setAttribute('aria-expanded', String(open));
+      };
+
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+
+      section.dataset.accordionReady = '1';
+    });
+  })();
+</script>
+</body>
+</html>

@@ -461,6 +461,7 @@ export default function NovaOS() {
   const handleFinalizarOS = async () => {
     if (!clienteSelecionado) return alert("Selecione um cliente.");
     if (!veiculoConfirmado) return alert("Erro: Veículo não identificado.");
+    if (!profile?.id) return alert("Erro: perfil do usuário não carregado. Recarregue a página.");
 
     setSaving(true);
 
@@ -478,6 +479,7 @@ export default function NovaOS() {
           nivel_combustivel: nivelCombustivel || null,
           temperatura_motor: temperaturaMotor || null,
           painel_obs: painelObs || null,
+          employee_id: profile?.id || null,
         })
         .select()
         .single();

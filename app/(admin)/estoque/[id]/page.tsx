@@ -6,9 +6,10 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
 import {
-  ArrowLeft, Package, DollarSign,
+  ArrowLeft, Package, DollarSign, Barcode,
   Save, Calculator, Trash2, Loader2, AlertCircle, Wallet
 } from "lucide-react";
+import { getCompanySettings } from "@/src/actions/fiscal";
 
 export default function EditarProduto() {
   const router = useRouter();
@@ -23,6 +24,11 @@ export default function EditarProduto() {
   const [nome, setNome] = useState("");
   const [marca, setMarca] = useState("");
   const [codigoRef, setCodigoRef] = useState("");
+  const [ean, setEan] = useState("");
+
+  // Markup da empresa
+  const [markupAtivo, setMarkupAtivo] = useState(false);
+  const [markupValor, setMarkupValor] = useState(2.0);
 
   const [estoqueAtual, setEstoqueAtual] = useState("");
   const [estoqueMin, setEstoqueMin] = useState("");
@@ -36,6 +42,14 @@ export default function EditarProduto() {
 
   useEffect(() => {
     fetchProduct();
+    const loadSettings = async () => {
+      const settings = await getCompanySettings();
+      if (settings) {
+        setMarkupAtivo(settings.aplicar_markup_importacao ?? false);
+        setMarkupValor(settings.markup_valor_importacao ?? 2.0);
+      }
+    };
+    loadSettings();
   }, [id]);
 
   const fetchProduct = async () => {
@@ -52,6 +66,7 @@ export default function EditarProduto() {
         setNome(data.nome);
         setMarca(data.marca || "");
         setCodigoRef(data.codigo_ref || "");
+        setEan(data.ean || "");
         setEstoqueAtual(data.estoque_atual.toString());
         setEstoqueMin(data.estoque_min.toString());
         setLocalizacao(data.localizacao || "");
@@ -78,6 +93,11 @@ export default function EditarProduto() {
     setCustoContabil(valor);
     // Ao editar o custo real, atualiza o de reposição automaticamente
     setCustoReposicao(valor);
+    // Auto-aplicar markup se configurado
+    if (markupAtivo && valor) {
+      const custo = parseFloat(valor) || 0;
+      setPrecoVenda((custo * markupValor).toFixed(2));
+    }
   };
 
   const handleUpdate = async () => {
@@ -91,6 +111,7 @@ export default function EditarProduto() {
           nome,
           marca,
           codigo_ref: codigoRef,
+          ean: ean || null,
           estoque_atual: Number(estoqueAtual),
           estoque_min: Number(estoqueMin),
           custo_reposicao: Number(custoReposicao),
@@ -183,6 +204,11 @@ export default function EditarProduto() {
                   <label className="text-xs font-bold text-stone-400 ml-2">CÓDIGO (REF)</label>
                   <input type="text" value={codigoRef} onChange={e => setCodigoRef(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Barcode size={12} /> EAN (CÓDIGO DE BARRAS)</label>
+                <input type="text" value={ean} onChange={e => setEan(e.target.value)} placeholder="Ex: 7891234567890" className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
               </div>
             </div>
           </div>

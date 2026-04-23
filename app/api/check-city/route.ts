@@ -3,8 +3,16 @@ import { getNuvemFiscalToken } from "@/src/lib/nuvemfiscal";
 
 export async function GET() {
     try {
+        const baseUrl = process.env.NUVEMFISCAL_URL;
+        if (!baseUrl) {
+            return NextResponse.json(
+                { error: "NUVEMFISCAL_URL não configurado." },
+                { status: 503 }
+            );
+        }
+
         const token = await getNuvemFiscalToken();
-        const response = await fetch(`${process.env.NUVEMFISCAL_URL}/nfse/cidades`, {
+        const response = await fetch(`${baseUrl}/nfse/cidades`, {
             headers: {
                 "Authorization": `Bearer ${token}`
             }
@@ -32,9 +40,6 @@ export async function GET() {
 
     } catch (error: any) {
         console.error("Erro no check-city:", error);
-        // Fallback debug: write to file
-        const fs = require('fs');
-        fs.writeFileSync('debug_error.txt', `Error: ${error.message}\nStack: ${error.stack}`);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

@@ -18,6 +18,7 @@ type UserProfile = {
   usa_fiscal?: boolean;
   usa_caixa?: boolean;
   usa_agendamento?: boolean;
+  usa_comissao?: boolean;
   nome_fantasia?: string;
   logo_url?: string;
 };

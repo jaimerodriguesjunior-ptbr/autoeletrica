@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial: Agendamento</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #1a1a1a;
+      --yellow: #facc15;
+      --yellow-light: #fef9c3;
+      --green: #16a34a;
+      --green-light: #dcfce7;
+      --blue: #1d4ed8;
+      --blue-light: #dbeafe;
+      --orange: #ea580c;
+      --orange-light: #ffedd5;
+      --red: #dc2626;
+      --red-light: #fee2e2;
+      --purple: #7c3aed;
+      --purple-light: #ede9fe;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 24px 16px;
+    }
+    .container { max-width: 780px; margin: 0 auto; }
+    .header {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px 28px 24px;
+      margin-bottom: 28px;
+    }
+    .header h1 { margin: 0 0 6px; font-size: 1.7rem; color: var(--yellow); line-height: 1.2; }
+    .header p { margin: 0; color: #d1d5db; font-size: 0.95rem; }
+
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--accent);
+      color: var(--yellow);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .section-header { display: flex; align-items: center; margin-bottom: 14px; }
+    .section-header h2 { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--accent); }
+    .section p { margin: 6px 0; font-size: 0.95rem; }
+    ol, ul { margin: 10px 0 10px 20px; padding: 0; }
+    li { margin: 7px 0; font-size: 0.95rem; }
+
+    .callout {
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.tip    { background: var(--yellow-light); border-left: 4px solid #ca8a04; }
+    .callout.info   { background: var(--blue-light);   border-left: 4px solid var(--blue); }
+    .callout.warn   { background: var(--orange-light); border-left: 4px solid var(--orange); }
+    .callout.good   { background: var(--green-light);  border-left: 4px solid var(--green); }
+    .callout.danger { background: var(--red-light);    border-left: 4px solid var(--red); }
+    .callout.purple { background: var(--purple-light); border-left: 4px solid var(--purple); }
+
+    /* Tipo de agendamento — filtro */
+    .filter-block {
+      background: #f8f7f2;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 18px;
+    }
+    .filter-block p { margin: 0 0 10px; font-size: 0.9rem; font-weight: 700; color: var(--accent); }
+    .filter-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+    .filter-btn {
+      padding: 7px 18px;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      background: #fff;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      color: var(--accent);
+    }
+    .filter-btn:hover { border-color: #facc15; }
+    .filter-btn.active { background: var(--accent); color: var(--yellow); border-color: var(--accent); }
+
+    .content-avaliacao,
+    .content-jatemOS { display: none; }
+    .content-avaliacao.visible,
+    .content-jatemOS.visible { display: block; }
+
+    /* Status cards */
+    .status-grid { display: grid; gap: 8px; margin: 12px 0; }
+    .status-row {
+      display: flex; gap: 12px; align-items: flex-start;
+      border-radius: 10px; padding: 12px 14px; border: 1px solid var(--border);
+    }
+    .status-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 1px; }
+    .status-name { font-weight: 800; font-size: 0.88rem; min-width: 140px; }
+    .status-desc { font-size: 0.82rem; color: var(--muted); }
+    .status-row.green  { background: #f0fdf4; border-color: #bbf7d0; }
+    .status-row.yellow { background: #fefce8; border-color: #fde047; }
+    .status-row.red    { background: #fff1f2; border-color: #fecdd3; }
+    .status-row.gray   { background: #f9fafb; border-color: #e5e7eb; }
+    .status-row.black  { background: #1a1a1a; border-color: #374151; }
+
+    /* Fluxo visual */
+    .flow {
+      display: flex; flex-direction: column; gap: 0;
+      margin: 14px 0;
+    }
+    .flow-step {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 10px 0;
+    }
+    .flow-step + .flow-step { border-top: 1px dashed var(--border); }
+    .flow-num {
+      width: 24px; height: 24px;
+      background: var(--accent); color: var(--yellow);
+      border-radius: 50%;
+      font-size: 0.75rem; font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 2px;
+    }
+    .flow-text { font-size: 0.9rem; }
+    .flow-text strong { color: var(--accent); }
+
+    /* Heatmap demo */
+    .heatmap-demo {
+      display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0;
+    }
+    .hm-cell {
+      border-radius: 8px; padding: 6px 10px;
+      font-size: 0.8rem; font-weight: 700; text-align: center;
+      min-width: 56px;
+    }
+    .hm-cell span { display: block; font-size: 0.65rem; font-weight: 400; margin-top: 1px; }
+    .hm-green  { background: #dcfce7; color: #166534; }
+    .hm-yellow { background: #fef9c3; color: #854d0e; }
+    .hm-red    { background: #fee2e2; color: #991b1b; }
+    .hm-empty  { background: #f3f4f6; color: #9ca3af; }
+
+    /* Alerta visual */
+    .alert-demo {
+      background: #1a1a1a;
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin: 14px 0;
+      color: #fff;
+      font-size: 0.88rem;
+    }
+    .alert-demo-title { color: var(--yellow); font-weight: 800; margin-bottom: 8px; font-size: 0.9rem; }
+    .alert-demo-client { font-weight: 700; }
+    .alert-demo-sub { color: #9ca3af; font-size: 0.8rem; margin-top: 2px; }
+    .alert-demo-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+    .alert-btn {
+      padding: 5px 12px; border-radius: 7px;
+      font-size: 0.78rem; font-weight: 700; cursor: default;
+    }
+    .alert-btn.yellow { background: var(--yellow); color: #1a1a1a; }
+    .alert-btn.red    { background: #ef4444; color: #fff; }
+    .alert-btn.gray   { background: #374151; color: #d1d5db; }
+    .alert-btn.blue   { background: #3b82f6; color: #fff; }
+
+    /* Portal demo */
+    .portal-card {
+      border-radius: 14px; padding: 16px 18px;
+      margin: 12px 0; border: 2px solid;
+      font-size: 0.88rem;
+    }
+    .portal-card.agendado  { background: #fefce8; border-color: #fde047; }
+    .portal-card.confirmado{ background: #f0fdf4; border-color: #86efac; }
+    .portal-card.cancelado { background: #fff1f2; border-color: #fecdd3; }
+    .portal-card.concluido { background: #1a1a1a; border-color: #374151; color: #fff; }
+    .portal-card-title { font-weight: 800; font-size: 0.92rem; margin-bottom: 4px; }
+    .portal-card-sub { font-size: 0.8rem; opacity: 0.7; }
+
+    /* ── ACORDEÃO DE PASSOS ── */
+    .section-header {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 22px;
+    }
+    .section-header::after {
+      content: "▸";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.9rem;
+      transition: transform .18s ease;
+    }
+    .section.open .section-header::after {
+      transform: translateY(-50%) rotate(90deg);
+    }
+    .section-content { display: none; }
+    .section.open .section-content { display: block; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Agendamento</h1>
+    <p>Como criar agendamentos, enviar o link ao cliente, usar os alertas em tempo real e acompanhar tudo pelo painel.</p>
+  </div>
+
+  <!-- 1. O QUE É -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">1</span><h2>O que é o agendamento</h2></div>
+    <p>O módulo de agendamento permite marcar um dia e horário com um cliente — seja para uma <strong>avaliação inicial</strong> do veículo (sem OS aberta), seja para um <strong>retorno de uma OS que já existe</strong>.</p>
+    <p>Ao criar o agendamento, o sistema gera um <strong>link exclusivo</strong> que você envia ao cliente pelo WhatsApp. Pelo link, o cliente confirma a presença — e você vê isso em tempo real no painel.</p>
+    <p>Quando a hora chegar, um <strong>alerta automático</strong> aparece no topo do sistema, com som e notificação, para que você não perca nenhum atendimento.</p>
+  </div>
+
+  <!-- 2. O PAINEL -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">2</span><h2>O painel de agendamentos</h2></div>
+    <p>Acesse pelo menu lateral em <strong>Agendamentos</strong>. A tela tem dois elementos principais:</p>
+
+    <p><strong>Calendário do mês</strong></p>
+    <p>No topo, um calendário mostra todos os dias do mês. Clique em qualquer dia para ver a lista de agendamentos daquele dia. O sistema destaca os dias com mais agendamentos para facilitar a visualização da agenda.</p>
+
+    <p style="margin-top:14px;"><strong>Mapa de calor de ocupação por hora</strong></p>
+    <p>Abaixo do calendário, uma linha de horários (das 7h às 18h) mostra o quanto cada hora do dia selecionado está ocupada:</p>
+    <div class="heatmap-demo">
+      <div class="hm-cell hm-empty">7h<span>vazio</span></div>
+      <div class="hm-cell hm-green">8h<span>tranquilo</span></div>
+      <div class="hm-cell hm-green">9h<span>tranquilo</span></div>
+      <div class="hm-cell hm-yellow">10h<span>movimentado</span></div>
+      <div class="hm-cell hm-red">11h<span>lotado</span></div>
+      <div class="hm-cell hm-yellow">14h<span>movimentado</span></div>
+      <div class="hm-cell hm-green">15h<span>tranquilo</span></div>
+      <div class="hm-cell hm-empty">16h<span>vazio</span></div>
+    </div>
+    <p>Use o mapa de calor para decidir o melhor horário ao criar um novo agendamento — evitando concentrar tudo na mesma hora.</p>
+
+    <p style="margin-top:14px;"><strong>Lista de agendamentos do dia</strong></p>
+    <p>Abaixo, aparecem todos os agendamentos do dia em ordem de horário. Para cada um você vê: nome do cliente, veículo, horário, duração e status (ícone colorido). Os botões de ação ficam ao lado de cada agendamento.</p>
+  </div>
+
+  <!-- 3. CRIAR UM AGENDAMENTO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">3</span><h2>Criar um agendamento</h2></div>
+    <p>Clique em <strong>+ Novo Agendamento</strong> no topo da tela. O formulário pede primeiro o <strong>tipo</strong> do agendamento — e o restante muda conforme o tipo escolhido:</p>
+
+    <div class="filter-block">
+      <p>Selecione o tipo para ver as instruções:</p>
+      <div class="filter-buttons">
+        <button class="filter-btn" id="btn-avaliacao" onclick="setTipo('avaliacao')">🔍 Avaliação (sem OS)</button>
+        <button class="filter-btn" id="btn-jatemOS" onclick="setTipo('jatemOS')">📋 Já tem OS</button>
+      </div>
+    </div>
+
+    <!-- Avaliação -->
+    <div class="content-avaliacao" id="form-avaliacao">
+      <p><strong>Use quando o cliente vai trazer o veículo pela primeira vez</strong>, sem OS aberta. O objetivo é avaliar o problema e decidir o que fazer.</p>
+      <p>Campos do formulário:</p>
+      <ul>
+        <li><strong>Cliente</strong> — campo de busca opcional. Digite o nome para buscar um cliente já cadastrado. Se for um cliente novo, deixe em branco e anote o nome na descrição.</li>
+        <li><strong>Veículo</strong> — campo de texto livre. Escreva a placa ou modelo (ex: "Gol 2018 – ABC1234"). Não é vinculado ao cadastro.</li>
+        <li><strong>Data e hora</strong> — selecione o dia e a hora do atendimento. O sistema não permite marcar no passado.</li>
+        <li><strong>Duração</strong> — tempo estimado para o atendimento: 15min, 30min, 1h, 2h, 4h ou dia inteiro. Isso afeta o mapa de calor de ocupação.</li>
+        <li><strong>Descrição</strong> — escreva o motivo da visita (ex: "Problema no alternador"). Obrigatório se não houver cliente selecionado.</li>
+      </ul>
+      <div class="callout tip">
+        <span class="callout-icon">💡</span>
+        <span>Ao criar este agendamento, nenhuma OS é aberta ainda. Quando o cliente chegar, você abre a OS normalmente pelo menu de Atendimento — e pode vincular a OS ao agendamento depois, se quiser.</span>
+      </div>
+    </div>
+
+    <!-- Já tem OS -->
+    <div class="content-jatemOS" id="form-jatemOS">
+      <p><strong>Use quando um cliente já tem uma OS aberta</strong> e precisa retornar — por exemplo, para aprovação de orçamento, buscar o veículo, ou continuar um serviço.</p>
+      <p>Campos do formulário:</p>
+      <ul>
+        <li><strong>Buscar OS</strong> — campo de busca. Digite o número da OS, o nome do cliente ou a placa. Uma lista aparece abaixo; clique na OS desejada.</li>
+        <li>Após selecionar a OS, o sistema exibe automaticamente: <strong>nome do cliente</strong>, <strong>veículo</strong> e <strong>descrição</strong> herdados da OS.</li>
+        <li><strong>Data e hora</strong> — selecione quando o cliente vai retornar.</li>
+        <li><strong>Duração</strong> — tempo estimado do retorno.</li>
+      </ul>
+      <div class="callout info">
+        <span class="callout-icon">📋</span>
+        <span>O agendamento fica vinculado à OS. Quando o cliente acessar o link pelo portal, ele verá tanto o agendamento quanto a situação atual da OS (status, orçamento para aprovar, etc.).</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. ENVIAR O LINK AO CLIENTE -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">4</span><h2>Enviar o link ao cliente</h2></div>
+    <p>Depois de criar o agendamento, ele aparece na lista do dia. Clique no ícone do <strong>WhatsApp</strong> ao lado do agendamento para enviar o link de confirmação ao cliente.</p>
+
+    <p>O sistema abre o WhatsApp Web com uma mensagem já pronta, que inclui:</p>
+    <ul>
+      <li>Nome do cliente.</li>
+      <li>Data e hora do agendamento.</li>
+      <li>Um link exclusivo para o portal do cliente.</li>
+    </ul>
+
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Se o cliente não tiver WhatsApp cadastrado, o sistema pede que você informe o número antes de abrir o WhatsApp. O número digitado é salvo para uso futuro.</span>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">🔗</span>
+      <span>O link gerado é exclusivo para esse agendamento. Não expira e pode ser reenviado quantas vezes precisar — por exemplo, se o cliente perder o link.</span>
+    </div>
+  </div>
+
+  <!-- 5. O QUE O CLIENTE VÊ -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">5</span><h2>O que o cliente vê no portal</h2></div>
+    <p>Ao abrir o link, o cliente chega numa tela com as informações do agendamento e um botão para confirmar a presença. A aparência muda conforme o status:</p>
+
+    <div class="portal-card agendado">
+      <div class="portal-card-title">🕐 Agendamento marcado</div>
+      <div class="portal-card-sub">Sexta-feira, 25 de abril — 10h00 • Avaliação do alternador</div>
+      <div style="margin-top:10px;">
+        <span style="background:#1a1a1a;color:#facc15;font-size:0.78rem;font-weight:800;padding:6px 14px;border-radius:8px;">Confirmar Presença</span>
+      </div>
+    </div>
+
+    <div class="portal-card confirmado">
+      <div class="portal-card-title">✅ Presença confirmada</div>
+      <div class="portal-card-sub">Sexta-feira, 25 de abril — 10h00 • O cliente confirmou que vai comparecer</div>
+    </div>
+
+    <div class="portal-card cancelado">
+      <div class="portal-card-title">❌ Agendamento cancelado</div>
+      <div class="portal-card-sub">Este agendamento foi cancelado. Entre em contato para reagendar.</div>
+    </div>
+
+    <div class="portal-card concluido">
+      <div class="portal-card-title" style="color:var(--yellow);">🏁 Agradecemos a visita!</div>
+      <div class="portal-card-sub">Atendimento concluído.</div>
+    </div>
+
+    <div class="callout good">
+      <span class="callout-icon">📋</span>
+      <span>Se o agendamento for do tipo "Já tem OS", o cliente vê também a <strong>situação da OS</strong> no mesmo portal — linha do tempo de status, fotos, orçamento para aprovar e documentos fiscais. Ele acessa tudo por um único link.</span>
+    </div>
+  </div>
+
+  <!-- 6. ALERTAS EM TEMPO REAL -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">6</span><h2>Alertas em tempo real</h2></div>
+    <p>O sistema monitora os agendamentos do dia automaticamente. Quando um atendimento está prestes a começar, um <strong>banner de alerta</strong> aparece no topo do painel, acompanhado de um som e uma notificação do navegador.</p>
+
+    <div class="alert-demo">
+      <div class="alert-demo-title">⏰ Agendamento chegando</div>
+      <div class="alert-demo-client">João Silva — Gol 2018 (ABC1234)</div>
+      <div class="alert-demo-sub">Previsto para 10h00 • Avaliação do alternador • Confirmado ✓</div>
+      <div class="alert-demo-btns">
+        <span class="alert-btn yellow">Avisar +15min</span>
+        <span class="alert-btn gray">Não compareceu</span>
+        <span class="alert-btn gray">Reagendar</span>
+        <span class="alert-btn blue">Abrir OS</span>
+      </div>
+    </div>
+
+    <p>O alerta aparece <strong>15 minutos antes</strong> do horário marcado — e permanece enquanto o agendamento estiver nos status "agendado" ou "confirmado". No alerta, você pode:</p>
+
+    <ul>
+      <li><strong>Avisar +15min</strong> — "dorme" o alerta por 15 minutos se você já sabe que o cliente está a caminho ou está esperando. O alerta volta depois.</li>
+      <li><strong>Não compareceu</strong> — marca o agendamento como "Não Compareceu" e remove o alerta. O cliente verá isso no portal.</li>
+      <li><strong>Reagendar</strong> — abre a tela para escolher nova data e hora, sem precisar entrar no painel de agendamentos.</li>
+      <li><strong>Abrir OS</strong> — cria uma nova OS já vinculada ao agendamento, abrindo diretamente a tela de novo atendimento. Ideal para avaliações que vão gerar serviço.</li>
+    </ul>
+
+    <div class="callout warn">
+      <span class="callout-icon">🔔</span>
+      <span>Para receber as notificações do navegador, permita quando o sistema pedir. Se negou por engano, acesse as configurações do seu navegador e autorize o site manualmente.</span>
+    </div>
+
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>O alerta aparece em <strong>qualquer tela do painel</strong> — não só na tela de agendamentos. Você não precisa ficar olhando o relógio.</span>
+    </div>
+  </div>
+
+  <!-- 7. AÇÕES NO AGENDAMENTO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">7</span><h2>Ações disponíveis no agendamento</h2></div>
+    <p>Na lista de agendamentos do dia, cada item tem ícones de ação ao lado. Role a linha até o final se estiver no celular:</p>
+
+    <ul>
+      <li>
+        <strong>WhatsApp</strong> — envia ou reenvia o link de confirmação para o cliente.
+      </li>
+      <li>
+        <strong>Reagendar (relógio)</strong> — abre uma tela para escolher nova data e hora. O status é resetado para "agendado" automaticamente após reagendar.
+      </li>
+      <li>
+        <strong>Concluir (check)</strong> — marca o agendamento como concluído, sem abrir uma OS. Use quando o atendimento aconteceu mas não gerou serviço (ex: cliente veio buscar peça, avaliação rápida sem custo).
+      </li>
+      <li>
+        <strong>Cancelar (X)</strong> — cancela o agendamento. O cliente verá "Agendamento Cancelado" no portal, com um botão para chamar a oficina pelo WhatsApp.
+      </li>
+    </ul>
+
+    <div class="callout info">
+      <span class="callout-icon">📋</span>
+      <span>Agendamentos cancelados ficam registrados no histórico — eles não somem completamente. Mas são removidos da lista do dia para não poluir a visualização.</span>
+    </div>
+  </div>
+
+  <!-- 8. REAGENDAR -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">8</span><h2>Reagendar um atendimento</h2></div>
+    <p>Para mover um agendamento para outra data ou hora, clique no ícone de <strong>relógio</strong> ao lado do agendamento. Um formulário aparece com a data e hora atuais já preenchidas.</p>
+    <ol>
+      <li>Escolha a nova data.</li>
+      <li>Escolha o novo horário.</li>
+      <li>Clique em <strong>Salvar</strong>.</li>
+    </ol>
+    <p>Após reagendar, o status volta para "agendado" — mesmo que o cliente já tivesse confirmado. Reenvie o link pelo WhatsApp para que o cliente veja o novo horário.</p>
+
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Se o cliente pediu para reagendar pelo WhatsApp, faça a mudança no painel e reenvie o link. O cliente verá a nova data e hora ao abrir o mesmo link de antes — não precisa gerar um link novo.</span>
+    </div>
+  </div>
+
+  <!-- 9. STATUS -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">9</span><h2>Status dos agendamentos</h2></div>
+    <p>Cada agendamento passa por um ou mais dos seguintes status:</p>
+
+    <div class="status-grid">
+      <div class="status-row yellow">
+        <div class="status-icon">🕐</div>
+        <div>
+          <div class="status-name">Agendado</div>
+          <div class="status-desc">Status inicial. O agendamento foi criado e o link foi enviado, mas o cliente ainda não confirmou.</div>
+        </div>
+      </div>
+      <div class="status-row green">
+        <div class="status-icon">✅</div>
+        <div>
+          <div class="status-name">Confirmado</div>
+          <div class="status-desc">O cliente abriu o link e clicou em "Confirmar Presença". Um checkmark verde aparece no painel.</div>
+        </div>
+      </div>
+      <div class="status-row green">
+        <div class="status-icon">🏁</div>
+        <div>
+          <div class="status-name">Concluído</div>
+          <div class="status-desc">Atendimento finalizado sem geração de OS. Marcado manualmente pelo mecânico.</div>
+        </div>
+      </div>
+      <div class="status-row red">
+        <div class="status-icon">😔</div>
+        <div>
+          <div class="status-name">Não compareceu</div>
+          <div class="status-desc">O cliente não apareceu. Marcado pelo mecânico no alerta ou na lista. O cliente vê isso no portal.</div>
+        </div>
+      </div>
+      <div class="status-row red">
+        <div class="status-icon">❌</div>
+        <div>
+          <div class="status-name">Cancelado</div>
+          <div class="status-desc">Agendamento cancelado pelo mecânico. O cliente vê um aviso no portal com botão para ligar ou chamar no WhatsApp.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. FLUXO COMPLETO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">10</span><h2>Fluxo completo de uma visita</h2></div>
+    <p>Para facilitar, veja como funciona o ciclo completo de um agendamento de avaliação do início ao fim:</p>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-num">1</div>
+        <div class="flow-text">Mecânico cria o agendamento (tipo <strong>Avaliação</strong>), escolhe data, hora e escreve o motivo da visita.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">2</div>
+        <div class="flow-text">Mecânico clica no ícone do <strong>WhatsApp</strong> e envia a mensagem com o link para o cliente.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">3</div>
+        <div class="flow-text">Cliente abre o link, vê o agendamento e clica em <strong>"Confirmar Presença"</strong>. O painel do mecânico atualiza para status "Confirmado" com checkmark verde.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">4</div>
+        <div class="flow-text">Quando faltam 15 minutos: <strong>alerta aparece</strong> no topo do sistema com som. Mecânico vê nome, veículo e horário do cliente.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">5</div>
+        <div class="flow-text">Cliente chega. Mecânico clica em <strong>"Abrir OS"</strong> no alerta ou abre um novo atendimento normalmente. O serviço começa.</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">6</div>
+        <div class="flow-text">Se o serviço precisar de retorno: mecânico cria um novo agendamento do tipo <strong>"Já tem OS"</strong>, vinculado à OS aberta. O cliente usa o mesmo link da OS para confirmar o retorno.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function setTipo(tipo) {
+    document.getElementById('form-avaliacao').classList.toggle('visible', tipo === 'avaliacao');
+    document.getElementById('form-jatemOS').classList.toggle('visible', tipo === 'jatemOS');
+    document.getElementById('btn-avaliacao').classList.toggle('active', tipo === 'avaliacao');
+    document.getElementById('btn-jatemOS').classList.toggle('active', tipo === 'jatemOS');
+  }
+</script>
+<script>
+  (function initTutorialAccordion() {
+    const sections = document.querySelectorAll('.section');
+    sections.forEach((section, index) => {
+      if (section.dataset.accordionReady === '1') return;
+      const header = section.querySelector(':scope > .section-header');
+      if (!header) return;
+
+      const sectionNum = header.querySelector('.section-num');
+      if (sectionNum) sectionNum.textContent = String(index + 1);
+
+      const content = document.createElement('div');
+      content.className = 'section-content';
+      Array.from(section.children).forEach((child) => {
+        if (child !== header) content.appendChild(child);
+      });
+      section.appendChild(content);
+
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-expanded', 'false');
+
+      const toggle = () => {
+        const open = !section.classList.contains('open');
+        section.classList.toggle('open', open);
+        header.setAttribute('aria-expanded', String(open));
+      };
+
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+
+      section.dataset.accordionReady = '1';
+    });
+  })();
+</script>
+</body>
+</html>

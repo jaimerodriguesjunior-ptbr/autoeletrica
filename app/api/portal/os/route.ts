@@ -42,11 +42,12 @@ export async function GET(req: NextRequest) {
             // Achou agendamento! Processa a logo/telefone da empresa baseada no apt
             let logoUrl: string | null = null
             let telefone: string | null = null
+            let companySettingsApt: any = null
 
             if (apt.organization_id) {
                 const { data: companyData } = await supabase
                     .from('company_settings')
-                    .select('logo_url, telefone')
+                    .select('logo_url, telefone, fin_mostrar_portal, fin_cartao_com_juros, fin_taxa_juros_mes, fin_chave_pix, fin_cidade_pix, nome_fantasia')
                     .eq('organization_id', apt.organization_id)
                     .limit(1)
                     .single()
@@ -54,20 +55,22 @@ export async function GET(req: NextRequest) {
                 if (companyData) {
                     logoUrl = companyData.logo_url || null
                     telefone = companyData.telefone || null
+                    companySettingsApt = companyData
                 }
             }
 
-            return NextResponse.json({ os: apt, logoUrl, telefone, isAppointment: true })
+            return NextResponse.json({ os: apt, logoUrl, telefone, isAppointment: true, companySettings: companySettingsApt })
         }
 
         // Buscar logo e telefone da empresa
         let logoUrl: string | null = null
         let telefone: string | null = null
+        let companySettingsData: any = null
 
         if (os.organization_id) {
             const { data: companyData } = await supabase
                 .from('company_settings')
-                .select('logo_url, telefone')
+                .select('logo_url, telefone, fin_mostrar_portal, fin_cartao_com_juros, fin_taxa_juros_mes, fin_chave_pix, fin_cidade_pix, nome_fantasia')
                 .eq('organization_id', os.organization_id)
                 .limit(1)
                 .single()
@@ -75,6 +78,7 @@ export async function GET(req: NextRequest) {
             if (companyData) {
                 logoUrl = companyData.logo_url || null
                 telefone = companyData.telefone || null
+                companySettingsData = companyData
             }
         }
 
@@ -101,7 +105,8 @@ export async function GET(req: NextRequest) {
             telefone, 
             isAppointment: false, 
             appointments: futureAppointments || [],
-            invoices: invoices || []
+            invoices: invoices || [],
+            companySettings: companySettingsData
         })
     } catch (err: any) {
         console.error('[Portal OS] Erro:', err.message)

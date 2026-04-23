@@ -1,13 +1,44 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   CheckCircle, Clock, Wrench, Car, Camera,
   MessageCircle, ChevronDown, ChevronUp, ShieldCheck,
   Package, AlertCircle, Loader2, X, AlertTriangle, Download, FileText, Play, Video
 } from "lucide-react";
-// eslint-disable-next-line @next/next/no-img-element
+import { QRCodeSVG } from "qrcode.react";
+
+export function generatePixPayload(chavePix: string, name: string, city: string, amount: string | number, txId: string = "***"): string {
+    const formatLength = (id: string, value: string) => `${id}${value.length.toString().padStart(2, '0')}${value}`;
+    const cleanStr = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 25);
+    
+    const payloadFormatIndicator = "000201";
+    const merchantAccountInfo = formatLength("26", formatLength("00", "br.gov.bcb.pix") + formatLength("01", chavePix));
+    const merchantCategoryCode = "52040000";
+    const transactionCurrency = "5303986";
+    const transactionAmount = formatLength("54", Number(amount).toFixed(2));
+    const countryCode = "5802BR";
+    const merchantName = formatLength("59", cleanStr(name));
+    const merchantCity = formatLength("60", cleanStr(city));
+    const additionalData = formatLength("62", formatLength("05", txId));
+
+    let payload = `${payloadFormatIndicator}${merchantAccountInfo}${merchantCategoryCode}${transactionCurrency}${transactionAmount}${countryCode}${merchantName}${merchantCity}${additionalData}6304`;
+
+    const calcCRC16 = (str: string) => {
+        let crc = 0xFFFF;
+        for (let i = 0; i < str.length; i++) {
+            crc ^= str.charCodeAt(i) << 8;
+            for (let j = 0; j < 8; j++) {
+                if ((crc & 0x8000) !== 0) crc = (crc << 1) ^ 0x1021;
+                else crc = crc << 1;
+            }
+        }
+        return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+    };
+
+    return payload + calcCRC16(payload);
+}
 
 function ConteudoPortal() {
   const searchParams = useSearchParams();
@@ -23,12 +54,34 @@ function ConteudoPortal() {
   const [telefoneEmpresa, setTelefoneEmpresa] = useState<string>("");
   const [invoices, setInvoices] = useState<any[]>([]);
   const [paymentIntent, setPaymentIntent] = useState<string>("");
+  const [companySettings, setCompanySettings] = useState<any>(null);
 
   // Controle visual
   const [detalhesAbertos, setDetalhesAbertos] = useState(false);
+  const [masterPagamentoAberto, setMasterPagamentoAberto] = useState(false);
+  const pagamentoRef = useRef<HTMLDivElement>(null);
+  const [cartaoAberto, setCartaoAberto] = useState(false);
+  const [pixAberto, setPixAberto] = useState(false);
+  const [modalPixAberto, setModalPixAberto] = useState(false);
+  const [copiadoPix, setCopiadoPix] = useState(false);
+  const [pixValorCustom, setPixValorCustom] = useState<string>("");
   const [atualizando, setAtualizando] = useState(false);
   const [fotoExpandida, setFotoExpandida] = useState<string | null>(null);
   const [drawerAberto, setDrawerAberto] = useState(false);
+
+  const pixPayload = useMemo(() => {
+    if (!companySettings?.fin_chave_pix) return "";
+    const valor = parseFloat(pixValorCustom) || Number(os?.total || 0);
+    if (!valor) return "";
+    const txId = String(os?.id || "").split("-")[0] || "***";
+    return generatePixPayload(
+      companySettings.fin_chave_pix,
+      companySettings.nome_fantasia || "Oficina",
+      companySettings.fin_cidade_pix || "Cidade",
+      valor,
+      txId
+    );
+  }, [companySettings, os, pixValorCustom]);
 
   useEffect(() => {
     if (token) {
@@ -57,6 +110,9 @@ function ConteudoPortal() {
       }
       if (json.telefone) {
         setTelefoneEmpresa(json.telefone.replace(/\D/g, ''));
+      }
+      if (json.companySettings) {
+        setCompanySettings(json.companySettings);
       }
     } catch (error: any) {
       setErro("Não foi possível carregar os dados. Verifique o link.");
@@ -520,6 +576,112 @@ function ConteudoPortal() {
               )}
             </div>
           </div>
+          {/* OPÇÕES DE PAGAMENTO (SE ATIVO) */}
+          {companySettings?.fin_mostrar_portal && !isAppointment && (
+            <div className="px-4 pt-4 max-w-xl mx-auto">
+              <div ref={pagamentoRef} className="rounded-[32px] overflow-hidden shadow-lg border-2 border-stone-300">
+                <button
+                  onClick={() => {
+                    const abrindo = !masterPagamentoAberto;
+                    setMasterPagamentoAberto(abrindo);
+                    if (abrindo) {
+                      setTimeout(() => pagamentoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                    }
+                  }}
+                  className="w-full bg-[#1A1A1A] p-5 flex items-center justify-between transition group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-stone-800 text-[#FACC15] flex items-center justify-center">
+                      <Package size={20} />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[#FACC15] font-extrabold uppercase tracking-wide text-xs group-hover:text-white transition">Facilidades de Pagamento</p>
+                      <p className="text-stone-400 text-[10px]">QR Code do PIX e parcelas no cartão</p>
+                    </div>
+                  </div>
+                  {masterPagamentoAberto ? <ChevronUp className="text-[#FACC15]" /> : <ChevronDown className="text-[#FACC15]" />}
+                </button>
+
+                {masterPagamentoAberto && (
+                  <div className="bg-white p-4 space-y-3 animate-in slide-in-from-top-2">
+                    {/* 1. PIX */}
+                    {companySettings?.fin_chave_pix && (
+                      <div className="rounded-[24px] overflow-hidden shadow-sm border border-stone-100">
+                        <button onClick={() => {setPixAberto(!pixAberto); setCartaoAberto(false);}} className="w-full bg-white p-4 flex items-center justify-between hover:bg-stone-50 transition">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center border border-teal-100">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M11.956 7.641l-3.328 3.328-1.579-1.578 3.993-3.994a1.285 1.285 0 011.828 0l3.994 3.994-1.578 1.578-3.33-3.328zm3.328 8.718l-3.328-3.328-3.33 3.328-1.578-1.578 3.993-3.994a1.285 1.285 0 011.828 0l3.994 3.994-1.579 1.578z"/></svg>
+                            </div>
+                            <div className="text-left">
+                              <p className="text-[#1A1A1A] font-extrabold uppercase text-[11px]">PIX</p>
+                            </div>
+                          </div>
+                          {pixAberto ? <ChevronUp className="text-stone-300" size={16} /> : <ChevronDown className="text-stone-300" size={16} />}
+                        </button>
+                        {pixAberto && (
+                          <div className="bg-teal-50/30 p-4 border-t border-teal-100 flex flex-col items-center animate-in slide-in-from-top-2">
+                              <button onClick={() => { setModalPixAberto(true); setPixValorCustom(Number(os?.total || 0).toFixed(2)); }} className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-2 shadow-sm text-xs">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.956 7.641l-3.328 3.328-1.579-1.578 3.993-3.994a1.285 1.285 0 011.828 0l3.994 3.994-1.578 1.578-3.33-3.328zm3.328 8.718l-3.328-3.328-3.33 3.328-1.578-1.578 3.993-3.994a1.285 1.285 0 011.828 0l3.994 3.994-1.579 1.578z"/></svg>
+                                  Gerar QR Code PIX
+                              </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 3. CARTÃO DE CRÉDITO */}
+                    <div className="rounded-[24px] overflow-hidden shadow-sm border border-stone-100">
+                      <button onClick={() => {setCartaoAberto(!cartaoAberto); setPixAberto(false);}} className="w-full bg-white p-4 flex items-center justify-between hover:bg-stone-50 transition">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                          </div>
+                          <div className="text-left">
+                            <p className="text-[#1A1A1A] font-extrabold uppercase text-[11px]">Cartão de Crédito</p>
+                          </div>
+                        </div>
+                        {cartaoAberto ? <ChevronUp className="text-stone-300" size={16} /> : <ChevronDown className="text-stone-300" size={16} />}
+                      </button>
+                      {cartaoAberto && (
+                        <div className="bg-blue-50/20 p-4 border-t border-blue-100 space-y-1.5 animate-in slide-in-from-top-2">
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(num => {
+                              const baseTotal = Number(os.total || 0);
+                              const baseParcela = baseTotal / num;
+                              let valorParcela = baseParcela;
+                              let acrescimoPorParcela = 0;
+
+                              if (companySettings.fin_cartao_com_juros && num > 1) {
+                                  const taxa = parseFloat(companySettings.fin_taxa_juros_mes) || 0;
+                                  const totalComJuros = baseTotal * (1 + ((taxa / 100) * num));
+                                  valorParcela = totalComJuros / num;
+                                  acrescimoPorParcela = valorParcela - baseParcela;
+                              }
+
+                              return (
+                                <div key={num} className="flex justify-between items-center py-2 px-3 bg-white rounded-lg shadow-sm border border-stone-50">
+                                  <span className="text-[11px] font-bold text-stone-500">{num}x</span>
+                                  <div className="flex items-center gap-3">
+                                    {num === 1 ? (
+                                      <span className="text-[10px] font-bold text-green-500">sem juros</span>
+                                    ) : acrescimoPorParcela > 0 ? (
+                                      <span className="text-[10px] font-semibold text-stone-400">+R$ {acrescimoPorParcela.toFixed(2)}/parcela</span>
+                                    ) : null}
+                                    <span className="text-[12px] font-black text-[#1A1A1A]">R$ {valorParcela.toFixed(2)}</span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                            {companySettings.fin_cartao_com_juros && (
+                              <p className="text-[9px] text-stone-400 text-center mt-2">* Parcelamento com acréscimo da maquininha.</p>
+                            )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* 4. GALERIA DE FOTOS */}
           <div className="px-4 pt-3 pb-4 max-w-xl mx-auto">
@@ -766,6 +928,70 @@ function ConteudoPortal() {
                 className="max-w-screen max-h-screen object-contain"
               />
             )}
+          </div>
+        </div>
+      )}
+
+    {/* MODAL PIX */}
+      {modalPixAberto && companySettings?.fin_chave_pix && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl relative flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="bg-teal-600 p-6 text-center relative">
+              <button 
+                onClick={() => setModalPixAberto(false)} 
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center bg-black/20 hover:bg-black/30 rounded-full text-white transition"
+              >
+                <X size={18} />
+              </button>
+              <h2 className="text-xl font-black text-white uppercase tracking-wider mb-1">Pague com PIX</h2>
+              <p className="text-teal-100 text-sm">Escaneie o código ou copie o link</p>
+            </div>
+            
+            <div className="p-6 flex flex-col items-center">
+              <div className="p-4 bg-white border-2 border-stone-100 rounded-3xl shadow-sm mb-4">
+                 <QRCodeSVG 
+                    value={pixPayload} 
+                    size={200}
+                    level="Q"
+                 />
+              </div>
+              <div className="flex flex-col items-center mb-6">
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Valor a pagar</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-2xl font-black text-[#1A1A1A]">R$</span>
+                  <input
+                    type="number"
+                    value={pixValorCustom}
+                    onChange={(e) => setPixValorCustom(e.target.value)}
+                    min="0.01"
+                    step="0.01"
+                    className="text-2xl font-black text-[#1A1A1A] w-32 text-center border-b-2 border-teal-400 focus:outline-none bg-transparent"
+                  />
+                </div>
+                {parseFloat(pixValorCustom) !== Number(os?.total || 0) && parseFloat(pixValorCustom) > 0 && (
+                  <p className="text-[10px] text-teal-600 font-semibold mt-1">Total da OS: R$ {Number(os?.total || 0).toFixed(2)}</p>
+                )}
+              </div>
+
+              <div className="w-full bg-stone-50 rounded-xl p-3 border border-stone-200 mb-4">
+                 <p className="text-[10px] font-bold text-stone-400 uppercase mb-1">Código Pix Copia e Cola</p>
+                 <p className="text-xs text-stone-600 font-mono truncate w-full break-all">
+                    {pixPayload}
+                 </p>
+              </div>
+
+              <button 
+                onClick={() => {
+                   navigator.clipboard.writeText(pixPayload);
+                   setCopiadoPix(true);
+                   setTimeout(() => setCopiadoPix(false), 2000);
+                }}
+                className="w-full bg-[#1A1A1A] hover:bg-black text-[#FACC15] font-bold text-sm py-4 rounded-xl flex items-center justify-center gap-2 transition"
+              >
+                {copiadoPix ? <CheckCircle size={18} className="text-green-400" /> : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>}
+                {copiadoPix ? 'Código copiado!' : 'Copiar Código PIX'}
+              </button>
+            </div>
           </div>
         </div>
       )}

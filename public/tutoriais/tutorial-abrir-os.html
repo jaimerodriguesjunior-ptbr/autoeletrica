@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial: Abrir uma OS ou Venda</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #1a1a1a;
+      --yellow: #facc15;
+      --yellow-light: #fef9c3;
+      --green: #16a34a;
+      --green-light: #dcfce7;
+      --blue: #1d4ed8;
+      --blue-light: #dbeafe;
+      --orange: #ea580c;
+      --orange-light: #ffedd5;
+      --red: #dc2626;
+      --red-light: #fee2e2;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 24px 16px;
+    }
+
+    .container { max-width: 780px; margin: 0 auto; }
+
+    /* ── CABEÇALHO ── */
+    .header {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px 28px 24px;
+      margin-bottom: 28px;
+    }
+    .header h1 {
+      margin: 0 0 6px;
+      font-size: 1.7rem;
+      color: var(--yellow);
+      line-height: 1.2;
+    }
+    .header p { margin: 0; color: #d1d5db; font-size: 0.95rem; }
+
+    /* ── PERGUNTAS ── */
+    .question-block {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 22px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .question-label {
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .question-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 14px;
+      color: var(--accent);
+    }
+    .options { display: flex; gap: 10px; flex-wrap: wrap; }
+    .option-btn {
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--bg);
+      color: var(--text);
+      transition: all .18s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .option-btn:hover { border-color: #9ca3af; background: #f3f4f6; }
+    .option-btn.selected {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--yellow);
+    }
+    .option-btn .icon { font-size: 1.15rem; }
+
+    /* ── RESETAR ── */
+    #reset-btn {
+      display: none;
+      margin-bottom: 20px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    #reset-btn:hover { background: #f3f4f6; }
+
+    /* ── CONTEÚDO FILTRADO ── */
+    #tutorial-content { display: none; }
+
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--accent);
+      color: var(--yellow);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .section-header h2 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: var(--accent);
+    }
+    .section p { margin: 6px 0; font-size: 0.95rem; }
+
+    ol, ul { margin: 10px 0 10px 20px; padding: 0; }
+    li { margin: 7px 0; font-size: 0.95rem; }
+
+    /* ── CALLOUTS ── */
+    .callout {
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.tip   { background: var(--yellow-light); border-left: 4px solid #ca8a04; }
+    .callout.info  { background: var(--blue-light);   border-left: 4px solid var(--blue); }
+    .callout.warn  { background: var(--orange-light);  border-left: 4px solid var(--orange); }
+    .callout.good  { background: var(--green-light);  border-left: 4px solid var(--green); }
+    .callout.danger{ background: var(--red-light);    border-left: 4px solid var(--red); }
+
+    /* ── BADGE ── */
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      border-radius: 6px;
+      padding: 2px 8px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .badge-mobile  { background: #dbeafe; color: #1d4ed8; }
+    .badge-desktop { background: #f3f4f6; color: #374151; }
+    .badge-owner   { background: #fef9c3; color: #92400e; }
+    .badge-emp     { background: #dcfce7; color: #166534; }
+
+    /* ── BLOCOS CONDICIONAIS ── */
+    .cond { display: none; }
+    .cond.active { display: block; }
+
+    /* ── SUMÁRIO FINAL ── */
+    .summary-bar {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      font-size: 0.88rem;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .summary-bar strong { color: var(--yellow); }
+    .summary-tag {
+      background: rgba(255,255,255,.12);
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    /* ── CAMPO ── */
+    .field-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      padding: 8px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-name {
+      font-weight: 700;
+      min-width: 160px;
+      font-size: 0.88rem;
+      color: var(--accent);
+    }
+    .field-desc { font-size: 0.88rem; color: var(--muted); }
+
+    @media (max-width: 520px) {
+      .field-row { flex-direction: column; gap: 2px; }
+      .field-name { min-width: unset; }
+      .options { flex-direction: column; }
+      .option-btn { width: 100%; }
+    }
+
+    /* ── ACORDEÃO DE PASSOS ── */
+    .section-header {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 22px;
+    }
+    .section-header::after {
+      content: "▸";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.9rem;
+      transition: transform .18s ease;
+    }
+    .section.open .section-header::after {
+      transform: translateY(-50%) rotate(90deg);
+    }
+    .section-content { display: none; }
+    .section.open .section-content { display: block; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- CABEÇALHO -->
+  <div class="header">
+    <h1>Como abrir uma OS ou Venda</h1>
+    <p>Responda as perguntas abaixo para ver apenas as instruções que se aplicam ao seu caso.</p>
+  </div>
+
+  <!-- PERGUNTA 1: DISPOSITIVO -->
+  <div class="question-block" id="q1">
+    <div class="question-label">Pergunta 1 de 4</div>
+    <div class="question-title">Você está usando qual dispositivo?</div>
+    <div class="options">
+      <button class="option-btn" data-q="device" data-val="mobile" onclick="selectOption(this)">
+        <span class="icon">📱</span> Celular
+      </button>
+      <button class="option-btn" data-q="device" data-val="desktop" onclick="selectOption(this)">
+        <span class="icon">💻</span> Computador
+      </button>
+    </div>
+  </div>
+
+  <!-- PERGUNTA 2: CARGO -->
+  <div class="question-block" id="q2" style="display:none;">
+    <div class="question-label">Pergunta 2 de 4</div>
+    <div class="question-title">Como você está logado no sistema?</div>
+    <div class="options">
+      <button class="option-btn" data-q="role" data-val="owner" onclick="selectOption(this)">
+        <span class="icon">👑</span> Gerente
+      </button>
+      <button class="option-btn" data-q="role" data-val="employee" onclick="selectOption(this)">
+        <span class="icon">🔧</span> Colaborador
+      </button>
+    </div>
+  </div>
+
+  <!-- PERGUNTA 3: TIPO DE OPERAÇÃO -->
+  <div class="question-block" id="q3" style="display:none;">
+    <div class="question-label">Pergunta 3 de 4</div>
+    <div class="question-title">O que você quer fazer?</div>
+    <div class="options">
+      <button class="option-btn" data-q="flow" data-val="os" onclick="selectOption(this)">
+        <span class="icon">🔩</span> Abrir uma Ordem de Serviço (OS)
+      </button>
+      <button class="option-btn" data-q="flow" data-val="venda" onclick="selectOption(this)">
+        <span class="icon">🛒</span> Venda Direta (peças ou serviço avulso)
+      </button>
+    </div>
+  </div>
+
+  <!-- PERGUNTA 4: TIPO DE VENDA (só aparece se escolheu Venda Direta) -->
+  <div class="question-block" id="q4" style="display:none;">
+    <div class="question-label">Pergunta 4 de 4</div>
+    <div class="question-title">Qual tipo de venda direta?</div>
+    <div class="options">
+      <button class="option-btn" data-q="venda_tipo" data-val="pecas" onclick="selectOption(this)">
+        <span class="icon">🛒</span> Venda de Peças — gera recibo, sem OS
+      </button>
+      <button class="option-btn" data-q="venda_tipo" data-val="bancada" onclick="selectOption(this)">
+        <span class="icon">🔧</span> Serviço de Bancada — OS sem veículo
+      </button>
+    </div>
+  </div>
+
+  <button id="reset-btn" onclick="resetAll()">↩ Recomeçar</button>
+
+  <!-- ══════════════════════════════════════════
+       CONTEÚDO DO TUTORIAL
+  ══════════════════════════════════════════ -->
+  <div id="tutorial-content">
+
+    <!-- BARRA DE CONTEXTO -->
+    <div class="summary-bar" id="summary-bar"></div>
+
+    <!-- ─────────────────────────────────────────
+         FLUXO: OS
+    ───────────────────────────────────────── -->
+    <div class="cond" id="flow-os">
+
+      <!-- PASSO 1: CHEGAR NA TELA -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">1</span>
+          <h2>Acessar a tela de nova OS</h2>
+        </div>
+
+        <div class="cond" id="os-nav-mobile">
+          <p>No menu inferior, toque em <strong>Atendimento</strong> (ícone de chave).</p>
+          <p>Na tela de Atendimento, toque no botão <strong>+ Nova OS</strong> no canto superior direito.</p>
+        </div>
+        <div class="cond" id="os-nav-desktop">
+          <p>No menu lateral esquerdo, clique em <strong>Atendimento</strong>.</p>
+          <p>Na tela de Atendimento, clique no botão <strong>+ Nova OS</strong>.</p>
+        </div>
+      </div>
+
+      <!-- PASSO 2: TIPO DE VEÍCULO -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">2</span>
+          <h2>Identificar o veículo</h2>
+        </div>
+        <p>Primeiro selecione o tipo do veículo — o sistema detecta automaticamente ao digitar a placa, mas você pode forçar manualmente:</p>
+        <ul>
+          <li><strong>Carro</strong> — placas no formato ABC1234 ou BRA2E19 (Mercosul)</li>
+          <li><strong>Moto</strong> — mesmos formatos de placa</li>
+          <li><strong>Barco</strong> — nome livre (ex: "Lancha Estrela") ou prefixo de estado (ex: SP-123)</li>
+        </ul>
+
+        <!-- Identificação da placa por câmera -->
+        <div class="cond" id="os-plate-mobile">
+          <div class="callout good">
+            <span class="callout-icon">📷</span>
+            <div>
+              <strong>No celular</strong> você pode fotografar em vez de digitar. Toque no ícone de câmera ao lado do campo. A IA analisa a foto e preenche automaticamente:
+              <ul style="margin-top:6px;">
+                <li><strong>Carro / Moto:</strong> lê a placa do veículo.</li>
+                <li><strong>Barco:</strong> lê o nome ou prefixo escrito no casco — e já identifica que é um barco, selecionando a categoria correta.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="cond" id="os-plate-desktop">
+          <div class="callout info">
+            <span class="callout-icon">⌨️</span>
+            <span><strong>No computador</strong> não há câmera disponível — digite a placa (carro/moto) ou o nome do barco manualmente no campo.</span>
+          </div>
+        </div>
+
+        <p style="margin-top:14px;"><strong>Após digitar ou fotografar a placa:</strong></p>
+        <ul>
+          <li>Se o veículo já existe no sistema, os dados são carregados automaticamente e você avança para o Passo 3.</li>
+          <li>Se é um veículo novo, o sistema consulta uma base externa e tenta preencher Fabricante, Modelo e Ano. Confirme ou corrija os dados e clique em <strong>Salvar Veículo e Avançar</strong>.</li>
+          <li>Se a consulta não retornar nada, preencha os campos manualmente: <strong>Fabricante</strong>, <strong>Modelo</strong>, <strong>Ano</strong> e clique em salvar.</li>
+        </ul>
+      </div>
+
+      <!-- PASSO 3: DADOS DA OS -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">3</span>
+          <h2>Preencher os dados da OS</h2>
+        </div>
+
+        <p><strong>Cliente</strong> — obrigatório. Clique no campo e busque pelo nome. Se o cliente ainda não está cadastrado, use a aba <em>Cadastrar</em> dentro do mesmo modal (Nome e WhatsApp).</p>
+
+        <p style="margin-top:14px;"><strong>Checklist do veículo</strong> — opcional, mas recomendado:</p>
+        <div class="field-row">
+          <div class="field-name">Odômetro / Horímetro</div>
+          <div class="field-desc">KM para carros/motos; horas para barcos. Digite ou use a câmera do painel.</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">Nível de Combustível</div>
+          <div class="field-desc">Toque em um dos 5 botões: Vazio, ¼, ½, ¾ ou Cheio.</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">Temperatura do Motor</div>
+          <div class="field-desc">Normal (verde), Elevada (amarelo) ou Crítica (vermelho).</div>
+        </div>
+        <div class="field-row">
+          <div class="field-name">Obs. do Painel</div>
+          <div class="field-desc">Luzes acesas, alertas ou qualquer observação visual.</div>
+        </div>
+
+        <!-- Câmera do painel — mobile -->
+        <div class="cond" id="os-panel-mobile">
+          <div class="callout good">
+            <span class="callout-icon">📷</span>
+            <div>
+              Você pode fotografar o painel. O sistema analisa a imagem e preenche os campos automaticamente. O que é lido varia pelo tipo de veículo:
+              <ul style="margin-top:6px;">
+                <li><strong>Carro / Moto:</strong> odômetro (km), combustível, temperatura do motor e luzes de alerta acesas.</li>
+                <li><strong>Barco:</strong> horímetro (horas de uso), combustível, voltagem da bateria e alertas do painel.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="cond" id="os-panel-desktop">
+          <div class="callout info">
+            <span class="callout-icon">ℹ️</span>
+            <span>No computador o checklist é preenchido manualmente — não há leitura automática do painel.</span>
+          </div>
+        </div>
+
+        <p style="margin-top:14px;"><strong>Reclamação do cliente</strong> — descreva o problema relatado. </p>
+
+        <!-- Voz — mobile -->
+        <div class="cond" id="os-voice-mobile">
+          <div class="callout tip">
+            <span class="callout-icon">🎤</span>
+            <span>Toque no ícone de microfone ao lado do campo para ditar o problema por voz. O texto é transcrito automaticamente. Funciona melhor no Chrome.</span>
+          </div>
+        </div>
+        <div class="cond" id="os-voice-desktop">
+          <div class="callout tip">
+            <span class="callout-icon">🎤</span>
+            <span>O ícone de microfone ao lado do campo permite ditar por voz. Funciona no Chrome e Edge — em outros navegadores o botão pode não aparecer.</span>
+          </div>
+        </div>
+
+        <p style="margin-top:14px;">Quando tudo estiver preenchido, clique em <strong>Iniciar Ordem de Serviço</strong>. Você será redirecionado para a tela de detalhes da OS.</p>
+      </div>
+
+      <!-- PASSO 4: ADICIONAR ITENS -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">4</span>
+          <h2>Adicionar peças e serviços</h2>
+        </div>
+        <p>Na tela de detalhes da OS, use os botões <strong>+ Adicionar Serviço</strong> e <strong>+ Adicionar Peça</strong>.</p>
+
+        <p><strong>Buscar um serviço:</strong> Digite parte do nome. Clique no item para adicionar.</p>
+        <p><strong>Buscar uma peça por nome:</strong> Digite parte do nome. Clique no item para adicionar.</p>
+
+        <div class="cond" id="os-barcode-mobile">
+          <p><strong>Buscar uma peça por código de barras (celular):</strong></p>
+          <ol>
+            <li>Toque no ícone de câmera dentro do modal de peças.</li>
+            <li>Aponte para o código de barras da embalagem.</li>
+            <li>O sistema lê o código EAN e busca no estoque.</li>
+            <li>Se não encontrar no estoque, consulta uma base externa e cadastra a peça automaticamente com nome, marca e NCM.</li>
+          </ol>
+          <div class="callout tip">
+            <span class="callout-icon">💡</span>
+            <span>Ideal para dar entrada em peças novas sem precisar digitar nada.</span>
+          </div>
+        </div>
+        <div class="cond" id="os-barcode-desktop">
+          <div class="callout info">
+            <span class="callout-icon">ℹ️</span>
+            <span>No computador não há leitor de código de barras por câmera. Busque a peça pelo nome no campo de pesquisa.</span>
+          </div>
+        </div>
+
+        <p style="margin-top:12px;">Se o item não existir no cadastro, clique em <strong>Cadastrar Nova Peça/Serviço</strong>, informe o nome e salve. O item é criado com preço zero — edite o valor logo depois.</p>
+
+        <div class="callout warn">
+          <span class="callout-icon">⚠️</span>
+          <span>Ao adicionar uma peça do estoque, a quantidade disponível é descontada automaticamente. Se remover o item da OS, o estoque é devolvido.</span>
+        </div>
+
+        <!-- Peça do cliente -->
+        <p style="margin-top:14px;"><strong>Peça trazida pelo próprio cliente?</strong> Adicione normalmente e depois clique no ícone de pessoa (👤✓) ao lado do item para marcá-la como <em>Peça do Cliente</em>. Ela ficará com fundo amarelo e não será contabilizada no total da OS.</p>
+
+        <!-- Comissões - colaborador -->
+        <div class="cond" id="os-commission-employee">
+          <div class="callout good">
+            <span class="callout-icon">🏅</span>
+            <span>Se o módulo de comissões estiver ativo, você é automaticamente atribuído aos serviços que você mesmo adicionar à OS.</span>
+          </div>
+        </div>
+        <!-- Comissões - owner -->
+        <div class="cond" id="os-commission-owner">
+          <div class="callout info">
+            <span class="callout-icon">👥</span>
+            <span>Se o módulo de comissões estiver ativo, aparecerá um ícone de equipe em cada serviço. Clique nele para escolher quais colaboradores executaram aquele serviço — a comissão será calculada automaticamente no fechamento.</span>
+          </div>
+        </div>
+
+        <p style="margin-top:14px;">Para editar o preço ou a quantidade de qualquer item, clique no ícone de lápis ao lado do item.</p>
+      </div>
+
+      <!-- PASSO 5: RECURSOS EXTRAS -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">5</span>
+          <h2>Recursos extras (opcionais)</h2>
+        </div>
+
+        <p><strong>Laudo técnico</strong> — Na seção de laudo, registre os defeitos constatados e os serviços executados. Use o microfone para ditar.</p>
+
+        <p><strong>Fotos e Vídeos da OS</strong> — Na seção de anexos há dois botões separados: <strong>📷 Foto</strong> e <strong>🎥 Vídeo</strong>.</p>
+        <div class="cond" id="os-photos-mobile">
+          <div class="callout tip">
+            <span class="callout-icon">📷</span>
+            <div>
+              <strong>No celular:</strong>
+              <ul style="margin-top:6px;">
+                <li><strong>Foto</strong> — toque para abrir a câmera ou escolher da galeria. Limite: 10 MB por imagem.</li>
+                <li><strong>Vídeo</strong> — toque e leia o aviso que aparece antes de gravar. <strong>Grave no máximo 30 segundos</strong> e use qualidade <strong>HD (720p)</strong> para não travar o envio. Limite: 50 MB por vídeo.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="callout warn">
+            <span class="callout-icon">⚠️</span>
+            <span>Vídeos muito longos ou em resolução 4K podem ultrapassar o limite de 50 MB e não serão enviados. Se o upload travar, grave um clipe mais curto ou em qualidade menor.</span>
+          </div>
+        </div>
+        <div class="cond" id="os-photos-desktop">
+          <div class="callout info">
+            <span class="callout-icon">ℹ️</span>
+            <span>No computador, clique em <strong>Foto</strong> ou <strong>Vídeo</strong> para escolher um arquivo. Limite: 10 MB para imagens e 50 MB para vídeos.</span>
+          </div>
+        </div>
+
+        <p><strong>OBD-II / Scanner</strong> — Expanda a seção de diagnóstico, digite o código DTC (ex: P0420) e clique em buscar. O sistema consulta o banco de dados ou usa IA para traduzir o código em português.</p>
+
+        <p><strong>Scanner PDF</strong> — Clique em "Relatório de Scanner" para anexar um PDF gerado pelo scanner automotivo. Após anexado, o relatório fica visível no <strong>portal do cliente</strong> como um link de download — o cliente pode abrir direto pelo celular.</p>
+
+        <p><strong>Agendamento</strong> — Se o módulo de agenda estiver ativo, clique em <strong>Reagendar</strong> no cabeçalho para vincular a OS a um horário na agenda.</p>
+
+        <div class="cond" id="os-entrega-mobile"><p><strong>Previsão de entrega</strong> — Informe a data prevista no campo de data da OS. O cliente pode acompanhar pelo portal de rastreamento.</p></div>
+        <div class="cond" id="os-entrega-desktop"><p><strong>Previsão de entrega</strong> — Informe a data prevista no campo do lado direito da OS. O cliente pode acompanhar pelo portal de rastreamento.</p></div>
+
+        <p><strong>Enviar WhatsApp</strong> — Clique no botão verde <em>Cliente</em> no cabeçalho para enviar uma mensagem automática com o link de rastreamento da OS.</p>
+
+        <div class="cond" id="os-print-desktop">
+          <p><strong>Imprimir</strong> — No computador, clique no ícone de impressora para abrir o orçamento em uma página de impressão.</p>
+        </div>
+      </div>
+
+      <!-- PASSO 6: PROGRESSÃO DE STATUS -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">6</span>
+          <h2>Avançar o status da OS</h2>
+        </div>
+        <div class="cond" id="os-status-mobile">
+          <p>O fluxo de status fica visível na <strong>parte superior</strong> da OS. Clique no botão de ação de cada etapa para avançar:</p>
+        </div>
+        <div class="cond" id="os-status-desktop">
+          <p>O fluxo de status fica visível na <strong>coluna esquerda</strong> da OS. Clique no botão de ação de cada etapa para avançar:</p>
+        </div>
+
+        <ol>
+          <li>
+            <strong>Orçamento</strong> — estado inicial. A aprovação correta vem pelo <strong>portal do cliente</strong>:
+            envie o link de rastreamento pelo WhatsApp (botão verde no cabeçalho da OS) e o cliente aprova diretamente pelo celular dele.
+            A aprovação pelo portal registra IP, dispositivo e hash criptográfico como comprovante.
+            <div class="callout warn" style="margin-top:8px;">
+              <span class="callout-icon">⚠️</span>
+              <span>Existe um botão "Aprovar" dentro da OS, mas ele deve ser usado apenas em último caso — quando o cliente está presente ou o serviço é urgente e não há tempo para o fluxo do portal. Aprovações manuais não geram o comprovante de aceite do cliente.</span>
+            </div>
+          </li>
+          <li><strong>Aprovado / Aguardando Peça</strong> — clique em <strong>Iniciar Serviço</strong> quando a OS entrar na bancada.</li>
+          <li><strong>Em Serviço</strong> — clique em <strong>Finalizar</strong> quando o serviço for concluído.</li>
+          <li><strong>Pronto p/ Entrega</strong> — clique em <strong>Entregar &amp; Fechar</strong> para registrar o pagamento e encerrar.</li>
+        </ol>
+
+        <div class="callout warn">
+          <span class="callout-icon">⚠️</span>
+          <span>Se a OS tiver <strong>peças do cliente</strong>, uma confirmação extra aparece na aprovação — leia com atenção antes de continuar.</span>
+        </div>
+      </div>
+
+      <!-- PASSO 7: FECHAMENTO E PAGAMENTO -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">7</span>
+          <h2>Registrar o pagamento</h2>
+        </div>
+        <p>Ao clicar em <strong>Entregar &amp; Fechar</strong>, uma janela de pagamento se abre:</p>
+        <ol>
+          <li>Confira o <strong>valor total</strong> (pode ser ajustado para dar desconto).</li>
+          <li>Escolha a <strong>forma de pagamento</strong>:
+            <ul>
+              <li><strong>Pix / Dinheiro / Débito</strong> — pagamento registrado como quitado imediatamente.</li>
+              <li><strong>Cartão de Crédito</strong> — escolha o número de parcelas (1 a 12). As parcelas são lançadas com vencimentos mensais futuros.</li>
+              <li><strong>A prazo</strong> — informe a data do depósito/cheque.</li>
+            </ul>
+          </li>
+          <li>Clique em <strong>Confirmar Pagamento</strong>. A OS fica com status <em>Entregue</em> e o valor entra no caixa.</li>
+        </ol>
+
+        <div class="cond" id="os-advance-payment">
+          <p style="margin-top:12px;"><strong>Adiantamento</strong> — Se o cliente pagar um sinal antes do fechamento, use o botão <em>Lançar Adiantamento</em> na seção de adiantamentos. Ele abate do valor final automaticamente.</p>
+        </div>
+
+        <div class="cond" id="os-fiscal-owner">
+          <div class="callout info">
+            <span class="callout-icon">🧾</span>
+            <span>Se o módulo fiscal estiver ativo, você pode emitir a NFC-e pela seção <strong>Notas Fiscais</strong> no menu lateral após o fechamento.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASSO 8: CANCELAR OU EXCLUIR -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">8</span>
+          <h2>Cancelar ou excluir uma OS</h2>
+        </div>
+        <p><strong>Cancelar</strong> — Muda o status para <em>Cancelado</em>, devolve as peças ao estoque e bloqueia edições. O registro ainda fica visível no histórico.</p>
+        <p><strong>Excluir</strong> — Remove permanentemente a OS, os itens e devolve as peças ao estoque. Requer confirmação em duas etapas.</p>
+
+        <div class="cond" id="os-delete-employee">
+          <div class="callout warn">
+            <span class="callout-icon">⚠️</span>
+            <span>A exclusão de OS está disponível apenas para <strong>Gerentes</strong>. Se precisar excluir uma OS, solicite ao gerente.</span>
+          </div>
+        </div>
+        <div class="cond" id="os-delete-owner">
+          <div class="callout danger">
+            <span class="callout-icon">🚨</span>
+            <span>A exclusão é <strong>irreversível</strong>. Use com cuidado — prefira cancelar quando possível.</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /flow-os -->
+
+    <!-- ─────────────────────────────────────────
+         FLUXO: VENDA DIRETA
+    ───────────────────────────────────────── -->
+    <div class="cond" id="flow-venda">
+
+      <!-- PASSO 1: CHEGAR NA TELA -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">1</span>
+          <h2>Acessar a tela de Nova Venda</h2>
+        </div>
+        <div class="cond" id="venda-nav-mobile">
+          <p>No menu inferior, toque em <strong>Atendimento</strong>. Na parte superior da tela, selecione a aba <strong>Venda Direta</strong>. Toque em <strong>+ Nova Venda</strong>.</p>
+        </div>
+        <div class="cond" id="venda-nav-desktop">
+          <p>No menu lateral, clique em <strong>Atendimento</strong>. No topo da tela, clique na aba <strong>Venda Direta</strong>. Clique em <strong>+ Nova Venda</strong>.</p>
+        </div>
+        <div class="callout info">
+          <span class="callout-icon">ℹ️</span>
+          <span>A Venda Direta é para <strong>venda de peças no balcão</strong>, sem vínculo com veículo ou OS. Para serviços, use uma OS normal.</span>
+        </div>
+      </div>
+
+      <!-- PASSO 2: CLIENTE -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">2</span>
+          <h2>Identificar o cliente (opcional)</h2>
+        </div>
+        <p>O campo de cliente é <strong>opcional</strong>. Se não informado, a venda fica como <em>Consumidor Final</em>.</p>
+        <p>Para associar um cliente: clique no card de cliente, busque pelo nome ou cadastre um novo na aba <em>Cadastrar</em>.</p>
+      </div>
+
+      <!-- PASSO 3: ADICIONAR PEÇAS -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">3</span>
+          <h2>Adicionar peças à venda</h2>
+        </div>
+        <p>Clique em <strong>Adicionar Peça</strong> e busque pelo nome.</p>
+
+        <div class="cond" id="venda-barcode-mobile">
+          <p><strong>Código de barras (celular):</strong></p>
+          <ol>
+            <li>Toque no ícone de câmera no modal de peças.</li>
+            <li>Aponte para o código de barras da embalagem.</li>
+            <li>O sistema busca a peça no estoque automaticamente.</li>
+            <li>Se não encontrar, consulta base externa e cadastra a peça.</li>
+          </ol>
+        </div>
+        <div class="cond" id="venda-barcode-desktop">
+          <div class="callout info">
+            <span class="callout-icon">ℹ️</span>
+            <span>No computador, busque a peça pelo nome — leitura de código de barras por câmera não está disponível.</span>
+          </div>
+        </div>
+
+        <p style="margin-top:12px;">Após adicionar, use os botões <strong>+</strong> e <strong>−</strong> para ajustar a quantidade. Para alterar o preço, clique no valor da peça.</p>
+
+        <div class="callout warn">
+          <span class="callout-icon">⚠️</span>
+          <span>O estoque é descontado ao adicionar e devolvido ao remover o item da venda.</span>
+        </div>
+
+        <p>Se a peça não existir no cadastro, clique em <strong>Cadastrar Nova Peça</strong>, informe o nome e salve. Edite o preço em seguida.</p>
+
+        <p><strong>Observações</strong> — campo de texto opcional que aparece no recibo.</p>
+      </div>
+
+      <!-- PASSO 4: FINALIZAR -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">4</span>
+          <h2>Finalizar e registrar o pagamento</h2>
+        </div>
+        <p>Confira o <strong>Total Geral</strong> na parte inferior. Clique em <strong>Finalizar Venda</strong>.</p>
+        <p>Uma janela de pagamento se abre:</p>
+        <ol>
+          <li>Escolha a <strong>forma de pagamento</strong> (Pix, Dinheiro, Débito, Crédito parcelado ou A prazo).</li>
+          <li>Se for crédito, selecione o número de parcelas.</li>
+          <li>Se for a prazo, informe a data do depósito.</li>
+          <li>Clique em <strong>Confirmar Pagamento e Finalizar</strong>.</li>
+        </ol>
+        <p>Após confirmar, você pode <strong>imprimir o recibo</strong> ou iniciar uma nova venda.</p>
+
+        <div class="cond" id="venda-print-desktop">
+          <div class="callout tip">
+            <span class="callout-icon">🖨️</span>
+            <span>No computador, clique em <strong>Imprimir Recibo</strong> para abrir a página de impressão do comprovante.</span>
+          </div>
+        </div>
+        <div class="cond" id="venda-print-mobile">
+          <div class="callout tip">
+            <span class="callout-icon">📄</span>
+            <span>No celular, o link de recibo abre uma página formatada que pode ser compartilhada ou impressa via opção do navegador.</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /flow-venda -->
+
+    <!-- ─────────────────────────────────────────
+         FLUXO: SERVIÇO DE BANCADA
+    ───────────────────────────────────────── -->
+    <div class="cond" id="flow-bancada">
+
+      <!-- PASSO 1: CHEGAR NA TELA -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">1</span>
+          <h2>Acessar a tela de Venda Direta</h2>
+        </div>
+        <div class="cond" id="bancada-nav-mobile">
+          <p>No menu inferior, toque em <strong>Atendimento</strong>. No topo da tela, selecione a aba <strong>Venda Direta</strong>. Toque em <strong>+ Nova Venda Direta</strong>.</p>
+        </div>
+        <div class="cond" id="bancada-nav-desktop">
+          <p>No menu lateral, clique em <strong>Atendimento</strong>. No topo da tela, clique na aba <strong>Venda Direta</strong>. Clique em <strong>+ Nova Venda Direta</strong>.</p>
+        </div>
+        <div class="callout info">
+          <span class="callout-icon">ℹ️</span>
+          <span>O Serviço de Bancada é para serviços avulsos sem veículo vinculado — limpeza de bicos, consertos rápidos, revisões de componentes, etc.</span>
+        </div>
+      </div>
+
+      <!-- PASSO 2: CLIENTE -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">2</span>
+          <h2>Selecionar o cliente</h2>
+        </div>
+        <p>Neste fluxo o <strong>cliente é obrigatório</strong>. Busque pelo nome ou número de celular na lista.</p>
+        <p>Se o cliente não existir, clique em <strong>Novo Cliente</strong>, informe o nome e o WhatsApp (opcional) e clique em <strong>Salvar e Avançar</strong> — o sistema já o seleciona automaticamente.</p>
+      </div>
+
+      <!-- PASSO 3: ESCOLHER TIPO -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">3</span>
+          <h2>Escolher "Serviço de Bancada"</h2>
+        </div>
+        <p>Após selecionar o cliente, o sistema pergunta <em>"O que vamos fazer agora?"</em>. Clique no card <strong>Serviço de Bancada</strong> (ícone de chave amarela).</p>
+        <p>Um modal se abre para você buscar o serviço a ser executado. Digite o nome e clique para selecionar.</p>
+        <p>Se o serviço não existir, clique em <strong>Cadastrar Novo Serviço</strong>, informe o nome e salve. O serviço é criado com valor R$ 0,00 — você edita dentro da OS.</p>
+        <div class="callout good">
+          <span class="callout-icon">⚡</span>
+          <span>Ao selecionar o serviço, a OS é criada automaticamente já no status <strong>Aprovado</strong> (sem passar por Orçamento) e você é redirecionado para a tela de detalhes.</span>
+        </div>
+      </div>
+
+      <!-- PASSO 4: DENTRO DA OS DE BANCADA -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">4</span>
+          <h2>Trabalhar na OS de Bancada</h2>
+        </div>
+        <p>A tela de detalhes é a mesma de uma OS normal, com algumas diferenças:</p>
+        <ul>
+          <li>Não há checklist de veículo (odômetro, combustível, temperatura) — esses campos não existem.</li>
+          <li>O fluxo de status começa em <strong>Na Fila</strong> → <strong>Em Execução</strong> → <strong>Serviço Pronto</strong> (mais curto que o fluxo de OS de veículo).</li>
+          <li>Você pode adicionar mais serviços ou peças normalmente.</li>
+          <li>O laudo técnico, fotos, OBD-II e todos os recursos extras continuam disponíveis.</li>
+        </ul>
+        <div class="cond" id="bancada-commission-employee">
+          <div class="callout good">
+            <span class="callout-icon">🏅</span>
+            <span>Se o módulo de comissões estiver ativo, você é automaticamente atribuído aos serviços que adicionar.</span>
+          </div>
+        </div>
+        <div class="cond" id="bancada-commission-owner">
+          <div class="callout info">
+            <span class="callout-icon">👥</span>
+            <span>Se o módulo de comissões estiver ativo, atribua os colaboradores a cada serviço pelo ícone de equipe.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASSO 5: FECHAMENTO -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-num">5</span>
+          <h2>Fechar e registrar o pagamento</h2>
+        </div>
+        <p>Quando o serviço estiver pronto, clique em <strong>Entregar &amp; Fechar</strong> e registre o pagamento normalmente (Pix, Dinheiro, Débito, Crédito parcelado ou A prazo).</p>
+        <div class="cond" id="bancada-fiscal-owner">
+          <div class="callout info">
+            <span class="callout-icon">🧾</span>
+            <span>Se o módulo fiscal estiver ativo, a NFC-e pode ser emitida após o fechamento pela seção <strong>Notas Fiscais</strong>.</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /flow-bancada -->
+
+  </div><!-- /tutorial-content -->
+
+</div><!-- /container -->
+
+<script>
+  const ctx = { device: null, role: null, flow: null, venda_tipo: null };
+
+  function selectOption(btn) {
+    const q = btn.dataset.q;
+    const val = btn.dataset.val;
+    ctx[q] = val;
+
+    btn.closest('.options').querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+
+    if (q === 'device') showQ('q2');
+    if (q === 'role')   showQ('q3');
+    if (q === 'flow') {
+      if (val === 'os') {
+        hideQ('q4');
+        ctx.venda_tipo = null;
+        renderTutorial();
+      } else {
+        showQ('q4'); // Venda direta: aguarda pergunta 4
+      }
+    }
+    if (q === 'venda_tipo') renderTutorial();
+  }
+
+  function showQ(id) {
+    const el = document.getElementById(id);
+    if (el) { el.style.display = 'block'; el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  }
+
+  function hideQ(id) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  }
+
+  function renderTutorial() {
+    const { device, role, flow, venda_tipo } = ctx;
+
+    // Determina qual fluxo mostrar
+    const isOS      = flow === 'os';
+    const isPecas   = flow === 'venda' && venda_tipo === 'pecas';
+    const isBancada = flow === 'venda' && venda_tipo === 'bancada';
+
+    // Resumo
+    const deviceLabel = device === 'mobile' ? '📱 Celular' : '💻 Computador';
+    const roleLabel   = role === 'owner' ? '👑 Gerente' : '🔧 Colaborador';
+    const flowLabel   = isOS ? '🔩 Ordem de Serviço'
+                      : isPecas ? '🛒 Venda de Peças'
+                      : '🔧 Serviço de Bancada';
+    document.getElementById('summary-bar').innerHTML =
+      `<strong>Seu contexto:</strong>
+       <span class="summary-tag">${deviceLabel}</span>
+       <span class="summary-tag">${roleLabel}</span>
+       <span class="summary-tag">${flowLabel}</span>`;
+
+    // Blocos de fluxo
+    show('flow-os',      isOS);
+    show('flow-venda',   isPecas);
+    show('flow-bancada', isBancada);
+
+    // ── OS ──
+    show('os-nav-mobile',           device === 'mobile');
+    show('os-nav-desktop',          device === 'desktop');
+    show('os-plate-mobile',         device === 'mobile');
+    show('os-plate-desktop',        device === 'desktop');
+    show('os-panel-mobile',         device === 'mobile');
+    show('os-panel-desktop',        device === 'desktop');
+    show('os-voice-mobile',         device === 'mobile');
+    show('os-voice-desktop',        device === 'desktop');
+    show('os-barcode-mobile',       device === 'mobile');
+    show('os-barcode-desktop',      device === 'desktop');
+    show('os-photos-mobile',        device === 'mobile');
+    show('os-photos-desktop',       device === 'desktop');
+    show('os-print-desktop',        device === 'desktop');
+    show('os-status-mobile',        device === 'mobile');
+    show('os-status-desktop',       device === 'desktop');
+    show('os-entrega-mobile',       device === 'mobile');
+    show('os-entrega-desktop',      device === 'desktop');
+    show('os-commission-employee',  role === 'employee');
+    show('os-commission-owner',     role === 'owner');
+    show('os-advance-payment',      true);
+    show('os-fiscal-owner',         role === 'owner');
+    show('os-delete-employee',      role === 'employee');
+    show('os-delete-owner',         role === 'owner');
+
+    // ── Venda de Peças ──
+    show('venda-nav-mobile',        device === 'mobile');
+    show('venda-nav-desktop',       device === 'desktop');
+    show('venda-barcode-mobile',    device === 'mobile');
+    show('venda-barcode-desktop',   device === 'desktop');
+    show('venda-print-mobile',      device === 'mobile');
+    show('venda-print-desktop',     device === 'desktop');
+
+    // ── Serviço de Bancada ──
+    show('bancada-nav-mobile',          device === 'mobile');
+    show('bancada-nav-desktop',         device === 'desktop');
+    show('bancada-commission-employee', role === 'employee');
+    show('bancada-commission-owner',    role === 'owner');
+    show('bancada-fiscal-owner',        role === 'owner');
+
+    document.getElementById('tutorial-content').style.display = 'block';
+    document.getElementById('reset-btn').style.display = 'inline-block';
+    document.getElementById('tutorial-content').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function show(id, visible) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle('active', visible);
+  }
+
+  function resetAll() {
+    ctx.device = null; ctx.role = null; ctx.flow = null; ctx.venda_tipo = null;
+    document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+    ['q2','q3','q4'].forEach(id => hideQ(id));
+    document.getElementById('tutorial-content').style.display = 'none';
+    document.getElementById('reset-btn').style.display = 'none';
+    document.querySelectorAll('.cond').forEach(el => el.classList.remove('active'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+</script>
+<script>
+  (function initTutorialAccordion() {
+    const sections = document.querySelectorAll('.section');
+    sections.forEach((section, index) => {
+      if (section.dataset.accordionReady === '1') return;
+
+      const header = section.querySelector(':scope > .section-header');
+      if (!header) return;
+
+      const sectionNum = header.querySelector('.section-num');
+      if (sectionNum) sectionNum.textContent = String(index + 1);
+
+      const content = document.createElement('div');
+      content.className = 'section-content';
+      Array.from(section.children).forEach((child) => {
+        if (child !== header) content.appendChild(child);
+      });
+      section.appendChild(content);
+
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-expanded', 'false');
+
+      const toggle = () => {
+        const open = !section.classList.contains('open');
+        section.classList.toggle('open', open);
+        header.setAttribute('aria-expanded', String(open));
+      };
+
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+
+      section.dataset.accordionReady = '1';
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,631 @@
+# BASE DE CONHECIMENTO — SISTEMA AUTOELÉTRICA
+# Versão 1.0 | Atualizado conforme novos tutoriais forem criados.
+# Este arquivo é usado pela IA para responder perguntas de uso do sistema.
+
+=======================================================
+TUTORIAL 1: COMO ABRIR UMA OS OU VENDA
+=======================================================
+
+--- ORDEM DE SERVIÇO (OS) ---
+
+PASSO 1 — ACESSAR A TELA
+- No celular: menu inferior > Atendimento > botão "+ Nova OS"
+- No computador: menu lateral > Atendimento > botão "+ Nova OS"
+
+PASSO 2 — IDENTIFICAR O VEÍCULO
+Tipos aceitos:
+- Carro: placa no formato ABC1234 ou BRA2E19 (Mercosul). Sistema detecta automaticamente.
+- Moto: mesmos formatos de placa do carro.
+- Barco: nome livre (ex: "Lancha Estrela") ou prefixo de estado (ex: SP-123).
+
+Câmera de identificação (só celular):
+- Carro/Moto: fotografe a placa. A IA lê e preenche automaticamente.
+- Barco: fotografe o nome no casco. A IA identifica o nome e já seleciona a categoria "Barco".
+- No computador não há câmera — digite manualmente.
+
+Após identificar:
+- Se o veículo já existe no sistema: dados carregados automaticamente, avança.
+- Se é novo: sistema consulta base externa e tenta preencher Fabricante, Modelo, Ano. Confirme ou corrija e clique em "Salvar Veículo e Avançar".
+- Se a consulta falhar: preencha Fabricante, Modelo, Ano manualmente e salve.
+
+PASSO 3 — PREENCHER DADOS DA OS
+- Cliente: obrigatório. Busque pelo nome. Se não existe, use a aba "Cadastrar" (Nome + WhatsApp).
+- Checklist do veículo (opcional mas recomendado):
+  - Odômetro (km) para carros/motos | Horímetro (horas) para barcos
+  - Nível de combustível: Vazio / 1/4 / 1/2 / 3/4 / Cheio
+  - Temperatura do motor: Normal / Elevada / Crítica (só carros/motos)
+  - Observações do painel: luzes acesas, alertas visuais
+
+Câmera de painel (só celular):
+- Carro/Moto: lê odômetro, combustível, temperatura e luzes de alerta.
+- Barco: lê horímetro, combustível, voltagem da bateria e alertas do painel.
+- No computador: preencha manualmente.
+
+- Reclamação do cliente: descreva o problema. Use o microfone para ditar (funciona melhor no Chrome).
+- Clique em "Iniciar Ordem de Serviço" para criar e abrir os detalhes da OS.
+
+PASSO 4 — ADICIONAR PEÇAS E SERVIÇOS
+- Botões "+ Adicionar Serviço" e "+ Adicionar Peça" na tela de detalhes.
+- Busca por nome: digite parte do nome e clique no item.
+- Código de barras (só celular): toque no ícone de câmera no modal de peças, aponte para o código EAN.
+  Se não encontrar no estoque, consulta base externa e cadastra automaticamente.
+- No computador: só busca por nome, sem câmera.
+- Se o item não existir: clique em "Cadastrar Nova Peça/Serviço", informe o nome (preço zero, edite depois).
+- Peça trazida pelo cliente: adicione normalmente e marque com o ícone de pessoa (👤✓). Fica com fundo amarelo e não entra no total.
+- Estoque: descontado ao adicionar, devolvido ao remover.
+- Comissões (se módulo ativo):
+  - Colaborador: atribuído automaticamente aos serviços que ele mesmo adicionar.
+  - Gerente: clique no ícone de equipe em cada serviço para escolher quem executou.
+- Para editar preço ou quantidade: clique no ícone de lápis.
+
+PASSO 5 — RECURSOS EXTRAS (OPCIONAIS)
+- Laudo técnico: registre defeitos constatados e serviços executados. Use microfone para ditar.
+- Fotos e Vídeos: na seção de anexos há DOIS botões separados: "Foto" e "Vídeo".
+  - Foto: abre câmera ou galeria. Limite de 10 MB por imagem.
+  - Vídeo (celular): ao tocar, aparece um AVISO antes de abrir a câmera. Grave no máximo 30 segundos e use HD (720p). Limite de 50 MB por vídeo. Vídeos muito longos ou em 4K podem não ser enviados.
+  - Vídeo (computador): escolha um arquivo de vídeo. Limite de 50 MB.
+- OBD-II: expanda a seção de diagnóstico, digite o código DTC (ex: P0420). O sistema consulta banco de dados ou usa IA para traduzir.
+- Scanner PDF: anexe PDF do scanner automotivo. Após anexado, o relatório aparece automaticamente no portal do cliente como um link de download — o cliente pode abrir pelo celular sem precisar entrar no sistema.
+- Agendamento (se módulo ativo): clique em "Reagendar" no cabeçalho.
+- Previsão de entrega: informe a data no campo à direita.
+- WhatsApp: botão verde "Cliente" no cabeçalho envia link de rastreamento automático.
+- Imprimir (só computador): ícone de impressora no cabeçalho.
+
+PASSO 6 — AVANÇAR O STATUS
+Fluxo de status de OS com veículo:
+1. Orçamento → A aprovação CORRETA vem pelo portal do cliente.
+   - Envie o link de rastreamento pelo WhatsApp (botão verde no cabeçalho da OS).
+   - O cliente acessa o link pelo celular e aprova o orçamento.
+   - A aprovação pelo portal registra IP, dispositivo e hash criptográfico como comprovante de que foi o cliente quem aprovou.
+   - ATENÇÃO: existe um botão "Aprovar" dentro da OS, mas deve ser usado apenas em último caso (cliente presente ou serviço urgente). Aprovações manuais não geram comprovante de aceite do cliente.
+2. Aprovado / Aguardando Peça → clique em "Iniciar Serviço" quando entrar na bancada.
+3. Em Serviço → clique em "Finalizar" quando concluído.
+4. Pronto p/ Entrega → clique em "Entregar & Fechar" para registrar pagamento.
+Atenção: se houver peças do cliente, uma confirmação extra aparece na aprovação.
+
+PASSO 7 — REGISTRAR PAGAMENTO
+- Ao clicar em "Entregar & Fechar" a janela de pagamento se abre.
+- Ajuste o valor final se necessário (descontos).
+- Formas de pagamento:
+  - Pix / Dinheiro / Débito: quitado imediatamente.
+  - Cartão de Crédito: escolha parcelas (1 a 12), vencimentos mensais.
+  - A prazo: informe a data do depósito/cheque.
+- Adiantamento: use "Lançar Adiantamento" antes do fechamento. Abate do valor final.
+- Gerente: se módulo fiscal ativo, emita NFC-e em Notas Fiscais após o fechamento.
+
+PASSO 8 — CANCELAR OU EXCLUIR
+- Cancelar: muda para "Cancelado", devolve peças ao estoque, mantém no histórico.
+- Excluir: remove permanentemente, devolve peças. Só Gerentes podem excluir. Irreversível — prefira cancelar.
+
+--- VENDA DE PEÇAS (VENDA DIRETA) ---
+
+PASSO 1 — ACESSAR
+- Celular: menu inferior > Atendimento > aba "Venda Direta" > "+ Nova Venda Direta"
+- Computador: menu lateral > Atendimento > aba "Venda Direta" > "+ Nova Venda Direta"
+- Na próxima tela, selecione o cliente (obrigatório) e clique em "Venda Direta de Peças".
+- Diferente da OS: não há veículo, gera recibo direto.
+
+PASSO 2 — CLIENTE
+- Obrigatório neste fluxo. Busque pelo nome ou celular.
+- Se não existir: clique em "Novo Cliente", informe nome e WhatsApp, salve.
+
+PASSO 3 — ADICIONAR PEÇAS
+- Clique em "Adicionar Peça". Busca por nome ou código de barras (celular).
+- Ajuste quantidade com botões + e −. Clique no valor para editar o preço.
+- Observações: campo opcional que aparece no recibo.
+
+PASSO 4 — FINALIZAR E PAGAR
+- Confira o Total Geral. Clique em "Finalizar Venda".
+- Escolha forma de pagamento, confirme.
+- Após confirmar: imprima o recibo (computador) ou compartilhe pelo navegador (celular).
+
+--- SERVIÇO DE BANCADA ---
+
+O que é: OS sem veículo vinculado. Para serviços avulsos como limpeza de bicos, consertos rápidos, revisões de componentes.
+
+PASSO 1 — ACESSAR
+- Mesmo caminho da Venda Direta: Atendimento > aba "Venda Direta" > "+ Nova Venda Direta"
+
+PASSO 2 — CLIENTE
+- Obrigatório. Busque ou cadastre.
+
+PASSO 3 — ESCOLHER "SERVIÇO DE BANCADA"
+- Após selecionar o cliente, escolha o card "Serviço de Bancada" (chave amarela).
+- Selecione o serviço na lista. Se não existir, cadastre com nome (preço zero, edite depois).
+- A OS é criada automaticamente já no status "Aprovado" (pula Orçamento).
+
+PASSO 4 — TRABALHAR NA OS
+- Tela de detalhes igual à OS normal, sem checklist de veículo.
+- Fluxo de status mais curto: Na Fila → Em Execução → Serviço Pronto.
+- Pode adicionar mais serviços, peças, fotos, laudo normalmente.
+
+PASSO 5 — FECHAR E PAGAR
+- Clique em "Entregar & Fechar" e registre o pagamento normalmente.
+
+=======================================================
+FIM DO TUTORIAL 1
+=======================================================
+
+=======================================================
+TUTORIAL 2: ESTOQUE E SERVIÇOS
+=======================================================
+
+--- PRODUTOS E PEÇAS ---
+
+TELA INICIAL (Estoque > aba Produtos / Peças)
+- Cards de alerta: Total de Itens, Reposição Urgente (estoque atual ≤ mínimo), Preço Defasado (custo de reposição > custo contábil, ou sem compra há +90 dias).
+- Busca por nome, marca ou EAN (código de barras).
+- Filtros rápidos: Todos / Estoque Baixo / Alerta de Preço.
+- Status de cada produto na tabela: OK (verde), Baixo (vermelho), Defasado (amarelo), Revisar Custo (azul).
+- Clique na seta → para abrir a ficha de edição.
+
+CADASTRAR NOVO PRODUTO (botão "+ Novo Produto"):
+Identificação: Nome (obrigatório), Marca, Código de Referência, EAN (código de barras).
+Estoque Inicial: Qtd Atual, Mínimo (padrão 5), Local (ex: A-12).
+Formação de Preço:
+- Custo Real de Compra: o que você pagou. Ao preencher, espelha no Custo de Reposição.
+- Custo de Reposição: quanto custaria comprar hoje. Usado para detectar defasagem.
+- Margem de Lucro %: percentual sobre o custo de reposição (padrão 100%).
+- Preço Sugerido: calculado automaticamente. Clique para aplicar ao preço de venda.
+- Preço de Venda Final: valor cobrado do cliente (editável livremente).
+- Se markup automático ativo nas configurações, preenche o preço de venda automaticamente ao digitar o custo.
+
+EDITAR PRODUTO: mesmo formulário com campos preenchidos. Campo extra: Data da Última Compra.
+EXCLUIR PRODUTO: botão Excluir na ficha. Não é possível excluir produtos usados em OS.
+
+IMPORTAÇÃO DE XML:
+- Botão "Importar XML" na tela de Estoque.
+- Lê o arquivo .xml da NF-e do fornecedor.
+- Extrai número da nota, emitente, data, valor total e lista de itens.
+- Conciliação: cada item recebe status Encontrado (EAN bateu), Novo (EAN não existe), ou Manual (precisa vincular manualmente).
+- Ações por item: Atualizar (soma estoque + atualiza custo), Criar novo (cadastra produto com dados da nota; se markup ativo o preço de venda é calculado automaticamente, caso contrário fica zerado), ou Ignorar.
+- Opção "Atualizar nome": substitui o nome do produto pelo da nota.
+- Confirmar Entrada: processa todas as ações e retorna ao estoque atualizado.
+- Data da nota é registrada como Data da Última Compra de cada produto atualizado.
+
+--- MÃO DE OBRA / SERVIÇOS ---
+
+TELA (Estoque > aba Mão de Obra)
+- Lista todos os serviços cadastrados com nome e preço.
+- Busca por nome em tempo real.
+- Os serviços daqui aparecem na busca ao adicionar itens em uma OS.
+
+CADASTRAR NOVO SERVIÇO (botão "+ Novo Serviço"):
+- Modal com Nome do Serviço e Preço Base (R$).
+- Pode cadastrar com R$ 0,00 e ajustar depois ou direto na OS.
+
+EDITAR: ícone de lápis ✏️ ao lado do serviço → mesmo modal.
+EXCLUIR: ícone de lixeira 🗑 → confirmar. Não afeta OS já abertas.
+
+=======================================================
+FIM DO TUTORIAL 2
+=======================================================
+
+=======================================================
+TUTORIAL 3: CLIENTES (TELA DE GESTÃO DE CLIENTES)
+=======================================================
+
+LISTA DE CLIENTES (/clientes)
+- Acesso: menu inferior > Clientes (celular) ou menu lateral > Clientes (computador).
+- Busca por texto: filtra em tempo real por nome, WhatsApp, placa ou modelo do veículo.
+- Botão "Ver Devedores": exibe apenas clientes com saldo vencido ou a vencer.
+- Coluna Financeiro na tabela:
+  - Atrasado (vermelho): valor com vencimento passado não pago.
+  - A Vencer (amarelo): valor com vencimento futuro (parcelado, cheque, etc.).
+  - Em dia (verde): sem pendências.
+- Botão "+ Novo Cliente" no topo para cadastrar um novo cliente.
+
+FICHA DO CLIENTE (/clientes/[id])
+Seções:
+1. Dados Básicos: Nome, CPF/CNPJ, WhatsApp, E-mail.
+2. Endereço: CEP, Rua, Número, Bairro.
+3. Financeiro & Portal:
+   - Card "Total Pago": soma dos pagamentos quitados em OS do cliente.
+   - Card "Saldo Devedor": soma dos pagamentos ainda pendentes.
+   - Botão "Ver Extrato": abre o extrato completo do cliente em nova aba.
+   - Botão "Enviar WhatsApp": manda o link do extrato automaticamente para o cliente.
+4. Veículos: lista os veículos vinculados. Botão "+ Incluir" para adicionar novo. Ícone de lápis para editar.
+
+SALVAR: botão flutuante "Salvar Alterações" na parte inferior da tela.
+EXCLUIR: botão "Excluir" no topo da ficha. Remove o cliente e todos os veículos vinculados permanentemente. Irreversível.
+
+CADASTRAR CLIENTE SEM SAIR DO ATENDIMENTO:
+- Ao abrir uma nova OS ou Venda Direta, é possível cadastrar um cliente diretamente no modal, sem precisar acessar a tela de Clientes.
+
+=======================================================
+FIM DO TUTORIAL 2
+=======================================================
+
+=======================================================
+TUTORIAL 2B: EXTRATO DO CLIENTE (LINK PÚBLICO)
+=======================================================
+
+O extrato do cliente é uma página web pública acessada pelo link único enviado via WhatsApp. Não requer login.
+
+COMO ENVIAR O LINK:
+- Na ficha do cliente (Clientes > [nome do cliente]), seção "Financeiro & Portal", clique em "Enviar WhatsApp".
+- O sistema gera a mensagem automaticamente com o link do extrato.
+
+O QUE O CLIENTE VÊ:
+1. Cabeçalho: logo da oficina e nome do cliente.
+
+2. Cards de Resumo:
+   - Total Serviços: soma total de tudo cobrado em todas as OS.
+   - Total Pago: soma dos valores já quitados.
+   - Saldo Devedor: valor ainda pendente (laranja se houver, cinza se zerado).
+
+3. Seção "Pagamentos Pendentes": aparece quando há OS com valores em aberto. Cards com borda laranja mostram o valor pendente e a data do próximo vencimento.
+
+4. Histórico de Serviços: OS já quitadas agrupadas por mês (mês mais recente primeiro). O cliente clica em "Carregar meses anteriores" para ver períodos mais antigos.
+
+5. Cada OS é um card clicável que se expande mostrando:
+   - Itens (serviços 🔧 e peças 📦). Peças do cliente ficam riscadas.
+   - Pagamentos: verde (pago), laranja (previsto), vermelho (vencido).
+
+6. Rodapé: botão de WhatsApp para contato com a oficina.
+
+VISÃO DO GERENTE LOGADO:
+- Se um usuário logado no sistema abrir o link, aparece um botão extra "Mostrar OS/Compra" em cada card — abre diretamente a tela de detalhes da OS.
+
+=======================================================
+FIM DO TUTORIAL 2B
+=======================================================
+
+=======================================================
+TUTORIAL 3: PORTAL DO CLIENTE
+=======================================================
+
+O portal do cliente é uma página web acessada pelo link de rastreamento enviado via WhatsApp. O cliente não precisa de login — o link já identifica a OS.
+
+COMO ENVIAR O LINK
+- Dentro da OS, clique no botão verde "Cliente" no cabeçalho. O sistema monta a mensagem automaticamente com o link de rastreamento.
+
+O QUE O CLIENTE VÊ
+1. Card do veículo — nome, placa e linha do tempo com bolinhas coloridas mostrando o status atual.
+   - Amarelo pulsando: aguardando aprovação do orçamento.
+   - Laranja: aguardando chegada de peças.
+   - Azul pulsando: serviço em andamento.
+   - Verde: pronto para retirar.
+
+2. Laudo Técnico — se preenchido na OS, o cliente vê três blocos: Relato do Cliente, Defeitos Constatados e Serviços Executados.
+
+3. Valor Total — clicando no card, expande a lista com todos os itens (serviços e peças) e seus valores.
+
+4. Aprovação do Orçamento — quando a OS está em Orçamento, aparece o botão "APROVAR ORÇAMENTO". Ao tocar, um drawer exibe o valor, alerta sobre peças do cliente (se houver), seleção da forma de pagamento e o botão "SIM, APROVAR". A aprovação registra IP, dispositivo e hash criptográfico como comprovante.
+
+5. Facilidades de Pagamento (se módulo ativo) — o cliente pode ver o QR Code do PIX e a tabela de parcelamento no cartão. Isso é apenas informativo — o pagamento é registrado pela oficina no fechamento da OS.
+
+6. Fotos e Vídeos — todas as mídias anexadas à OS aparecem em grade. Fotos abrem em tela cheia, vídeos abrem com player de reprodução.
+
+7. Relatório de Scanner — se um PDF foi anexado, aparece um card "Relatório de Scanner" com link de download.
+
+8. Documentos Fiscais — se uma NFC-e ou NFSe foi emitida, aparece automaticamente com link para o PDF da nota.
+
+9. Agendamento — se houver agendamento futuro vinculado, o cliente pode confirmar a presença pelo botão "CONFIRMAR PRESENÇA".
+
+=======================================================
+FIM DO TUTORIAL 2
+=======================================================
+
+=======================================================
+TUTORIAL 3: EXTRATO FINANCEIRO
+=======================================================
+
+ACESSO
+- Celular: menu inferior > Financeiro (ícone de carteira).
+- Computador: menu lateral > Financeiro.
+- Exclusivo para Gerentes (cargo owner). Colaboradores não têm acesso.
+
+FILTROS (barra no topo da tela)
+- Mês/Ano: selecione o período ou clique em "Tudo" para ver o histórico completo.
+- Status: Tudo / Realizado (já pago ou recebido) / Pendente (agendado, ainda não efetivado).
+- Tipo: Tudo / Entradas / Saídas.
+Os três filtros funcionam em conjunto — alterar qualquer um atualiza os cards e a lista imediatamente.
+
+CARDS DE RESUMO
+- Receita (Pago): soma das entradas efetivadas no período filtrado.
+- Despesa (Pago): soma das saídas efetivadas no período filtrado.
+- Resultado do Período: Receita − Despesa (lucro ou prejuízo).
+- Se houver pendentes, um badge amarelo mostra o valor "A Receber" ou "A Pagar".
+
+EXTRATO DETALHADO
+- Lista todos os lançamentos do período filtrado.
+- Ícone verde: entrada / Ícone vermelho: saída / Ícone amarelo: pendente.
+- Badge "Agendado" em amarelo indica lançamentos futuros ainda não efetivados.
+- Clique em qualquer linha para editar ou excluir o lançamento (somente lançamentos manuais).
+
+REGISTRAR DESPESA
+- Botão vermelho "Registrar Despesa" nas Ações Rápidas (coluna direita no computador, role a tela no celular).
+- Preencha: Data, se já foi paga ou é agendamento, Descrição, Valor, Categoria (Operacional / Administrativo / Pessoal).
+- Se a data for futura, o sistema muda automaticamente para "Agendar" e o lançamento fica como Pendente.
+- Clique em "Confirmar Saída" (ou "Confirmar Agendamento").
+
+REGISTRAR ENTRADA AVULSA
+- Botão verde "Entrada Avulsa" nas Ações Rápidas.
+- Use para receitas que não vêm de fechamento de OS: venda de sucata, aluguel, bônus de fornecedor, etc.
+- Preencha: Data, status (Recebido ou A Receber), Descrição, Valor, Forma de Recebimento.
+- Clique em "Confirmar Entrada".
+
+EDITAR OU EXCLUIR LANÇAMENTO
+- Clique no item na lista do extrato.
+- Altere os campos e clique em "Salvar Alterações", ou clique na lixeira para excluir.
+- Lançamentos originados de fechamento de OS não podem ser editados aqui — precisam ser corrigidos na própria OS.
+
+FECHAMENTO PARA CONTADOR (módulo fiscal)
+- Botão "Fechamento p/ Contador" nas Ações Rápidas.
+- Gera relatório consolidado do período com movimentações e notas fiscais para envio ao contador.
+
+RELATÓRIOS DETALHADOS
+- Botão "Relatórios Detalhados" (ícone de gráfico) nas Ações Rápidas.
+- Mostra análises por categoria, evolução mensal e outros indicadores gerenciais.
+
+=======================================================
+FIM DO TUTORIAL 3
+=======================================================
+
+=======================================================
+TUTORIAL 8: NOTAS FISCAIS (NFC-e e NFS-e)
+=======================================================
+
+TIPOS DE NOTA:
+- NFC-e (Nota Fiscal de Consumidor Eletrônica): para venda de peças e produtos. Emitida pela SEFAZ (Receita Estadual).
+- NFS-e (Nota Fiscal de Serviços Eletrônica): para mão de obra e serviços. Emitida pela prefeitura do município.
+- Uma OS com peças e serviços pode gerar duas notas: uma NFC-e pelas peças e uma NFS-e pelos serviços.
+
+AMBIENTE DE HOMOLOGAÇÃO:
+- Na tela de Notas Fiscais, é possível alternar entre Produção e Homologação.
+- Homologação é o ambiente de testes — notas emitidas ali não têm validade fiscal.
+- Use homologação para treinar o preenchimento ou testar configurações sem gerar documentos reais.
+- Sempre verifique em qual ambiente está antes de emitir.
+
+A NOTA E A OS SÃO INDEPENDENTES:
+- Ao emitir nota vinculada a uma OS, o sistema carrega os itens dela como ponto de partida.
+- O que for alterado na tela de emissão NÃO muda a OS, e vice-versa.
+- Isso é intencional: a OS é o registro interno do trabalho; a nota fiscal é o documento comercial.
+- Flexibilidade: pode emitir nota só por parte dos itens, ajustar descrições, adicionar serviços extras, etc.
+
+COMO EMITIR:
+Passo 1 — Escolher a origem:
+- Vinculada a uma OS: a lista mostra OS com notas pendentes. Clique na OS desejada; o sistema carrega cliente e itens automaticamente.
+- Nota avulsa: clique em "Nota Avulsa" para abrir o formulário sem vincular a uma OS.
+
+Passo 2 — Preencher e emitir:
+- Dois blocos: Peças (para NFC-e) e Serviços (para NFS-e).
+- Edite os itens conforme necessário, preencha os dados do cliente e clique em "Emitir Nota".
+
+CAMPOS OBRIGATÓRIOS — NFC-e (Peças):
+- Descrição do produto: obrigatório.
+- NCM: código fiscal da mercadoria. Obrigatório. Use o botão IA (✨) para sugerir automaticamente pela descrição — o sistema salva o NCM para futuras notas desse produto.
+- CFOP: código da operação fiscal (ex: 5102). Preenchido automaticamente; altere só se necessário.
+- Unidade (UN, PC, KG etc): preenchida automaticamente do cadastro.
+- Quantidade e valor unitário: obrigatórios.
+- CPF/CNPJ do cliente: obrigatório em alguns estados acima de certo valor — verifique a legislação do seu estado.
+- Peças fornecidas pelo cliente ("peça do cliente" na OS) são excluídas automaticamente da NFC-e.
+
+CAMPOS OBRIGATÓRIOS — NFS-e (Serviços):
+- Descrição do serviço: obrigatório.
+- Código do serviço (LC 116): ex: 14.01 para lubrificação/limpeza de veículos. Vem do cadastro do serviço.
+- Alíquota ISS: percentual do município (geralmente 2% a 5%). Vem do cadastro do serviço.
+- Valor do serviço: obrigatório.
+- CPF/CNPJ e endereço do tomador: exigência varia por prefeitura. Se a nota for rejeitada por campo faltando, verifique o que a prefeitura da cidade exige.
+
+NOTAS AVULSAS:
+- Nota emitida sem vínculo com nenhuma OS.
+- Usada para: venda de peça usada, serviço rápido cobrado na hora, serviço extra depois do fechamento da OS, qualquer transação que precisa de documento fiscal mas não foi aberta como OS.
+- Ficam registradas no painel de notas como qualquer outra, mas sem vínculo com OS no histórico do cliente.
+
+STATUS DAS NOTAS:
+- Autorizada: aprovada pela SEFAZ ou prefeitura. Documento válido.
+- Em processamento: enviada e aguardando retorno. A tela atualiza automaticamente.
+- Rejeitada: recusada. O motivo aparece na linha. Use "Corrigir" para ajustar e reenviar.
+- Cancelada: cancelada dentro do prazo legal. Fica no histórico sem validade fiscal.
+
+AÇÕES DISPONÍVEIS NO PAINEL:
+- Baixar PDF (DANFE para NFC-e, PDF para NFS-e) — disponível para notas emitidas (saída).
+- Baixar XML — disponível para notas de entrada (NFe do fornecedor importada no estoque). O XML emitido NÃO tem download separado no painel.
+- Enviar por WhatsApp (link do PDF para o cliente) — apenas para notas de saída autorizadas.
+- Cancelar (disponível para notas autorizadas dentro do prazo legal, geralmente até 24h).
+- Corrigir (para notas rejeitadas — abre o formulário para ajuste e reenvio).
+
+PORTAL DO CLIENTE E NOTAS FISCAIS:
+- Quando uma nota vinculada a uma OS é autorizada (status "authorized"), ela aparece automaticamente no portal do cliente (link de acompanhamento da OS) como botão de download do PDF.
+- O portal mostra apenas o PDF, não o XML.
+- O portal filtra apenas notas de saída (direction='output') — notas de entrada do fornecedor nunca aparecem no portal.
+- O cliente não precisa pedir — a nota fica disponível assim que autorizada.
+
+NOTAS DE ENTRADA NO PAINEL:
+- Quando um XML de compra é importado na tela de Estoque, o sistema também registra essa nota no painel fiscal como "NFe Entrada".
+- Para essas notas, o download disponível é o XML original do fornecedor (útil para arquivo fiscal da empresa).
+- Notas de entrada NÃO aparecem no portal do cliente.
+
+=======================================================
+FIM DO TUTORIAL 8
+=======================================================
+
+=======================================================
+TUTORIAL 9: AGENDAMENTO
+=======================================================
+
+O QUE É:
+- Permite marcar dia e hora com um cliente para avaliação ou retorno de OS.
+- Ao criar, gera um link exclusivo enviado ao cliente via WhatsApp.
+- O cliente confirma a presença pelo link, e o mecânico vê em tempo real.
+- Quando a hora chegar, um alerta aparece no topo do sistema com som e notificação.
+
+DOIS TIPOS DE AGENDAMENTO:
+1. Avaliação (sem OS): cliente vai trazer o veículo pela primeira vez para avaliação. Nenhuma OS é aberta ainda. OS é criada depois que o cliente chegar.
+2. Já tem OS: cliente com OS aberta vai retornar para aprovação de orçamento, buscar o veículo, ou continuar o serviço. O agendamento fica vinculado à OS.
+
+O PAINEL DE AGENDAMENTOS:
+- Acesse pelo menu lateral em Agendamentos.
+- Calendário do mês no topo — clique em qualquer dia para ver os agendamentos daquele dia.
+- Heatmap por hora (7h–18h): verde = tranquilo, amarelo = movimentado, vermelho = lotado. Use para evitar concentrar agendamentos na mesma hora.
+- Lista abaixo mostra os agendamentos do dia em ordem de horário, com ícones de ação ao lado.
+
+CRIAR AGENDAMENTO — TIPO AVALIAÇÃO:
+- Tipo: Avaliação
+- Cliente: campo de busca opcional. Deixe em branco para clientes novos.
+- Veículo: texto livre (ex: "Gol 2018 – ABC1234").
+- Data e hora: o sistema não permite marcar no passado.
+- Duração: 15min, 30min, 1h, 2h, 4h ou dia inteiro.
+- Descrição: motivo da visita. Obrigatório se não houver cliente selecionado.
+
+CRIAR AGENDAMENTO — TIPO JÁ TEM OS:
+- Tipo: Já tem OS
+- Buscar OS: campo de busca por número, nome do cliente ou placa. Clique na OS desejada.
+- Após selecionar, cliente, veículo e descrição são herdados automaticamente da OS.
+- Data e hora: quando o cliente vai retornar.
+- O agendamento fica vinculado à OS. No portal, o cliente vê o agendamento E a situação da OS no mesmo link.
+
+ENVIAR LINK AO CLIENTE:
+- Clique no ícone do WhatsApp ao lado do agendamento na lista.
+- O sistema abre o WhatsApp Web com uma mensagem pronta contendo o link exclusivo do portal.
+- Se o cliente não tiver WhatsApp cadastrado, o sistema pede o número antes de abrir.
+- O link não expira e pode ser reenviado quantas vezes for necessário.
+
+O QUE O CLIENTE VÊ NO PORTAL:
+- Card com data, hora, descrição e status do agendamento.
+- Botão "Confirmar Presença" se ainda não confirmou.
+- Após confirmar: card fica verde com "✅ Presença confirmada". Botão some.
+- Se cancelado: card vermelho com aviso e botão para chamar a oficina.
+- Se concluído: card escuro com "Agradecemos a visita!".
+- Se for tipo "Já tem OS": o cliente também vê a linha do tempo de status da OS, orçamento, fotos e documentos fiscais pelo mesmo link.
+
+ALERTAS EM TEMPO REAL:
+- 15 minutos antes do horário: banner aparece no topo do painel com som e notificação do navegador.
+- Aparece em qualquer tela do painel — não precisa estar na tela de agendamentos.
+- Funciona para agendamentos com status "agendado" ou "confirmado".
+- Ações no alerta:
+  - "Avisar +15min": dorme o alerta por 15 minutos (snooze). Útil quando o cliente está a caminho.
+  - "Não compareceu": marca o status e remove o alerta. O cliente vê isso no portal.
+  - "Reagendar": abre o formulário de reagendamento sem sair da tela atual.
+  - "Abrir OS": cria uma nova OS vinculada ao agendamento, direto na tela de novo atendimento.
+- Para receber notificações do navegador, é necessário autorizar quando o sistema pedir.
+
+AÇÕES NA LISTA DE AGENDAMENTOS:
+- WhatsApp: envia ou reenvia o link ao cliente.
+- Reagendar (ícone de relógio): escolhe nova data e hora. Status volta para "agendado" após reagendar. Reenvie o link.
+- Concluir (ícone de check): marca como concluído sem abrir OS. Use para atendimentos rápidos sem cobrança.
+- Cancelar (ícone X): cancela o agendamento. O cliente vê aviso no portal. Agendamento sai da lista do dia mas fica no histórico.
+
+STATUS POSSÍVEIS:
+- Agendado: criado, aguardando confirmação do cliente.
+- Confirmado: cliente confirmou presença pelo portal. Aparece com checkmark verde no painel.
+- Concluído: atendimento finalizado sem OS. Marcado manualmente.
+- Não compareceu: cliente não apareceu. Marcado no alerta ou na lista.
+- Cancelado: agendamento cancelado. Cliente vê aviso no portal.
+
+REAGENDAR:
+- Clique no ícone de relógio ao lado do agendamento.
+- Escolha nova data e hora e clique em Salvar.
+- O status volta para "agendado". Reenvie o link para o cliente ver o novo horário.
+- O cliente vê a atualização ao abrir o mesmo link antigo — não é necessário gerar novo link.
+
+FLUXO COMPLETO (AVALIAÇÃO):
+1. Admin cria agendamento tipo Avaliação com data, hora e motivo.
+2. Admin clica no WhatsApp e envia o link ao cliente.
+3. Cliente confirma presença pelo link. Painel mostra status "Confirmado".
+4. 15 minutos antes: alerta aparece no painel com som.
+5. Cliente chega. Admin clica "Abrir OS" no alerta para criar a OS vinculada.
+6. Se precisar de retorno: mecânico cria novo agendamento tipo "Já tem OS" vinculado à mesma OS. O cliente usa o link da OS para confirmar o retorno.
+
+=======================================================
+FIM DO TUTORIAL 9
+=======================================================
+
+=======================================================
+TUTORIAL 10: CONFIGURAÇÕES (3 ABAS)
+=======================================================
+
+ONDE FICA:
+- Menu lateral > Configurações.
+- Abas no topo da tela:
+  - Dados da Oficina
+  - Opções de Uso
+  - Gestão de Equipe
+
+REGRA GERAL:
+- Cada aba tem ajustes próprios.
+- Sempre clicar em salvar após alterações da aba atual.
+
+ABA 1 — DADOS DA OFICINA:
+- Campos principais:
+  - Nome Fantasia e Razão Social.
+  - CNPJ.
+  - Inscrição Estadual e Inscrição Municipal.
+  - Telefone/WhatsApp, Email de contato.
+  - CEP, Logradouro, Número, Bairro, Complemento, Cidade, UF e Código IBGE.
+- Telefone:
+  - Preencher com DDD (ex: 11987654321).
+- URL da logomarca:
+  - Preenchida sempre pelo desenvolvedor.
+  - Não alterar sem orientação técnica.
+- Fiscal (dentro da mesma aba):
+  - Credenciais CSC de Produção e Homologação.
+  - Login e senha de NFS-e.
+  - Upload do certificado digital .pfx e senha do certificado.
+- Implicação:
+  - Dados incorretos aqui podem causar falha de emissão fiscal e inconsistência cadastral.
+
+ABA 2 — OPÇÕES DE USO:
+- Módulo Fiscal:
+  - Ativo: libera emissão de notas e painel fiscal.
+  - Inativo: recursos fiscais ficam ocultos.
+- Módulo de Caixa:
+  - Ativo: mantém recursos financeiros/caixa.
+  - Inativo: recursos de caixa ficam ocultos.
+- Módulo de Agendamento:
+  - Ativo: agenda e atalhos de agendamento disponíveis.
+  - Inativo: agenda não aparece.
+- Módulo de Comissões:
+  - Ativo: permite atribuição e cálculo de comissão.
+  - Inativo: controles de comissão não aparecem.
+- Observação:
+  - Desativar módulo não apaga histórico; apenas bloqueia/oculta uso novo.
+
+PRECIFICAÇÃO AUTOMÁTICA (na aba Opções de Uso):
+- Campo: Aplicar Markup na Importação.
+- Ativo: calcula venda com multiplicador ao importar XML/cadastrar custo.
+- Campo: Valor do Multiplicador (Markup).
+- Exemplo: custo R$ 10,00 com markup 2,00 gera R$ 20,00.
+
+PAGAMENTOS NO PORTAL (na aba Opções de Uso):
+- Mostrar formas de pagamento no portal:
+  - Ativo: cliente vê Pix, Dinheiro e Cartão.
+  - Inativo: bloco de pagamento não aparece.
+- Cartão com juros:
+  - Ativo: aplica taxa mensal nas parcelas exibidas.
+  - Inativo: sem acréscimo de juros configurado.
+- Taxa de juros (% ao mês):
+  - Só aparece quando juros está ativo.
+
+DADOS DE PIX (na aba Opções de Uso):
+- Chave Pix:
+  - Pode ser CPF, CNPJ, e-mail, telefone ou chave aleatória.
+  - Se for telefone, preencher com DDD.
+- Cidade da empresa para Pix:
+  - Preencher só a cidade.
+  - Sem estado/UF (ex: "Sao Paulo", não "São Paulo - SP").
+  - Obrigatória para gerar QR Code no padrão BCB.
+
+ABA 3 — GESTÃO DE EQUIPE:
+- Botão "Novo Funcionário":
+  - Cadastra usuário com nome, email, senha, cargo e comissão.
+- Na lista de usuários:
+  - Alterar comissão (%).
+  - Trocar senha.
+  - Bloquear/liberar acesso.
+- Implicação:
+  - Controle direto de permissões e operação da equipe.
+
+CHECKLIST FINAL:
+1. Revisar dados da oficina e telefone com DDD.
+2. Validar URL da logomarca com o desenvolvedor.
+3. Revisar módulos ativos/inativos.
+4. Conferir markup, juros e formas de pagamento do portal.
+5. Conferir chave Pix e cidade sem estado.
+6. Validar dados fiscais/certificado, se usa emissão de notas.
+
+=======================================================
+FIM DO TUTORIAL 10
+=======================================================

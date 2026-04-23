@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial: Portal do Cliente</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #1a1a1a;
+      --yellow: #facc15;
+      --yellow-light: #fef9c3;
+      --green: #16a34a;
+      --green-light: #dcfce7;
+      --blue: #1d4ed8;
+      --blue-light: #dbeafe;
+      --orange: #ea580c;
+      --orange-light: #ffedd5;
+      --red: #dc2626;
+      --red-light: #fee2e2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 24px 16px;
+    }
+    .container { max-width: 780px; margin: 0 auto; }
+    .header {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px 28px 24px;
+      margin-bottom: 28px;
+    }
+    .header h1 { margin: 0 0 6px; font-size: 1.7rem; color: var(--yellow); line-height: 1.2; }
+    .header p { margin: 0; color: #d1d5db; font-size: 0.95rem; }
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--accent);
+      color: var(--yellow);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .section-header { display: flex; align-items: center; margin-bottom: 14px; }
+    .section-header h2 { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--accent); }
+    .section p { margin: 6px 0; font-size: 0.95rem; }
+    ol, ul { margin: 10px 0 10px 20px; padding: 0; }
+    li { margin: 7px 0; font-size: 0.95rem; }
+    .callout {
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.tip   { background: var(--yellow-light); border-left: 4px solid #ca8a04; }
+    .callout.info  { background: var(--blue-light);   border-left: 4px solid var(--blue); }
+    .callout.warn  { background: var(--orange-light); border-left: 4px solid var(--orange); }
+    .callout.good  { background: var(--green-light);  border-left: 4px solid var(--green); }
+    .callout.danger{ background: var(--red-light);    border-left: 4px solid var(--red); }
+    .status-grid { display: grid; gap: 10px; margin: 12px 0; }
+    .status-row {
+      display: flex; gap: 12px; align-items: flex-start;
+      background: var(--bg); border-radius: 10px;
+      padding: 10px 14px; border: 1px solid var(--border);
+    }
+    .status-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+    .status-label { font-weight: 700; font-size: 0.88rem; color: var(--accent); }
+    .status-desc { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
+    .link-saiba-mais {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 14px;
+      padding: 18px 22px;
+      margin-bottom: 16px;
+      text-decoration: none;
+      transition: opacity .18s;
+    }
+    .link-saiba-mais:hover { opacity: 0.88; }
+    .link-saiba-mais .lsm-icon { font-size: 1.8rem; flex-shrink: 0; }
+    .link-saiba-mais .lsm-title { font-weight: 800; font-size: 1rem; color: var(--yellow); margin: 0; }
+    .link-saiba-mais .lsm-sub { font-size: 0.82rem; color: #d1d5db; margin: 2px 0 0; }
+    .link-saiba-mais .lsm-arrow { margin-left: auto; font-size: 1.4rem; color: var(--yellow); flex-shrink: 0; }
+    /* ── ACORDEÃO DE PASSOS ── */
+    .section-header {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 22px;
+    }
+    .section-header::after {
+      content: "▸";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.9rem;
+      transition: transform .18s ease;
+    }
+    .section.open .section-header::after {
+      transform: translateY(-50%) rotate(90deg);
+    }
+    .section-content { display: none; }
+    .section.open .section-content { display: block; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Portal do Cliente</h1>
+    <p>Entenda o que o cliente vê ao abrir o link de rastreamento enviado pelo WhatsApp.</p>
+  </div>
+
+  <!-- 1. COMO ACESSAR -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">1</span><h2>Como o cliente acessa o portal</h2></div>
+    <p>O cliente recebe o link de rastreamento via <strong>WhatsApp</strong>. Para enviar, abra a OS e toque no botão verde <strong>Cliente</strong> no cabeçalho — o sistema monta a mensagem automaticamente.</p>
+    <p>O link abre no navegador, sem necessidade de instalar nada ou fazer login.</p>
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <span>O link é único por OS e não expira. O cliente pode abri-lo quantas vezes quiser e sempre verá o status atualizado.</span>
+    </div>
+  </div>
+
+  <!-- 2. CARD DO VEÍCULO E TIMELINE -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">2</span><h2>Card do veículo e linha do tempo</h2></div>
+    <p>No topo o cliente vê o nome e a placa do veículo (ou "Serviço de Bancada" para OS sem veículo). Logo abaixo há uma linha do tempo com bolinhas coloridas indicando onde a OS está:</p>
+    <div class="status-grid">
+      <div class="status-row">
+        <div class="status-dot" style="background:#facc15;"></div>
+        <div><div class="status-label">Bolinha amarela pulsando</div><div class="status-desc">Aguardando aprovação do orçamento pelo cliente.</div></div>
+      </div>
+      <div class="status-row">
+        <div class="status-dot" style="background:#f97316;"></div>
+        <div><div class="status-label">Bolinha laranja</div><div class="status-desc">Peças foram encomendadas e a OS está aguardando chegada.</div></div>
+      </div>
+      <div class="status-row">
+        <div class="status-dot" style="background:#3b82f6;"></div>
+        <div><div class="status-label">Bolinha azul pulsando</div><div class="status-desc">Mecânico trabalhando no veículo agora.</div></div>
+      </div>
+      <div class="status-row">
+        <div class="status-dot" style="background:#16a34a;"></div>
+        <div><div class="status-label">Bolinha verde saltando</div><div class="status-desc">Veículo pronto para retirada.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. LAUDO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">3</span><h2>Relato do cliente e laudo técnico</h2></div>
+    <p>Se o laudo foi preenchido na OS, o cliente vê três blocos:</p>
+    <ul>
+      <li><strong>Relato do Cliente</strong> — o problema que ele descreveu ao trazer o veículo.</li>
+      <li><strong>Defeitos Constatados</strong> — diagnóstico da oficina (fundo vermelho claro).</li>
+      <li><strong>Serviços Executados</strong> — o que foi feito (fundo verde claro).</li>
+    </ul>
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Preencher o laudo técnico transmite profissionalismo e reduz ligações de clientes perguntando o que foi feito.</span>
+    </div>
+  </div>
+
+  <!-- 4. VALOR -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">4</span><h2>Valor total e detalhamento</h2></div>
+    <p>O valor total da OS aparece em destaque. Ao tocar no card, uma lista com todos os serviços e peças se expande, mostrando os valores individuais.</p>
+    <div class="callout warn">
+      <span class="callout-icon">⚠️</span>
+      <span>Peças trazidas pelo cliente (marcadas com 👤) aparecem na lista mas não entram no total — o sistema cuida disso automaticamente.</span>
+    </div>
+  </div>
+
+  <!-- 5. APROVAÇÃO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">5</span><h2>Como o cliente aprova o orçamento</h2></div>
+    <p>Quando a OS está em <strong>Orçamento</strong>, dois botões ficam fixos na parte inferior da tela:</p>
+    <ul>
+      <li><strong>APROVAR ORÇAMENTO</strong> — abre uma tela de confirmação.</li>
+      <li><strong>Tenho uma dúvida</strong> — abre o WhatsApp da oficina.</li>
+    </ul>
+    <p>Ao tocar em aprovar, o cliente vê um drawer com o valor, aviso sobre peças do cliente (se houver), seleção de intenção de pagamento (Pix, Cartão, Dinheiro ou Outro) e o botão <strong>SIM, APROVAR</strong>.</p>
+    <div class="callout good">
+      <span class="callout-icon">🔒</span>
+      <span>A aprovação pelo portal registra o <strong>IP</strong>, o <strong>dispositivo</strong> e um <strong>hash criptográfico</strong> do orçamento — comprovante legal de que foi o cliente quem aprovou, não a oficina.</span>
+    </div>
+  </div>
+
+  <!-- 6. PAGAMENTO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">6</span><h2>Formas de pagamento no portal</h2></div>
+    <p>Se o módulo de pagamentos estiver ativo, o cliente vê o painel <strong>"Facilidades de Pagamento"</strong> com duas opções expansíveis:</p>
+    <ul>
+      <li><strong>PIX</strong> — gera QR Code e código copia-e-cola. O valor pode ser ajustado (ex: para pagar apenas o sinal).</li>
+      <li><strong>Cartão de Crédito</strong> — tabela com o valor de 1x a 12x, com ou sem juros conforme configurado.</li>
+    </ul>
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <span>Esta seção é apenas informativa. O pagamento é registrado pela oficina no fechamento da OS — o portal não processa cobranças.</span>
+    </div>
+  </div>
+
+  <!-- 7. FOTOS -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">7</span><h2>Fotos e vídeos</h2></div>
+    <p>Todas as fotos e vídeos anexados à OS aparecem em grade. O cliente toca em qualquer item para ver em tamanho maior — fotos abrem em tela cheia, vídeos abrem com player de reprodução.</p>
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Fotos do antes e depois aumentam a confiança do cliente e reduzem contestações.</span>
+    </div>
+  </div>
+
+  <!-- 8. SCANNER PDF -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">8</span><h2>Relatório de Scanner</h2></div>
+    <p>Se um PDF do scanner automotivo foi anexado à OS, o cliente vê um card azul <strong>"Relatório de Scanner"</strong> com um botão de download. O arquivo abre no navegador ou no aplicativo de PDF do dispositivo.</p>
+  </div>
+
+  <!-- 9. NOTA FISCAL -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">9</span><h2>Documentos Fiscais</h2></div>
+    <p>Se uma NFC-e ou NFSe foi emitida, o cliente vê um card verde <strong>"Documentos Fiscais"</strong> com o número, a série e o link para baixar o PDF da nota — aparece automaticamente após a autorização pela SEFAZ.</p>
+  </div>
+
+  <!-- 10. AGENDAMENTO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">10</span><h2>Confirmação de agendamento</h2></div>
+    <p>Se a OS tiver um agendamento futuro vinculado, o cliente vê um card com data e hora do retorno e um botão <strong>CONFIRMAR PRESENÇA</strong>. Ao confirmar, o status do agendamento é atualizado no sistema.</p>
+  </div>
+
+  <!-- LINK EXTRATO FINANCEIRO -->
+  <a href="/tutoriais/tutorial-extrato-financeiro.html" target="_blank" rel="noopener noreferrer" class="link-saiba-mais">
+    <span class="lsm-icon">💰</span>
+    <div>
+      <p class="lsm-title">Saiba mais sobre o Extrato Financeiro</p>
+      <p class="lsm-sub">Como registrar entradas, despesas, filtrar o caixa e acompanhar o resultado do período.</p>
+    </div>
+    <span class="lsm-arrow">→</span>
+  </a>
+
+</div>
+<script>
+  (function initTutorialAccordion() {
+    const sections = document.querySelectorAll('.section');
+    sections.forEach((section, index) => {
+      if (section.dataset.accordionReady === '1') return;
+      const header = section.querySelector(':scope > .section-header');
+      if (!header) return;
+
+      const sectionNum = header.querySelector('.section-num');
+      if (sectionNum) sectionNum.textContent = String(index + 1);
+
+      const content = document.createElement('div');
+      content.className = 'section-content';
+      Array.from(section.children).forEach((child) => {
+        if (child !== header) content.appendChild(child);
+      });
+      section.appendChild(content);
+
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-expanded', 'false');
+
+      const toggle = () => {
+        const open = !section.classList.contains('open');
+        section.classList.toggle('open', open);
+        header.setAttribute('aria-expanded', String(open));
+      };
+
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+
+      section.dataset.accordionReady = '1';
+    });
+  })();
+</script>
+</body>
+</html>

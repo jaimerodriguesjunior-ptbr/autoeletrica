@@ -3,6 +3,14 @@ import { getNuvemFiscalToken } from '@/src/lib/nuvemfiscal';
 
 export async function GET() {
     try {
+        const baseUrl = process.env.NUVEMFISCAL_URL;
+        if (!baseUrl) {
+            return NextResponse.json(
+                { sucesso: false, erro: "NUVEMFISCAL_URL não configurado." },
+                { status: 503 }
+            );
+        }
+
         const token = await getNuvemFiscalToken();
         const cnpj = "35181069000143";
 
@@ -16,7 +24,7 @@ export async function GET() {
 
         // 1. Check Config
         log("Verificando configuração...");
-        const configResponse = await fetch(`${process.env.NUVEMFISCAL_URL}/empresas/${cnpj}/nfse`, {
+        const configResponse = await fetch(`${baseUrl}/empresas/${cnpj}/nfse`, {
             headers: { "Authorization": `Bearer ${token}` }
         });
 
@@ -78,7 +86,7 @@ export async function GET() {
         };
 
         log("Enviando DPS...");
-        const response = await fetch(`${process.env.NUVEMFISCAL_URL}/nfse/dps`, {
+        const response = await fetch(`${baseUrl}/nfse/dps`, {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${token}`,

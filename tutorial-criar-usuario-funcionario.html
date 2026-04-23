@@ -1,0 +1,148 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial: Criar usuário de funcionário</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #0f766e;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.9rem;
+      color: var(--accent);
+      line-height: 1.2;
+    }
+
+    h2 {
+      font-size: 1.2rem;
+      margin-top: 22px;
+      margin-bottom: 8px;
+    }
+
+    p { margin: 8px 0; }
+
+    ol {
+      margin: 10px 0 0 20px;
+      padding: 0;
+    }
+
+    li { margin: 8px 0; }
+
+    a {
+      color: #0b63c9;
+      font-weight: 700;
+      text-decoration: none;
+      border-bottom: 1px dashed #0b63c9;
+    }
+
+    a:hover {
+      color: #094a95;
+      border-bottom-color: #094a95;
+    }
+
+    .quick-links {
+      margin: 14px 0 8px 0;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-link {
+      display: inline-block;
+      background: #111827;
+      color: #fde047;
+      text-decoration: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    .btn-link:hover {
+      color: #fde047;
+      background: #000;
+    }
+
+    .note {
+      margin-top: 18px;
+      padding: 12px;
+      border-left: 4px solid var(--accent);
+      background: #f0fdfa;
+      color: #134e4a;
+      border-radius: 6px;
+    }
+
+    .footer {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <section class="card">
+      <h1>Tutorial rápido: criar usuário e senha de funcionário</h1>
+      <p>Este passo a passo mostra como cadastrar um novo acesso para funcionário usando a tela de Configurações no menu.</p>
+
+      <div class="quick-links">
+        <a class="btn-link" href="http://localhost:3000/configuracoes?tab=team" target="_blank" rel="noopener noreferrer">Abrir Gestão de Equipe</a>
+        <a class="btn-link" href="http://localhost:3000/configuracoes?tab=team&open=new-user" target="_blank" rel="noopener noreferrer">Abrir Novo Funcionário</a>
+      </div>
+
+      <h2>Passo a passo</h2>
+      <ol>
+        <li>No sistema, abra o <strong>Menu principal</strong>.</li>
+        <li>Clique em <a href="http://localhost:3000/configuracoes?tab=team" target="_blank" rel="noopener noreferrer">Configurações</a>.</li>
+        <li>Entre na área <a href="http://localhost:3000/configuracoes?tab=team" target="_blank" rel="noopener noreferrer">Funcionários / Usuários (Gestão de Equipe)</a>.</li>
+        <li>Clique em <a href="http://localhost:3000/configuracoes?tab=team&open=new-user" target="_blank" rel="noopener noreferrer">Novo usuário / Adicionar funcionário</a>.</li>
+        <li>Preencha os dados básicos do funcionário (nome, e-mail e/ou telefone).</li>
+        <li>No campo de acesso, defina o <strong>usuário/login</strong>.</li>
+        <li>Crie uma <strong>senha inicial</strong> (de preferência com letras, números e símbolo).</li>
+        <li>Selecione o <strong>perfil/permissão</strong> do funcionário (ex.: atendente, mecânico, gerente).</li>
+        <li>Clique em <strong>Salvar</strong> para finalizar o cadastro.</li>
+        <li>Peça para o funcionário entrar no sistema com o novo login e trocar a senha no primeiro acesso, se essa opção existir.</li>
+      </ol>
+
+      <div class="note">
+        Dica: antes de salvar, revise o perfil de permissão para evitar acesso indevido a funções administrativas.
+      </div>
+
+      <p class="footer">Arquivo de teste simples para treinamento interno. Se seu sistema estiver em outro endereço, troque <code>http://localhost:3000</code> pelos seus links.</p>
+    </section>
+  </main>
+</body>
+</html>

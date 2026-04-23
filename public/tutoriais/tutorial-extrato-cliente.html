@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial: Extrato do Cliente</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #1a1a1a;
+      --yellow: #facc15;
+      --yellow-light: #fef9c3;
+      --green: #16a34a;
+      --green-light: #dcfce7;
+      --blue: #1d4ed8;
+      --blue-light: #dbeafe;
+      --orange: #ea580c;
+      --orange-light: #ffedd5;
+      --red: #dc2626;
+      --red-light: #fee2e2;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 24px 16px;
+    }
+
+    .container { max-width: 780px; margin: 0 auto; }
+
+    .header {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px 28px 24px;
+      margin-bottom: 28px;
+    }
+    .header h1 { margin: 0 0 6px; font-size: 1.7rem; color: var(--yellow); line-height: 1.2; }
+    .header p { margin: 0; color: #d1d5db; font-size: 0.95rem; }
+
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--accent);
+      color: var(--yellow);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .section-header { display: flex; align-items: center; margin-bottom: 14px; }
+    .section-header h2 { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--accent); }
+    .section p { margin: 6px 0; font-size: 0.95rem; }
+
+    ol, ul { margin: 10px 0 10px 20px; padding: 0; }
+    li { margin: 7px 0; font-size: 0.95rem; }
+
+    .callout {
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.tip   { background: var(--yellow-light); border-left: 4px solid #ca8a04; }
+    .callout.info  { background: var(--blue-light);   border-left: 4px solid var(--blue); }
+    .callout.warn  { background: var(--orange-light);  border-left: 4px solid var(--orange); }
+    .callout.good  { background: var(--green-light);  border-left: 4px solid var(--green); }
+    .callout.danger{ background: var(--red-light);    border-left: 4px solid var(--red); }
+
+    .card-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 12px 0; }
+    .card-mini {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      text-align: center;
+    }
+    .card-mini .cm-label { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 4px; }
+    .card-mini .cm-value { font-size: 1rem; font-weight: 800; }
+    .card-mini.neutral .cm-value { color: var(--accent); }
+    .card-mini.green   .cm-value { color: var(--green); }
+    .card-mini.orange  .cm-value { color: var(--orange); }
+
+    .status-grid { display: grid; gap: 8px; margin: 10px 0; }
+    .status-row { display: flex; gap: 10px; align-items: flex-start; background: var(--bg); border-radius: 8px; padding: 9px 12px; border: 1px solid var(--border); }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+    .status-label { font-weight: 700; font-size: 0.85rem; color: var(--accent); }
+    .status-desc { font-size: 0.8rem; color: var(--muted); margin-top: 1px; }
+
+    .payment-row { display: flex; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid #f3f4f6; font-size: 0.88rem; }
+    .payment-row:last-child { border-bottom: none; }
+    .payment-icon { font-size: 0.9rem; flex-shrink: 0; }
+    .payment-desc { flex: 1; color: var(--muted); }
+    .payment-val { font-weight: 700; }
+    .payment-val.paid { color: var(--green); }
+    .payment-val.pending { color: var(--orange); }
+    .payment-val.overdue { color: var(--red); }
+
+    @media (max-width: 520px) {
+      .card-grid { grid-template-columns: 1fr; }
+    }
+    /* ── ACORDEÃO DE PASSOS ── */
+    .section-header {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 22px;
+    }
+    .section-header::after {
+      content: "▸";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.9rem;
+      transition: transform .18s ease;
+    }
+    .section.open .section-header::after {
+      transform: translateY(-50%) rotate(90deg);
+    }
+    .section-content { display: none; }
+    .section.open .section-content { display: block; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Extrato do Cliente</h1>
+    <p>O que o cliente vê ao abrir o link do extrato: resumo financeiro, pendências e histórico completo de serviços.</p>
+  </div>
+
+  <!-- SEÇÃO 1: O QUE É -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">1</span>
+      <h2>O que é o Extrato do Cliente</h2>
+    </div>
+    <p>O extrato é uma página web acessada via link único, sem necessidade de login. Mostra ao cliente <strong>tudo o que ele deve e já pagou</strong> na oficina — OS a OS, com detalhamento de itens e pagamentos.</p>
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <span>O link é gerado automaticamente pela ficha do cliente. Acesse a ficha, seção <strong>Financeiro &amp; Portal</strong>, e clique em <strong>Enviar WhatsApp</strong> para mandar o link diretamente para o cliente.</span>
+    </div>
+  </div>
+
+  <!-- SEÇÃO 2: CABEÇALHO E RESUMO -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">2</span>
+      <h2>Cabeçalho e cards de resumo</h2>
+    </div>
+    <p>No topo o cliente vê o logo da oficina e o próprio nome. Logo abaixo aparecem três cards de resumo:</p>
+    <div class="card-grid">
+      <div class="card-mini neutral">
+        <div class="cm-label">Total Serviços</div>
+        <div class="cm-value">Tudo cobrado</div>
+      </div>
+      <div class="card-mini green">
+        <div class="cm-label">Total Pago</div>
+        <div class="cm-value">Já quitado</div>
+      </div>
+      <div class="card-mini orange">
+        <div class="cm-label">Saldo Devedor</div>
+        <div class="cm-value">Ainda pendente</div>
+      </div>
+    </div>
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>O card de Saldo Devedor só fica laranja quando há valor em aberto. Se o cliente estiver quite, ele aparece em cinza com R$ 0,00.</span>
+    </div>
+  </div>
+
+  <!-- SEÇÃO 3: PAGAMENTOS PENDENTES -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">3</span>
+      <h2>Pagamentos Pendentes</h2>
+    </div>
+    <p>Se o cliente tiver OS com valores em aberto, elas aparecem em uma seção destacada <strong>"Pagamentos Pendentes"</strong> com borda laranja — logo abaixo dos cards de resumo.</p>
+    <p>Cada card de OS pendente mostra:</p>
+    <ul>
+      <li>Status da OS (badge colorido: Entregue, Em Execução, etc.).</li>
+      <li>Descrição e data de abertura.</li>
+      <li>Veículo vinculado (modelo e placa).</li>
+      <li>Badge laranja com o valor pendente e a data do próximo vencimento.</li>
+      <li>Valor total da OS no canto direito.</li>
+    </ul>
+    <div class="callout warn">
+      <span class="callout-icon">⚠️</span>
+      <span>OS com pagamento vencido (data passada e ainda não pago) aparecem com badge <strong style="color:#dc2626;">vermelho</strong> dentro do detalhe da OS.</span>
+    </div>
+  </div>
+
+  <!-- SEÇÃO 4: HISTÓRICO POR MÊS -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">4</span>
+      <h2>Histórico de Serviços</h2>
+    </div>
+    <p>Abaixo das pendências fica o <strong>histórico de serviços já quitados</strong>, agrupado por mês (ex: "Abril 2025", "Março 2025").</p>
+    <p>Cada grupo mostra as OS do mês em ordem cronológica decrescente.</p>
+    <div class="callout info">
+      <span class="callout-icon">📅</span>
+      <span>Por padrão, apenas o mês mais recente aparece. O cliente clica em <strong>"Carregar meses anteriores"</strong> para ver o histórico mais antigo, mês a mês.</span>
+    </div>
+  </div>
+
+  <!-- SEÇÃO 5: CARD DE CADA OS -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">5</span>
+      <h2>Detalhes de cada OS</h2>
+    </div>
+    <p>Cada OS aparece como um card clicável. Ao tocar, o card se expande mostrando:</p>
+
+    <p style="margin-top:12px;"><strong>Itens do Serviço</strong> — lista de serviços e peças com seus valores:</p>
+    <ul>
+      <li>Ícone 🔧 para serviços, 📦 para peças.</li>
+      <li>Peças trazidas pelo cliente aparecem riscadas com o badge <em>"PEÇA CLIENTE"</em> e valor zerado.</li>
+    </ul>
+
+    <p style="margin-top:12px;"><strong>Pagamentos</strong> — cada transação registrada para aquela OS:</p>
+    <div class="status-grid">
+      <div class="status-row">
+        <div class="status-dot" style="background:#16a34a;"></div>
+        <div>
+          <div class="status-label">✅ Pago</div>
+          <div class="status-desc">Data em que foi registrado. Valor em verde.</div>
+        </div>
+      </div>
+      <div class="status-row">
+        <div class="status-dot" style="background:#ea580c;"></div>
+        <div>
+          <div class="status-label">🕐 Previsto para [data]</div>
+          <div class="status-desc">Parcela futura ainda não vencida. Valor em laranja.</div>
+        </div>
+      </div>
+      <div class="status-row">
+        <div class="status-dot" style="background:#dc2626;"></div>
+        <div>
+          <div class="status-label">⚠️ Vencido em [data]</div>
+          <div class="status-desc">Parcela com vencimento passado e não paga. Valor em vermelho.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout good">
+      <span class="callout-icon">👆</span>
+      <span>O cliente pode tocar no card de qualquer OS para expandir e ver o detalhe completo. Tocar novamente recolhe o card.</span>
+    </div>
+  </div>
+
+  <!-- SEÇÃO 6: BOTÃO DE CONTATO -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">6</span>
+      <h2>Contato com a oficina</h2>
+    </div>
+    <p>No rodapé do extrato há um botão verde <strong>WhatsApp</strong> que abre uma conversa direta com a oficina. O número usado é o telefone cadastrado nas configurações da empresa.</p>
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Se o cliente tiver dúvidas sobre um valor, ele pode entrar em contato sem precisar ligar — basta tocar no botão de WhatsApp no rodapé do extrato.</span>
+    </div>
+  </div>
+
+  <!-- SEÇÃO 7: VISÃO DO GERENTE -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-num">7</span>
+      <h2>Visão do gerente no extrato</h2>
+    </div>
+    <p>Quando um <strong>usuário logado no sistema</strong> (gerente ou colaborador) abre o link do extrato, aparece um botão extra em cada OS: <strong>"Mostrar OS/Compra"</strong>.</p>
+    <p>Ao clicar, o sistema abre diretamente a tela de detalhes da OS — útil para consulta rápida durante atendimento ao cliente.</p>
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <span>Esse botão só aparece para usuários logados. O cliente comum, acessando pelo link, não vê essa opção.</span>
+    </div>
+  </div>
+
+</div><!-- /container -->
+<script>
+  (function initTutorialAccordion() {
+    const sections = document.querySelectorAll('.section');
+    sections.forEach((section, index) => {
+      if (section.dataset.accordionReady === '1') return;
+      const header = section.querySelector(':scope > .section-header');
+      if (!header) return;
+      const sectionNum = header.querySelector('.section-num');
+      if (sectionNum) sectionNum.textContent = String(index + 1);
+      const content = document.createElement('div');
+      content.className = 'section-content';
+      Array.from(section.children).forEach((child) => {
+        if (child !== header) content.appendChild(child);
+      });
+      section.appendChild(content);
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-expanded', 'false');
+      const toggle = () => {
+        const open = !section.classList.contains('open');
+        section.classList.toggle('open', open);
+        header.setAttribute('aria-expanded', String(open));
+      };
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+      section.dataset.accordionReady = '1';
+    });
+  })();
+</script>
+</body>
+</html>

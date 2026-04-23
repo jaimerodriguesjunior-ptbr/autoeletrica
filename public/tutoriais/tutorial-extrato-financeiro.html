@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial: Extrato Financeiro</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #1a1a1a;
+      --yellow: #facc15;
+      --yellow-light: #fef9c3;
+      --green: #16a34a;
+      --green-light: #dcfce7;
+      --blue: #1d4ed8;
+      --blue-light: #dbeafe;
+      --orange: #ea580c;
+      --orange-light: #ffedd5;
+      --red: #dc2626;
+      --red-light: #fee2e2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 24px 16px;
+    }
+    .container { max-width: 780px; margin: 0 auto; }
+    .header {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px 28px 24px;
+      margin-bottom: 28px;
+    }
+    .header h1 { margin: 0 0 6px; font-size: 1.7rem; color: var(--yellow); line-height: 1.2; }
+    .header p { margin: 0; color: #d1d5db; font-size: 0.95rem; }
+    .section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .section-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--accent);
+      color: var(--yellow);
+      border-radius: 50%;
+      font-size: 0.8rem;
+      font-weight: 800;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .section-header { display: flex; align-items: center; margin-bottom: 14px; }
+    .section-header h2 { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--accent); }
+    .section p { margin: 6px 0; font-size: 0.95rem; }
+    ol, ul { margin: 10px 0 10px 20px; padding: 0; }
+    li { margin: 7px 0; font-size: 0.95rem; }
+    .callout {
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin: 12px 0;
+      font-size: 0.9rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .callout.tip   { background: var(--yellow-light); border-left: 4px solid #ca8a04; }
+    .callout.info  { background: var(--blue-light);   border-left: 4px solid var(--blue); }
+    .callout.warn  { background: var(--orange-light); border-left: 4px solid var(--orange); }
+    .callout.good  { background: var(--green-light);  border-left: 4px solid var(--green); }
+    .callout.danger{ background: var(--red-light);    border-left: 4px solid var(--red); }
+    .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+    .card-mini {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .card-mini .cm-label { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 4px; }
+    .card-mini .cm-value { font-size: 1.1rem; font-weight: 800; }
+    .card-mini.green .cm-value { color: var(--green); }
+    .card-mini.red   .cm-value { color: var(--red); }
+    .card-mini.yellow .cm-value { color: #92400e; }
+    .field-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      padding: 8px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-name { font-weight: 700; min-width: 150px; font-size: 0.88rem; color: var(--accent); }
+    .field-desc { font-size: 0.88rem; color: var(--muted); }
+    @media (max-width: 520px) {
+      .card-grid { grid-template-columns: 1fr; }
+      .field-row { flex-direction: column; gap: 2px; }
+      .field-name { min-width: unset; }
+    }
+    /* ── ACORDEÃO DE PASSOS ── */
+    .section-header {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      padding-right: 22px;
+    }
+    .section-header::after {
+      content: "▸";
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 0.9rem;
+      transition: transform .18s ease;
+    }
+    .section.open .section-header::after {
+      transform: translateY(-50%) rotate(90deg);
+    }
+    .section-content { display: none; }
+    .section.open .section-content { display: block; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Extrato Financeiro</h1>
+    <p>Como registrar entradas e despesas, usar os filtros e acompanhar o resultado do período.</p>
+  </div>
+
+  <div class="callout warn" style="margin-bottom:16px;">
+    <span class="callout-icon">⚠️</span>
+    <span>O módulo Financeiro é exclusivo para <strong>Gerentes</strong>. Colaboradores não têm acesso a esta tela.</span>
+  </div>
+
+  <!-- 1. ACESSO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">1</span><h2>Como acessar</h2></div>
+    <p>Acesse pelo menu <strong>Financeiro</strong> (menu inferior no celular, menu lateral no computador).</p>
+  </div>
+
+  <!-- 2. FILTROS -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">2</span><h2>Filtros</h2></div>
+    <p>No topo da tela há três filtros independentes que podem ser combinados:</p>
+    <div class="field-row">
+      <div class="field-name">📅 Mês / Ano</div>
+      <div class="field-desc">Filtra pelo período. Clique em <strong>Tudo</strong> para ver o histórico completo sem filtro de data.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-name">🔵 Status</div>
+      <div class="field-desc"><strong>Tudo</strong> · <strong>Realizado</strong> (pago/recebido) · <strong>Pendente</strong> (agendado para o futuro).</div>
+    </div>
+    <div class="field-row">
+      <div class="field-name">🔀 Tipo</div>
+      <div class="field-desc"><strong>Tudo</strong> · <strong>Entradas</strong> · <strong>Saídas</strong>.</div>
+    </div>
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Para ver só as despesas pagas do mês: selecione o mês atual + Tipo "Saídas" + Status "Realizado".</span>
+    </div>
+  </div>
+
+  <!-- 3. CARDS DE RESUMO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">3</span><h2>Cards de resumo</h2></div>
+    <p>Três cards mostram os totais do período filtrado:</p>
+    <div class="card-grid">
+      <div class="card-mini green">
+        <div class="cm-label">Receita (Pago)</div>
+        <div class="cm-value">↑ Entradas quitadas</div>
+      </div>
+      <div class="card-mini red">
+        <div class="cm-label">Despesa (Pago)</div>
+        <div class="cm-value">↓ Saídas quitadas</div>
+      </div>
+    </div>
+    <div class="card-mini yellow" style="margin:10px 0;">
+      <div class="cm-label">Resultado do Período — Receita menos Despesa</div>
+      <div class="cm-value">= Lucro ou Prejuízo</div>
+    </div>
+    <p>Se houver lançamentos pendentes no período, um badge amarelo aparece em cada card indicando o valor <em>A Receber</em> ou <em>A Pagar</em>.</p>
+  </div>
+
+  <!-- 4. EXTRATO DETALHADO -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">4</span><h2>Extrato detalhado</h2></div>
+    <p>Lista todos os lançamentos do período filtrado. Cada linha mostra:</p>
+    <ul>
+      <li>Ícone verde (entrada), vermelho (saída) ou amarelo (pendente).</li>
+      <li>Descrição, categoria e data.</li>
+      <li>Valor com sinal + ou −.</li>
+      <li>Badge <strong>"Agendado"</strong> em amarelo para lançamentos futuros ainda não efetivados.</li>
+    </ul>
+    <p>Clique em qualquer linha para editar ou excluir o lançamento (somente lançamentos manuais — veja o Passo 7).</p>
+  </div>
+
+  <!-- 5. REGISTRAR DESPESA -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">5</span><h2>Registrar uma despesa</h2></div>
+    <p>Clique no botão vermelho <strong>Registrar Despesa</strong> nas Ações Rápidas (coluna direita no computador; role a tela para baixo no celular).</p>
+    <p>Preencha no modal:</p>
+    <div class="field-row">
+      <div class="field-name">Data</div>
+      <div class="field-desc">Quando a despesa ocorreu ou vai ocorrer. Se a data for futura, o sistema muda automaticamente para "Agendar" — fica como Pendente.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-name">Descrição</div>
+      <div class="field-desc">Ex: "Conta de Luz", "Compra de óleo".</div>
+    </div>
+    <div class="field-row">
+      <div class="field-name">Valor (R$)</div>
+      <div class="field-desc">Sem sinal — o sistema já entende que é uma saída.</div>
+    </div>
+    <div class="field-row">
+      <div class="field-name">Categoria</div>
+      <div class="field-desc">Operacional, Administrativo ou Pessoal.</div>
+    </div>
+    <p style="margin-top:12px;">Clique em <strong>Confirmar Saída</strong> (ou <strong>Confirmar Agendamento</strong> se for data futura).</p>
+  </div>
+
+  <!-- 6. ENTRADA AVULSA -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">6</span><h2>Registrar uma entrada avulsa</h2></div>
+    <p>Clique no botão verde <strong>Entrada Avulsa</strong> nas Ações Rápidas.</p>
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <span>Use para receitas que não vêm de fechamento de OS — venda de sucata, aluguel de espaço, bônus de fornecedor, etc. Os fechamentos de OS são registrados automaticamente pelo sistema.</span>
+    </div>
+    <p>O formulário é igual ao de despesa, com uma diferença: em vez de Categoria, você escolhe a <strong>Forma de Recebimento</strong> (Pix, Dinheiro, Cartão, Boleto, Cheque/A prazo ou Outros).</p>
+  </div>
+
+  <!-- 7. EDITAR / EXCLUIR -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">7</span><h2>Editar ou excluir um lançamento</h2></div>
+    <p>Clique em qualquer item da lista. O modal de edição abre com os campos preenchidos. Altere o que precisar e clique em <strong>Salvar Alterações</strong>, ou clique na lixeira para excluir.</p>
+    <div class="callout warn">
+      <span class="callout-icon">⚠️</span>
+      <span>Lançamentos originados de fechamento de OS <strong>não podem ser editados aqui</strong> — o sistema avisa. Para corrigir o valor, ajuste o pagamento diretamente na OS.</span>
+    </div>
+  </div>
+
+  <!-- 8. FECHAMENTO PARA CONTADOR -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">8</span><h2>Fechamento para Contador</h2></div>
+    <p>Se o módulo fiscal estiver ativo, o botão <strong>Fechamento p/ Contador</strong> aparece nas Ações Rápidas. Gera um relatório consolidado do período com todas as movimentações e notas fiscais emitidas — ideal para envio mensal ao contador.</p>
+  </div>
+
+  <!-- 9. RELATÓRIOS -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">9</span><h2>Relatórios Detalhados</h2></div>
+    <p>O botão <strong>Relatórios Detalhados</strong> (ícone de gráfico) leva a análises mais aprofundadas: receita por categoria, despesa por categoria e evolução mensal.</p>
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Use os relatórios para identificar quais serviços geram mais receita e onde as despesas podem ser reduzidas.</span>
+    </div>
+  </div>
+
+</div>
+<script>
+  (function initTutorialAccordion() {
+    const sections = document.querySelectorAll('.section');
+    sections.forEach((section, index) => {
+      if (section.dataset.accordionReady === '1') return;
+      const header = section.querySelector(':scope > .section-header');
+      if (!header) return;
+
+      const sectionNum = header.querySelector('.section-num');
+      if (sectionNum) sectionNum.textContent = String(index + 1);
+
+      const content = document.createElement('div');
+      content.className = 'section-content';
+      Array.from(section.children).forEach((child) => {
+        if (child !== header) content.appendChild(child);
+      });
+      section.appendChild(content);
+
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+      header.setAttribute('aria-expanded', 'false');
+
+      const toggle = () => {
+        const open = !section.classList.contains('open');
+        section.classList.toggle('open', open);
+        header.setAttribute('aria-expanded', String(open));
+      };
+
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
+      });
+
+      section.dataset.accordionReady = '1';
+    });
+  })();
+</script>
+</body>
+</html>

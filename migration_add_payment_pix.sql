@@ -1,0 +1,3 @@
+ALTER TABLE company_settings
+ADD COLUMN IF NOT EXISTS fin_chave_pix VARCHAR(255),
+ADD COLUMN IF NOT EXISTS fin_cidade_pix VARCHAR(255);

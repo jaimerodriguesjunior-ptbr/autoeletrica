@@ -34,6 +34,7 @@ export async function getProfileServerAction() {
     let usa_fiscal = true;
     let usa_caixa = true;
     let usa_agendamento = true;
+    let usa_comissao = false;
     let nome_fantasia = "";
     let logo_url = "";
 
@@ -48,6 +49,7 @@ export async function getProfileServerAction() {
         usa_fiscal = company.usa_fiscal !== undefined ? company.usa_fiscal : true;
         usa_caixa = company.usa_caixa !== undefined ? company.usa_caixa : true;
         usa_agendamento = company.usa_agendamento !== undefined ? company.usa_agendamento : true;
+        usa_comissao = company.usa_comissao !== undefined ? company.usa_comissao : false;
         nome_fantasia = company.nome_fantasia || "";
         logo_url = company.logo_url || "";
       }
@@ -60,6 +62,7 @@ export async function getProfileServerAction() {
         usa_fiscal,
         usa_caixa,
         usa_agendamento,
+        usa_comissao,
         nome_fantasia,
         logo_url
       }

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const d = new Date\\(2026, 3, 0\\); console.log\\('getDate:', d.getDate\\(\\)\\); console.log\\('full:', d\\);\")",
+      "Bash(node -e \"const y='2026', m='02'; const d = new Date\\(parseInt\\(y\\), parseInt\\(m\\), 0\\); console.log\\('Feb 2026:', d.toISOString\\(\\), 'getDate:', d.getDate\\(\\)\\); const d2 = new Date\\(parseInt\\(y\\), parseInt\\(m\\)-1, 0\\); console.log\\('getDate for Feb:', d2.getDate\\(\\)\\);\")",
+      "Bash(xargs grep *)"
+    ]
+  }
+}

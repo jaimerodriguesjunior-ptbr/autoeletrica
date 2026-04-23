@@ -3,6 +3,14 @@ import { getNuvemFiscalToken } from '@/src/lib/nuvemfiscal';
 
 export async function GET() {
   try {
+    const baseUrl = process.env.NUVEMFISCAL_URL;
+    if (!baseUrl) {
+      return NextResponse.json(
+        { sucesso: false, erro: "NUVEMFISCAL_URL não configurado." },
+        { status: 503 }
+      );
+    }
+
     const token = await getNuvemFiscalToken();
     // Em produção, pegar o CNPJ do banco ou do usuário logado.
     // Aqui estamos hardcoded para teste conforme solicitado.
@@ -54,7 +62,7 @@ export async function GET() {
 
     console.log("Enviando DPS de teste:", JSON.stringify(payload, null, 2));
 
-    const response = await fetch(`${process.env.NUVEMFISCAL_URL}/nfse/dps`, {
+    const response = await fetch(`${baseUrl}/nfse/dps`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,

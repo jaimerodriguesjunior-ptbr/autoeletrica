@@ -17,7 +17,10 @@ import {
   ChevronLeft,
   ChevronRight,
   CalendarDays,
-  PieChart
+  PieChart,
+  Award,
+  BookOpen,
+  HelpCircle
 } from "lucide-react";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { GlobalAppointmentAlert } from "../../src/components/GlobalAppointmentAlert";
@@ -45,34 +48,48 @@ export default function AdminLayout({
     { name: "Atendimento", category: "Atendimento", icon: Wrench, path: "/atendimento", restricted: false },
     { name: "Clientes", category: "Atendimento", icon: Users, path: "/clientes", restricted: false },
 
-    { name: "Estoque e Serviços", category: "Gestão Corporativa", icon: Package, path: "/estoque", restricted: false },
+    { name: "Estoque e Serviços", category: "Gestão Corporativa", icon: Package, path: "/estoque", restricted: true },
     { name: "Caixa", category: "Gestão Corporativa", icon: Wallet, path: "/financeiro", restricted: true },
     { name: "Notas Fiscais", category: "Gestão Corporativa", icon: FileText, path: "/fiscal", restricted: true },
 
     { name: "Agenda", category: "Atendimento", icon: CalendarDays, path: "/agendamentos", restricted: false, module: 'usa_agendamento' as const },
+    { name: "Comissões", category: "Gestão Corporativa", icon: Award, path: "/comissoes", restricted: true, module: 'usa_comissao' as const },
     { name: "IA", category: "Visão Geral", icon: Sparkles, path: "/ia", restricted: true },
+    { name: "Tutoriais", category: "Visão Geral", icon: BookOpen, path: "/tutorial", restricted: false },
   ];
 
   const isOwner = profile?.cargo === 'owner';
   const usa_fiscal = profile?.usa_fiscal !== false;
   const usa_caixa = profile?.usa_caixa !== false;
   const usa_agendamento = profile?.usa_agendamento !== false;
+  const usa_comissao = profile?.usa_comissao === true;
 
   const logoSrc = profile?.logo_url || '/logo.svg';
 
-  // Filtra módulos e permissões
+  // Filtra módulos e permissões (sidebar do owner)
   const menuItems = allMenuItems.filter(item => {
     if (item.path === "/fiscal" && !usa_fiscal) return false;
     if (item.path === "/financeiro" && !usa_caixa) return false;
     if (item.path === "/agendamentos" && !usa_agendamento) return false;
+    if (item.path === "/comissoes" && !usa_comissao) return false;
     if (isOwner) return true;
     return !item.restricted;
   });
 
-  // Menu filtrado (apenas para a barra inferior mobile)
-  const bottomMenuItems = menuItems.filter(item =>
+  // Menu inferior do owner (mobile)
+  const ownerBottomItems = menuItems.filter(item =>
     ["/atendimento", "/clientes", "/estoque", "/agendamentos"].includes(item.path)
   );
+
+  // Menu inferior do employee (todas as telas)
+  const employeeBottomItems = [
+    { name: "Atendimento", icon: Wrench, path: "/atendimento" },
+    { name: "Clientes", icon: Users, path: "/clientes" },
+    ...(usa_agendamento ? [{ name: "Agenda", icon: CalendarDays, path: "/agendamentos" }] : []),
+    ...(usa_comissao ? [{ name: "Comissões", icon: Award, path: "/minhas-comissoes" }] : []),
+  ];
+
+  const bottomMenuItems = isOwner ? ownerBottomItems : employeeBottomItems;
 
   if (loading || !user) return <div className="min-h-screen bg-[#E7E5E4]"></div>;
 
@@ -86,12 +103,13 @@ export default function AdminLayout({
         />
       )}
 
-      {/* SIDEBAR */}
+      {/* SIDEBAR — apenas para owners */}
       <aside
         className={`
           fixed lg:static inset-y-0 left-0 z-50
           bg-white/80 backdrop-blur-2xl border-r border-[#1A1A1A]/5 shadow-[8px_0_32px_rgba(0,0,0,0.03)]
           transform transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)] flex flex-col
+          ${isOwner ? "" : "hidden"}
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
           ${isCollapsed ? "w-24" : "w-[280px]"}
         `}
@@ -238,28 +256,40 @@ export default function AdminLayout({
       <main className="flex-1 min-w-0 h-screen overflow-y-auto thin-scrollbar flex flex-col">
         <GlobalAppointmentAlert />
 
-        <header className="sticky top-0 z-30 bg-[#F8F7F2]/95 backdrop-blur-md px-6 py-4 lg:hidden flex justify-between items-center shadow-sm">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 bg-white rounded-xl shadow-sm border border-stone-200 text-[#1A1A1A] hover:bg-stone-50 transition"
-          >
-            <Menu size={24} />
-          </button>
+        <header className={`sticky top-0 z-30 bg-[#F8F7F2]/95 backdrop-blur-md px-6 py-4 flex justify-between items-center shadow-sm ${isOwner ? "lg:hidden" : ""}`}>
+          {isOwner && (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 bg-white rounded-xl shadow-sm border border-stone-200 text-[#1A1A1A] hover:bg-stone-50 transition"
+            >
+              <Menu size={24} />
+            </button>
+          )}
+          {!isOwner && <div />}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={logoSrc} alt={profile?.nome_fantasia || "Logo"} className="h-8 object-contain" onError={(e) => { e.currentTarget.src = '/logo.svg'; }} />
+          {isOwner && <div />}
+          {!isOwner && (
+            <Link href="/tutorial" title="Tutoriais e Ajuda">
+              <div className="p-2 bg-white rounded-xl shadow-sm border border-stone-200 text-[#1A1A1A] hover:bg-[#FACC15] hover:border-[#FACC15] transition">
+                <HelpCircle size={22} />
+              </div>
+            </Link>
+          )}
         </header>
 
-        <div className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full pb-32 lg:pb-24 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className={`flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-700 ${isOwner ? "pb-32 lg:pb-24" : "pb-32"}`}>
           {children}
         </div>
       </main>
 
-      {/* MENU INFERIOR (Mobile) */}
+      {/* MENU INFERIOR — mobile para owner, sempre visível para employee */}
       <nav
         className={`
-          fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-stone-100 p-2 z-50 lg:hidden 
+          fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-stone-100 p-2 z-50
           justify-around items-center pb-safe shadow-[0_-8px_30px_rgba(0,0,0,0.06)]
-          ${sidebarOpen ? "hidden" : "flex"} 
+          ${isOwner ? "lg:hidden" : ""}
+          ${sidebarOpen ? "hidden" : "flex"}
         `}
       >
         {bottomMenuItems.map((item) => {
