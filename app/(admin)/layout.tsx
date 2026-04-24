@@ -65,6 +65,7 @@ export default function AdminLayout({
   const usa_comissao = profile?.usa_comissao === true;
 
   const logoSrc = profile?.logo_url || '/logo.svg';
+  const logoHeaderSrc = profile?.logo_impressos_url || profile?.logo_url || '/logo.svg';
 
   // Filtra módulos e permissões (sidebar do owner)
   const menuItems = allMenuItems.filter(item => {
@@ -267,7 +268,7 @@ export default function AdminLayout({
           )}
           {!isOwner && <div />}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={logoSrc} alt={profile?.nome_fantasia || "Logo"} className="h-8 object-contain" onError={(e) => { e.currentTarget.src = '/logo.svg'; }} />
+          <img src={logoHeaderSrc} alt={profile?.nome_fantasia || "Logo"} className="h-8 object-contain" onError={(e) => { e.currentTarget.src = '/logo.svg'; }} />
           {isOwner && <div />}
           {!isOwner && (
             <Link href="/tutorial" title="Tutoriais e Ajuda">

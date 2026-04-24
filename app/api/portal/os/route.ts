@@ -47,13 +47,13 @@ export async function GET(req: NextRequest) {
             if (apt.organization_id) {
                 const { data: companyData } = await supabase
                     .from('company_settings')
-                    .select('logo_url, telefone, fin_mostrar_portal, fin_cartao_com_juros, fin_taxa_juros_mes, fin_chave_pix, fin_cidade_pix, nome_fantasia')
+                    .select('logo_url, logo_impressos_url, telefone, fin_mostrar_portal, fin_cartao_com_juros, fin_taxa_juros_mes, fin_chave_pix, fin_cidade_pix, nome_fantasia')
                     .eq('organization_id', apt.organization_id)
                     .limit(1)
                     .single()
 
                 if (companyData) {
-                    logoUrl = companyData.logo_url || null
+                    logoUrl = companyData.logo_impressos_url || companyData.logo_url || null
                     telefone = companyData.telefone || null
                     companySettingsApt = companyData
                 }
@@ -70,13 +70,13 @@ export async function GET(req: NextRequest) {
         if (os.organization_id) {
             const { data: companyData } = await supabase
                 .from('company_settings')
-                .select('logo_url, telefone, fin_mostrar_portal, fin_cartao_com_juros, fin_taxa_juros_mes, fin_chave_pix, fin_cidade_pix, nome_fantasia')
+                .select('logo_url, logo_impressos_url, telefone, fin_mostrar_portal, fin_cartao_com_juros, fin_taxa_juros_mes, fin_chave_pix, fin_cidade_pix, nome_fantasia')
                 .eq('organization_id', os.organization_id)
                 .limit(1)
                 .single()
 
             if (companyData) {
-                logoUrl = companyData.logo_url || null
+                logoUrl = companyData.logo_impressos_url || companyData.logo_url || null
                 telefone = companyData.telefone || null
                 companySettingsData = companyData
             }

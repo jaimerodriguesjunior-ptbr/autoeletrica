@@ -30,6 +30,7 @@ type CompanyData = {
     usa_fiscal?: boolean;
     usa_caixa?: boolean;
     logo_url?: string;
+    logo_impressos_url?: string;
     endereco?: string;
     aplicar_markup_importacao?: boolean;
     markup_valor_importacao?: number;
@@ -116,6 +117,7 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
             usa_fiscal: data.usa_fiscal !== undefined ? data.usa_fiscal : true,
             usa_caixa: data.usa_caixa !== undefined ? data.usa_caixa : true,
             logo_url: data.logo_url,
+            logo_impressos_url: data.logo_impressos_url,
             endereco: data.endereco,
             aplicar_markup_importacao: data.aplicar_markup_importacao ?? false,
             markup_valor_importacao: data.markup_valor_importacao ?? 2.0,

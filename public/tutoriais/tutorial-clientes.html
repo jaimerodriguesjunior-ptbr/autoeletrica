@@ -33,6 +33,18 @@
       padding: 24px 16px;
     }
     .container { max-width: 780px; margin: 0 auto; }
+    .tutorial-topbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+    .close-tutorial-btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--accent);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .close-tutorial-btn:hover { background: #f3f4f6; }
     .header {
       background: var(--accent);
       color: #fff;
@@ -140,6 +152,9 @@
 </head>
 <body>
 <div class="container">
+  <div class="tutorial-topbar">
+    <button type="button" class="close-tutorial-btn" onclick="closeTutorial()">✕ Fechar</button>
+  </div>
 
   <div class="header">
     <h1>Clientes</h1>
@@ -231,7 +246,7 @@
       <span>O link é único por cliente e não expira. O cliente pode abri-lo quantas vezes quiser — os dados são sempre atualizados em tempo real.</span>
     </div>
 
-    <a href="/tutoriais/tutorial-extrato-cliente.html" target="_blank" rel="noopener noreferrer" class="link-saiba-mais">
+    <a href="/tutoriais/tutorial-extrato-cliente.html" class="link-saiba-mais">
       <span class="lsm-icon">📋</span>
       <div>
         <p class="lsm-title">Saiba mais sobre o Extrato do Cliente</p>
@@ -297,6 +312,19 @@
       section.dataset.accordionReady = '1';
     });
   })();
+</script>
+<script>
+  function closeTutorial() {
+    if (window.opener) {
+      window.close();
+      return;
+    }
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.href = '/tutorial';
+  }
 </script>
 </body>
 </html>

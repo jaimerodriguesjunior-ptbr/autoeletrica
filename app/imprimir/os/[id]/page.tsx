@@ -83,8 +83,8 @@ export default function ImprimirOSA5() {
           {/* CABEÇALHO */}
           <div className="flex justify-between items-start border-b-2 border-black pb-3 mb-3">
             <div className="flex items-center gap-3 w-2/3">
-              {company?.logo_url ? (
-                <img src={company.logo_url} alt="Logo" className="w-[80px] h-auto object-contain max-h-16" />
+              {(company?.logo_impressos_url || company?.logo_url) ? (
+                <img src={company.logo_impressos_url || company.logo_url} alt="Logo" className="w-[80px] h-auto object-contain max-h-16" />
               ) : (
                 <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center border border-gray-300">
                   <span className="text-[10px] text-gray-500 font-bold uppercase text-center leading-tight">Logo<br />Oficina</span>

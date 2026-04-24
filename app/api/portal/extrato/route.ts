@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
         if (client.organization_id) {
             const { data: companyData } = await supabase
                 .from('company_settings')
-                .select('nome_fantasia, logo_url, telefone, endereco')
+                .select('nome_fantasia, logo_url, logo_impressos_url, telefone, endereco')
                 .eq('organization_id', client.organization_id)
                 .limit(1)
                 .single()

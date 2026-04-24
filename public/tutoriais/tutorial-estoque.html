@@ -33,6 +33,18 @@
       padding: 24px 16px;
     }
     .container { max-width: 780px; margin: 0 auto; }
+    .tutorial-topbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+    .close-tutorial-btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--accent);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .close-tutorial-btn:hover { background: #f3f4f6; }
 
     .header {
       background: var(--accent);
@@ -212,6 +224,9 @@
 </head>
 <body>
 <div class="container">
+  <div class="tutorial-topbar">
+    <button type="button" class="close-tutorial-btn" onclick="closeTutorial()">✕ Fechar</button>
+  </div>
 
   <div class="header">
     <h1>Estoque e Serviços</h1>
@@ -362,7 +377,7 @@
       <p>Ao receber uma nota fiscal eletrônica do fornecedor, você pode importar o XML para atualizar o estoque e os custos automaticamente — sem digitar item por item.</p>
       <p>Clique em <strong>Importar XML</strong> no canto superior da tela de Estoque.</p>
 
-      <a href="/tutoriais/tutorial-importacao-xml.html" target="_blank" rel="noopener noreferrer" class="link-saiba-mais">
+      <a href="/tutoriais/tutorial-importacao-xml.html" class="link-saiba-mais">
         <span class="lsm-icon">📄</span>
         <div>
           <p class="lsm-title">Saiba mais sobre a Importação de XML</p>
@@ -481,6 +496,19 @@
       section.dataset.accordionReady = '1';
     });
   })();
+</script>
+<script>
+  function closeTutorial() {
+    if (window.opener) {
+      window.close();
+      return;
+    }
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.href = '/tutorial';
+  }
 </script>
 </body>
 </html>

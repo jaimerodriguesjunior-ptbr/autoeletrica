@@ -21,6 +21,7 @@ type UserProfile = {
   usa_comissao?: boolean;
   nome_fantasia?: string;
   logo_url?: string;
+  logo_impressos_url?: string;
 };
 
 interface AuthContextType {
@@ -127,7 +128,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.replace('/login');
   };
 
-  const isAdmin = profile?.cargo === 'GERENTE' || profile?.cargo === 'ADMIN';
+  const cargo = (profile?.cargo || "").toLowerCase();
+  const isAdmin = cargo === "owner" || cargo === "gerente" || cargo === "admin";
 
   const updateProfile = (updates: Partial<UserProfile>) => {
     setProfile(prev => prev ? { ...prev, ...updates } : null);

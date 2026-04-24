@@ -37,6 +37,7 @@ export async function getProfileServerAction() {
     let usa_comissao = false;
     let nome_fantasia = "";
     let logo_url = "";
+    let logo_impressos_url = "";
 
     if (profile.organization_id) {
       const { data: company } = await supabaseAdmin
@@ -52,6 +53,7 @@ export async function getProfileServerAction() {
         usa_comissao = company.usa_comissao !== undefined ? company.usa_comissao : false;
         nome_fantasia = company.nome_fantasia || "";
         logo_url = company.logo_url || "";
+        logo_impressos_url = company.logo_impressos_url || "";
       }
     }
 
@@ -64,7 +66,8 @@ export async function getProfileServerAction() {
         usa_agendamento,
         usa_comissao,
         nome_fantasia,
-        logo_url
+        logo_url,
+        logo_impressos_url
       }
     }
 

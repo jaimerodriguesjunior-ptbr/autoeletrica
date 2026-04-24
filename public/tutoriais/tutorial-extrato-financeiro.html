@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tutorial: Extrato Financeiro</title>
+  <title>Tutorial: Caixa</title>
   <style>
     :root {
       --bg: #f7f8fa;
@@ -33,6 +33,18 @@
       padding: 24px 16px;
     }
     .container { max-width: 780px; margin: 0 auto; }
+    .tutorial-topbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+    .close-tutorial-btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--accent);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .close-tutorial-btn:hover { background: #f3f4f6; }
     .header {
       background: var(--accent);
       color: #fff;
@@ -136,10 +148,13 @@
 </head>
 <body>
 <div class="container">
+  <div class="tutorial-topbar">
+    <button type="button" class="close-tutorial-btn" onclick="closeTutorial()">✕ Fechar</button>
+  </div>
 
   <div class="header">
-    <h1>Extrato Financeiro</h1>
-    <p>Como registrar entradas e despesas, usar os filtros e acompanhar o resultado do período.</p>
+    <h1>Caixa</h1>
+    <p>Como registrar entradas e despesas, usar os filtros e acompanhar o resultado financeiro da oficina.</p>
   </div>
 
   <div class="callout warn" style="margin-bottom:16px;">
@@ -244,9 +259,29 @@
     <p>O formulário é igual ao de despesa, com uma diferença: em vez de Categoria, você escolhe a <strong>Forma de Recebimento</strong> (Pix, Dinheiro, Cartão, Boleto, Cheque/A prazo ou Outros).</p>
   </div>
 
-  <!-- 7. EDITAR / EXCLUIR -->
+  <!-- 7. RECEBER PENDÊNCIA DE OS -->
   <div class="section">
-    <div class="section-header"><span class="section-num">7</span><h2>Editar ou excluir um lançamento</h2></div>
+    <div class="section-header"><span class="section-num">7</span><h2>Receber valor pendente de uma OS</h2></div>
+    <p>Quando a OS foi fechada como <strong>A prazo</strong> ou em parcelas futuras, o lançamento entra no Caixa como <strong>Pendente</strong>, com a data de vencimento.</p>
+    <ol>
+      <li>Vá em <strong>Caixa</strong> e filtre pelo <strong>mês do vencimento</strong>.</li>
+      <li>Opcional: filtre <strong>Status = Pendente</strong> e <strong>Tipo = Entradas</strong> para facilitar.</li>
+      <li>Clique no lançamento pendente (ex: recebimento da OS).</li>
+      <li>No modal, troque para <strong>Pago/Recebido</strong> e clique em <strong>Salvar</strong>.</li>
+    </ol>
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <span>Você pode ajustar a data para o dia real do recebimento antes de salvar.</span>
+    </div>
+    <div class="callout warn">
+      <span class="callout-icon">⚠️</span>
+      <span>Para quitar pendência de OS, prefira atualizar o lançamento pendente existente em vez de criar uma nova Entrada Avulsa.</span>
+    </div>
+  </div>
+
+  <!-- 8. EDITAR / EXCLUIR -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">8</span><h2>Editar ou excluir um lançamento</h2></div>
     <p>Clique em qualquer item da lista. O modal de edição abre com os campos preenchidos. Altere o que precisar e clique em <strong>Salvar Alterações</strong>, ou clique na lixeira para excluir.</p>
     <div class="callout warn">
       <span class="callout-icon">⚠️</span>
@@ -254,15 +289,15 @@
     </div>
   </div>
 
-  <!-- 8. FECHAMENTO PARA CONTADOR -->
+  <!-- 9. FECHAMENTO PARA CONTADOR -->
   <div class="section">
-    <div class="section-header"><span class="section-num">8</span><h2>Fechamento para Contador</h2></div>
+    <div class="section-header"><span class="section-num">9</span><h2>Fechamento para Contador</h2></div>
     <p>Se o módulo fiscal estiver ativo, o botão <strong>Fechamento p/ Contador</strong> aparece nas Ações Rápidas. Gera um relatório consolidado do período com todas as movimentações e notas fiscais emitidas — ideal para envio mensal ao contador.</p>
   </div>
 
-  <!-- 9. RELATÓRIOS -->
+  <!-- 10. RELATÓRIOS -->
   <div class="section">
-    <div class="section-header"><span class="section-num">9</span><h2>Relatórios Detalhados</h2></div>
+    <div class="section-header"><span class="section-num">10</span><h2>Relatórios Detalhados</h2></div>
     <p>O botão <strong>Relatórios Detalhados</strong> (ícone de gráfico) leva a análises mais aprofundadas: receita por categoria, despesa por categoria e evolução mensal.</p>
     <div class="callout tip">
       <span class="callout-icon">💡</span>
@@ -310,6 +345,19 @@
       section.dataset.accordionReady = '1';
     });
   })();
+</script>
+<script>
+  function closeTutorial() {
+    if (window.opener) {
+      window.close();
+      return;
+    }
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.href = '/tutorial';
+  }
 </script>
 </body>
 </html>

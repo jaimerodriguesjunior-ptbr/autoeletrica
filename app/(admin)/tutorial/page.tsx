@@ -131,8 +131,6 @@ function TutorialGrid({ items }: { items: TutorialCard[] }) {
         <a
           key={t.id}
           href={t.href}
-          target="_blank"
-          rel="noopener noreferrer"
           className="bg-white rounded-2xl p-6 border border-stone-100 shadow-sm hover:shadow-md hover:border-[#FACC15] transition group flex items-start gap-4"
         >
           <div className="w-12 h-12 bg-[#FACC15]/20 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-[#FACC15]/40 transition">

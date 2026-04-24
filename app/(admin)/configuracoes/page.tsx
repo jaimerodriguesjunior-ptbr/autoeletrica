@@ -51,6 +51,7 @@ type CompanySettings = {
   usa_agendamento?: boolean;
   usa_comissao?: boolean;
   logo_url?: string;
+  logo_impressos_url?: string;
   aplicar_markup_importacao?: boolean;
   markup_valor_importacao?: number;
   fin_mostrar_portal?: boolean;
@@ -99,6 +100,7 @@ export default function Configuracoes() {
     csc_token_homologation: "", csc_id_homologation: "",
     nfse_login: "", nfse_password: "", usa_fiscal: true, usa_caixa: true, usa_agendamento: true, usa_comissao: false,
     logo_url: "",
+    logo_impressos_url: "",
     aplicar_markup_importacao: false,
     markup_valor_importacao: 2.0,
     fin_mostrar_portal: false,
@@ -291,6 +293,7 @@ export default function Configuracoes() {
         usa_fiscal: company.usa_fiscal !== undefined ? company.usa_fiscal : true,
         usa_caixa: company.usa_caixa !== undefined ? company.usa_caixa : true,
         logo_url: company.logo_url,
+        logo_impressos_url: company.logo_impressos_url,
         endereco: company.endereco,
         aplicar_markup_importacao: company.aplicar_markup_importacao ?? false,
         markup_valor_importacao: company.markup_valor_importacao ?? 2.0,
@@ -485,7 +488,7 @@ export default function Configuracoes() {
             </div>
 
             <div>
-              <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">URL DA LOGOMARCA</label>
+              <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">URL DA LOGO (Menu lateral)</label>
               <div className="relative">
                 <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
                 <input
@@ -494,6 +497,20 @@ export default function Configuracoes() {
                   onChange={e => setCompany({ ...company, logo_url: e.target.value })}
                   className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                   placeholder="Ex: /logos/logorally.png"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">URL DA LOGO (Impressos e Portal)</label>
+              <div className="relative">
+                <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                <input
+                  type="text"
+                  value={company.logo_impressos_url || ''}
+                  onChange={e => setCompany({ ...company, logo_impressos_url: e.target.value })}
+                  className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                  placeholder="Ex: /logos/logo-impressos.png"
                 />
               </div>
             </div>

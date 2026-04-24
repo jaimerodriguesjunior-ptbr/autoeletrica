@@ -94,9 +94,9 @@ function ConteudoExtrato() {
             {/* HEADER */}
             <div className="bg-[#1A1A1A] text-white px-6 py-8">
                 <div className="max-w-lg mx-auto">
-                    {empresa?.logo_url && (
+                    {empresa?.logo_impressos_url && (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={empresa.logo_url} alt="Logo" className="h-10 mb-4 brightness-0 invert" />
+                        <img src={empresa.logo_impressos_url} alt="Logo" className="h-10 mb-4 object-contain" />
                     )}
                     <p className="text-[10px] uppercase tracking-widest text-stone-400 font-bold mb-1">Extrato do Cliente</p>
                     <h1 className="text-2xl font-black">{client.nome}</h1>
