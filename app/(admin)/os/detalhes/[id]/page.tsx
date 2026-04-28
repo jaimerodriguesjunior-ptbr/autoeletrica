@@ -829,7 +829,7 @@ export default function DetalhesOS() {
     if (!os || !pinInput.trim()) return;
     setPinLoading(true);
     setPinErro("");
-    const result = await reopenOS(os.id, pinInput.trim());
+    const result = await reopenOS(String(os.id), pinInput.trim());
     setPinLoading(false);
     if (!result.success) {
       setPinErro(result.error || "Erro desconhecido.");
