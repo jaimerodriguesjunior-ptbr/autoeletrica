@@ -39,6 +39,7 @@ type CompanyData = {
     fin_taxa_juros_mes?: number;
     fin_chave_pix?: string;
     fin_cidade_pix?: string;
+    manager_pin?: string;
 };
 
 export async function registerCompanyInNuvemFiscal(data: CompanyData) {
@@ -127,6 +128,10 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
             fin_chave_pix: data.fin_chave_pix,
             fin_cidade_pix: data.fin_cidade_pix
         };
+
+        if (!isPlaceholder(data.manager_pin) && data.manager_pin !== undefined) {
+            upsertData.manager_pin = data.manager_pin || null;
+        }
 
         if (!isPlaceholder(data.csc_token_production)) upsertData.csc_token_production = data.csc_token_production;
         if (!isPlaceholder(data.csc_token_homologation)) upsertData.csc_token_homologation = data.csc_token_homologation;
@@ -296,6 +301,9 @@ export async function getCompanySettings() {
     // Mascarar senha da prefeitura também por segurança
     if (company.nfse_password) {
         company.nfse_password = "(Senha Configurada)";
+    }
+    if (company.manager_pin) {
+        company.manager_pin = "(PIN Configurado)";
     }
 
     return company;

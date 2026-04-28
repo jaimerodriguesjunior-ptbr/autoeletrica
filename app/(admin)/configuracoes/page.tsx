@@ -59,6 +59,7 @@ type CompanySettings = {
   fin_taxa_juros_mes?: number;
   fin_chave_pix?: string;
   fin_cidade_pix?: string;
+  manager_pin?: string;
 };
 
 export default function Configuracoes() {
@@ -107,7 +108,8 @@ export default function Configuracoes() {
     fin_cartao_com_juros: false,
     fin_taxa_juros_mes: 0,
     fin_chave_pix: "",
-    fin_cidade_pix: ""
+    fin_cidade_pix: "",
+    manager_pin: ""
   });
   const [certFile, setCertFile] = useState<File | null>(null);
   const [certPassword, setCertPassword] = useState("");
@@ -301,7 +303,8 @@ export default function Configuracoes() {
         fin_cartao_com_juros: company.fin_cartao_com_juros ?? false,
         fin_taxa_juros_mes: company.fin_taxa_juros_mes ?? 0,
         fin_chave_pix: company.fin_chave_pix,
-        fin_cidade_pix: company.fin_cidade_pix
+        fin_cidade_pix: company.fin_cidade_pix,
+        manager_pin: company.manager_pin
       };
 
       const response = await fetch("/api/fiscal/company-settings", {
@@ -920,6 +923,29 @@ export default function Configuracoes() {
               />
             </label>
 
+          </div>
+
+          {/* --- SEÇÃO: PIN DE GERÊNCIA --- */}
+          <div className="mt-8 pt-6 border-t border-stone-200">
+            <div className="mb-4">
+              <h2 className="text-xl font-bold text-[#1A1A1A] mb-1">PIN de Gerência</h2>
+              <p className="text-sm text-stone-500">Código de segurança necessário para reabrir uma OS já finalizada. Compartilhe apenas com responsáveis autorizados.</p>
+            </div>
+            <div className="p-5 bg-stone-50 border border-stone-200 rounded-3xl shadow-sm">
+              <label className="text-xs font-bold text-stone-400 ml-2 mb-2 block">PIN DE SEGURANÇA</label>
+              <input
+                type="text"
+                placeholder={company.manager_pin === "(PIN Configurado)" ? "(PIN Configurado)" : "Ex: 1234"}
+                value={company.manager_pin === "(PIN Configurado)" ? "" : (company.manager_pin || "")}
+                onChange={(e) => setCompany(prev => ({ ...prev, manager_pin: e.target.value }))}
+                className="w-full bg-white rounded-2xl py-3 px-4 font-bold text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+              />
+              <p className="text-xs text-stone-400 px-2 mt-2">
+                {company.manager_pin === "(PIN Configurado)"
+                  ? "PIN já configurado. Digite um novo valor apenas se quiser alterá-lo."
+                  : "Este PIN será solicitado ao tentar reabrir uma OS já entregue."}
+              </p>
+            </div>
           </div>
 
           {/* --- SEÇÃO: PRECIFICAÇÃO --- */}

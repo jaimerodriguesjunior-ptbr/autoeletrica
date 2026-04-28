@@ -15,6 +15,7 @@ import { createClient } from "../../../../../src/lib/supabase";
 import { useAuth } from "../../../../../src/contexts/AuthContext";
 import { ScannerModal } from "@/components/ui/ScannerModal";
 import { fetchProductFromCosmos, normalizeBarcode } from "@/src/services/cosmosService";
+import { reopenOS } from "@/src/actions/os";
 
 // Tipos
 type WorkOrderItem = {
@@ -222,6 +223,12 @@ export default function DetalhesOS() {
     desc: ''
   });
   const [salvandoAgendamento, setSalvandoAgendamento] = useState(false);
+
+  // --- ESTADOS MODAL REABERTURA ---
+  const [modalReopenAberto, setModalReopenAberto] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinLoading, setPinLoading] = useState(false);
+  const [pinErro, setPinErro] = useState("");
 
   // Comissões
   const usaComissao = profile?.usa_comissao === true;
@@ -816,6 +823,21 @@ export default function DetalhesOS() {
     } finally {
       setUpdating(false);
     }
+  };
+
+  const handleReopenOS = async () => {
+    if (!os || !pinInput.trim()) return;
+    setPinLoading(true);
+    setPinErro("");
+    const result = await reopenOS(os.id, pinInput.trim());
+    setPinLoading(false);
+    if (!result.success) {
+      setPinErro(result.error || "Erro desconhecido.");
+      return;
+    }
+    setModalReopenAberto(false);
+    setPinInput("");
+    setOs({ ...os, status: "pronto" });
   };
 
   const handleExcluirOS = async () => {
@@ -2219,6 +2241,14 @@ export default function DetalhesOS() {
               </button>
             )}
             {os!.status === 'cancelado' && <p className="text-red-500 font-bold text-sm">ESTA ORDEM FOI CANCELADA</p>}
+            {os!.status === 'entregue' && isAdmin && (
+              <button
+                onClick={() => { setModalReopenAberto(true); setPinInput(""); setPinErro(""); }}
+                className="text-amber-600 text-xs font-bold hover:underline"
+              >
+                Reabrir Ordem de Serviço
+              </button>
+            )}
           </div>
         </div>
 
@@ -2299,6 +2329,47 @@ export default function DetalhesOS() {
           </div>
         )
       }
+
+      {/* MODAL REABRIR OS */}
+      {modalReopenAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-[#1A1A1A]">Reabrir Ordem de Serviço</h2>
+              <button onClick={() => setModalReopenAberto(false)} className="text-stone-400 hover:text-red-500 transition"><X /></button>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+              <p className="text-sm text-amber-800 font-medium">
+                Esta ação irá <strong>estornar o fechamento</strong>: as transações financeiras de recebimento e as comissões pendentes serão removidas. A OS voltará ao status <strong>Pronto</strong>.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-stone-400 ml-1 mb-2 block">PIN DE GERÊNCIA</label>
+              <input
+                type="password"
+                placeholder="Digite o PIN"
+                value={pinInput}
+                onChange={(e) => { setPinInput(e.target.value); setPinErro(""); }}
+                onKeyDown={(e) => e.key === "Enter" && handleReopenOS()}
+                className="w-full bg-stone-50 rounded-2xl py-3 px-4 font-bold text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                autoFocus
+              />
+              {pinErro && <p className="text-red-500 text-xs font-bold mt-2 ml-1">{pinErro}</p>}
+            </div>
+
+            <button
+              onClick={handleReopenOS}
+              disabled={pinLoading || !pinInput.trim()}
+              className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 hover:bg-black transition disabled:opacity-50"
+            >
+              {pinLoading ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />}
+              Confirmar Reabertura
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MODAL ADICIONAR ITEM ESPECIALIZADO */}
       {
