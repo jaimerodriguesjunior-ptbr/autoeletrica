@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Claude Code settings (may contain API keys in allowed commands)
+.claude/settings.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
