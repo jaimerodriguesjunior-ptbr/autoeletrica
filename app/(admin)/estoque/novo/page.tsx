@@ -94,6 +94,16 @@ export default function NovoProduto() {
 
       if (error) throw error;
 
+      // Contribui para a base global se EAN for válido
+      if (ean && /^\d{8}$|^\d{12}$|^\d{13}$/.test(ean)) {
+        await supabase.rpc('upsert_global_product', {
+          p_ean: ean,
+          p_name: nome,
+          p_brand: marca || null,
+          p_reference_code: codigoRef || null
+        });
+      }
+
       alert("Produto cadastrado!");
       router.push("/estoque");
 

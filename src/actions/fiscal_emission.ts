@@ -1943,3 +1943,333 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
 
 }
 
+
+
+// ============================================================
+// NF-e de Devolução (modelo 55, finNFe=4)
+// ============================================================
+
+type DevolucaoPayload = {
+    organization_id: string;
+    entry_invoice_id: string;
+    itens: {
+        codigo: string;
+        descricao: string;
+        ncm: string;
+        unidade: string;
+        quantidade: number;
+        valor_unitario: number;
+        valor_total: number;
+    }[];
+    valor_total: number;
+    environment?: "production" | "homologation";
+};
+
+export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
+    const supabase = createClient();
+    let invoiceId: string | null = null;
+
+    try {
+        const env = payload.environment || "production";
+        const token = await getNuvemFiscalToken(env);
+        const baseUrl =
+            env === "production"
+                ? process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br"
+                : process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br";
+
+        // 1. Carregar nota de entrada referenciada
+        const { data: entryInvoice } = await supabase
+            .from("fiscal_invoices")
+            .select("*")
+            .eq("id", payload.entry_invoice_id)
+            .eq("direction", "entry")
+            .single();
+
+        if (!entryInvoice?.chave_acesso) {
+            return { success: false, error: "Nota de entrada não encontrada ou sem chave de acesso." };
+        }
+
+        // 2. Configurações da empresa emitente
+        const { data: company } = await supabase
+            .from("company_settings")
+            .select("*")
+            .eq("organization_id", payload.organization_id)
+            .single();
+
+        if (!company) return { success: false, error: "Configurações da empresa não encontradas." };
+
+        const cnpjEmit = (company.cnpj || company.cpf_cnpj || "").replace(/\D/g, "");
+        if (!cnpjEmit) return { success: false, error: "CNPJ da empresa ausente." };
+
+        // 3. Parsear endereço e IE do fornecedor a partir do XML armazenado
+        let fornecedorEnd: any = null;
+        let fornecedorIE: string | undefined;
+        let fornecedorUF = "SP";
+
+        if (entryInvoice.xml_content) {
+            try {
+                const { XMLParser } = await import("fast-xml-parser");
+                const parser = new XMLParser({ ignoreAttributes: false });
+                const xml = parser.parse(entryInvoice.xml_content);
+                const nfeProc = xml.nfeProc || xml.NFe;
+                const infNFe = nfeProc?.NFe?.infNFe || xml.infNFe;
+                const enderEmit = infNFe?.emit?.enderEmit;
+                if (enderEmit) {
+                    fornecedorUF = enderEmit.UF || "SP";
+                    fornecedorEnd = {
+                        xLgr: enderEmit.xLgr,
+                        nro: String(enderEmit.nro),
+                        xCpl: enderEmit.xCpl || undefined,
+                        xBairro: enderEmit.xBairro,
+                        cMun: Number(enderEmit.cMun),
+                        xMun: enderEmit.xMun,
+                        UF: enderEmit.UF,
+                        CEP: String(enderEmit.CEP).replace(/\D/g, ""),
+                        cPais: "1058",
+                        xPais: "BRASIL",
+                    };
+                }
+                const ie = infNFe?.emit?.IE;
+                if (ie && String(ie) !== "ISENTO") {
+                    fornecedorIE = String(ie).replace(/\D/g, "");
+                }
+            } catch (e) {
+                console.warn("[NFe Devolução] Falha ao parsear XML:", e);
+            }
+        }
+
+        // 4. CFOP: interna (5202) ou interestadual (6202)
+        const mesmoEstado = company.uf === fornecedorUF;
+        const cfopDevolucao = mesmoEstado ? "5202" : "6202";
+
+        // 5. Próximo número de NF-e de devolução (série 1)
+        const { data: lastNFe } = await supabase
+            .from("fiscal_invoices")
+            .select("numero")
+            .eq("organization_id", payload.organization_id)
+            .eq("tipo_documento", "NFe")
+            .eq("direction", "output")
+            .not("numero", "is", null)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        const nfeNumber = lastNFe?.numero ? parseInt(lastNFe.numero) + 1 : 1;
+        const { dhEmi } = getSaoPauloDatePartsWithSafety();
+
+        // 6. Montar payload NF-e
+        const nfePayload = {
+            ambiente: env === "production" ? "producao" : "homologacao",
+            infNFe: {
+                versao: "4.00",
+                ide: {
+                    cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
+                    natOp: "DEVOLUCAO DE MERCADORIA",
+                    mod: 55,
+                    serie: 1,
+                    nNF: nfeNumber,
+                    dhEmi,
+                    tpNF: 1,
+                    idDest: mesmoEstado ? 1 : 2,
+                    cMunFG: Number(company.codigo_municipio_ibge),
+                    tpImp: 1,
+                    tpEmis: 1,
+                    tpAmb: env === "production" ? 1 : 2,
+                    finNFe: 4,
+                    indFinal: 0,
+                    indPres: 9,
+                    procEmi: 0,
+                    verProc: "AutoEletrica 1.0",
+                    NFref: [{ refNFe: entryInvoice.chave_acesso }],
+                },
+                emit: {
+                    CNPJ: cnpjEmit,
+                    xNome: company.razao_social,
+                    xFant: company.nome_fantasia,
+                    enderEmit: {
+                        xLgr: company.logradouro,
+                        nro: company.numero,
+                        xCpl: company.complemento || undefined,
+                        xBairro: company.bairro,
+                        cMun: Number(company.codigo_municipio_ibge),
+                        xMun: company.cidade,
+                        UF: company.uf,
+                        CEP: company.cep?.replace(/\D/g, ""),
+                        cPais: "1058",
+                        xPais: "BRASIL",
+                    },
+                    IE: company.inscricao_estadual?.replace(/\D/g, ""),
+                    CRT: Number(company.regime_tributario || "1"),
+                },
+                dest: {
+                    CNPJ: (entryInvoice.emitente_cnpj || "").replace(/\D/g, ""),
+                    xNome: entryInvoice.emitente_nome,
+                    ...(fornecedorEnd ? { enderDest: fornecedorEnd } : {}),
+                    indIEDest: fornecedorIE ? "1" : "9",
+                    ...(fornecedorIE ? { IE: fornecedorIE } : {}),
+                },
+                det: payload.itens.map((item, idx) => ({
+                    nItem: idx + 1,
+                    prod: {
+                        cProd: item.codigo || String(idx + 1),
+                        cEAN: "SEM GTIN",
+                        xProd: item.descricao,
+                        NCM: item.ncm || "00000000",
+                        CFOP: cfopDevolucao,
+                        uCom: item.unidade,
+                        qCom: item.quantidade,
+                        vUnCom: toMoneyNumber(item.valor_unitario),
+                        vProd: toMoneyNumber(item.valor_total),
+                        cEANTrib: "SEM GTIN",
+                        uTrib: item.unidade,
+                        qTrib: item.quantidade,
+                        vUnTrib: toMoneyNumber(item.valor_unitario),
+                        indTot: 1,
+                    },
+                    imposto: {
+                        ICMS: { ICMSSN102: { orig: 0, CSOSN: "102" } },
+                        PIS: { PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 } },
+                        COFINS: { COFINSOutr: { CST: "99", vBC: 0, pCOFINS: 0, vCOFINS: 0 } },
+                    },
+                })),
+                total: {
+                    ICMSTot: {
+                        vBC: 0, vICMS: 0, vICMSDeson: 0, vFCP: 0,
+                        vBCST: 0, vST: 0, vFCPST: 0, vFCPSTRet: 0,
+                        vProd: toMoneyNumber(payload.valor_total),
+                        vFrete: 0, vSeg: 0, vDesc: 0, vII: 0,
+                        vIPI: 0, vIPIDevol: 0, vPIS: 0, vCOFINS: 0,
+                        vOutro: 0, vNF: toMoneyNumber(payload.valor_total),
+                    },
+                },
+                transp: { modFrete: 9 },
+                pag: { detPag: [{ tPag: "90", vPag: 0 }] },
+                infRespTec: {
+                    CNPJ: cnpjEmit,
+                    xContato: (company.razao_social || "Responsavel Tecnico").substring(0, 60),
+                    email: company.email_contato || "email@exemplo.com",
+                    fone: (company.telefone || "0000000000").replace(/\D/g, ""),
+                },
+            },
+        };
+
+        // 7. Salvar rascunho no banco
+        const { data: invoice, error: dbError } = await supabase
+            .from("fiscal_invoices")
+            .insert({
+                organization_id: payload.organization_id,
+                direction: "output",
+                data_emissao: dhEmi,
+                valor_total: toMoneyNumber(payload.valor_total),
+                emitente_nome: company.razao_social || company.nome_fantasia || null,
+                emitente_cnpj: cnpjEmit,
+                destinatario_nome: entryInvoice.emitente_nome,
+                destinatario_cnpj: (entryInvoice.emitente_cnpj || "").replace(/\D/g, ""),
+                tipo_documento: "NFe",
+                status: "processing",
+                environment: env,
+                payload_json: { ...nfePayload, _entry_invoice_id: payload.entry_invoice_id },
+            })
+            .select()
+            .single();
+
+        if (dbError) throw dbError;
+        invoiceId = invoice.id;
+
+        // 8. Enviar para NuvemFiscal
+        console.log("[NFe Devolução] Enviando para /nfe, número:", nfeNumber);
+        const response = await fetch(`${baseUrl}/nfe`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(nfePayload),
+        });
+
+        const responseText = await response.text();
+        console.log("[NFe Devolução] Status:", response.status, responseText.substring(0, 500));
+
+        let result: any;
+        try {
+            result = responseText ? JSON.parse(responseText) : {};
+        } catch {
+            await supabase
+                .from("fiscal_invoices")
+                .update({ status: "error", error_message: `Resposta inválida da API (${response.status})` })
+                .eq("id", invoice.id);
+            return { success: false, error: `Resposta inválida da API (${response.status})` };
+        }
+
+        if (!response.ok) {
+            await supabase
+                .from("fiscal_invoices")
+                .update({ status: "error", error_message: result.error?.message || JSON.stringify(result) })
+                .eq("id", invoice.id);
+            return { success: false, error: result.error?.message || "Erro na emissão" };
+        }
+
+        const realStatus = result.status;
+
+        if (realStatus === "rejeitado") {
+            const codigoErro = result.autorizacao?.codigo_status || "N/A";
+            const motivoErro = result.autorizacao?.motivo_status || "Motivo não informado";
+            await supabase
+                .from("fiscal_invoices")
+                .update({
+                    status: "rejected",
+                    nuvemfiscal_uuid: result.id,
+                    chave_acesso: result.chave,
+                    numero: String(result.numero || ""),
+                    serie: String(result.serie || ""),
+                    error_message: `Erro ${codigoErro}: ${motivoErro}`,
+                })
+                .eq("id", invoice.id);
+            return {
+                success: false,
+                error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`,
+                invoiceId: invoice.id,
+            };
+        }
+
+        if (realStatus === "autorizado") {
+            const xmlContent = await tryFetchXmlContent(result.xml_url);
+            const update: Record<string, any> = {
+                status: "authorized",
+                nuvemfiscal_uuid: result.id,
+                chave_acesso: result.chave,
+                numero: String(result.numero || ""),
+                serie: String(result.serie || ""),
+                xml_url: result.xml_url,
+                pdf_url: result.pdf_url,
+            };
+            if (xmlContent) update.xml_content = xmlContent;
+            await supabase.from("fiscal_invoices").update(update).eq("id", invoice.id);
+            return { success: true, invoiceId: invoice.id };
+        }
+
+        // processando
+        await supabase
+            .from("fiscal_invoices")
+            .update({
+                status: "processing",
+                nuvemfiscal_uuid: result.id,
+                chave_acesso: result.chave,
+                numero: String(result.numero || ""),
+                serie: String(result.serie || ""),
+            })
+            .eq("id", invoice.id);
+        return { success: true, invoiceId: invoice.id, message: "NF-e em processamento" };
+
+    } catch (error: any) {
+        console.error("[NFe Devolução] Erro:", error);
+        if (invoiceId) {
+            await supabase
+                .from("fiscal_invoices")
+                .update({ status: "error", error_message: error.message })
+                .eq("id", invoiceId);
+        }
+        return { success: false, error: error.message };
+    }
+}
+

@@ -171,6 +171,57 @@ export async function getFiscalInvoices(organizationId: string) {
     return data;
 }
 
+export type ParsedNFeItem = {
+    codigo: string;
+    descricao: string;
+    ncm: string;
+    unidade: string;
+    quantidade: number;
+    valor_unitario: number;
+    valor_total: number;
+};
+
+export async function getEntryInvoiceWithItems(invoiceId: string) {
+    const supabase = createClient();
+
+    const { data: invoice, error } = await supabase
+        .from("fiscal_invoices")
+        .select("*")
+        .eq("id", invoiceId)
+        .eq("direction", "entry")
+        .single();
+
+    if (error || !invoice) return null;
+
+    let items: ParsedNFeItem[] = [];
+
+    if (invoice.xml_content) {
+        try {
+            const { XMLParser } = await import("fast-xml-parser");
+            const parser = new XMLParser({ ignoreAttributes: false });
+            const xml = parser.parse(invoice.xml_content);
+            const nfeProc = xml.nfeProc || xml.NFe;
+            const infNFe = nfeProc?.NFe?.infNFe || xml.infNFe;
+            let dets = infNFe?.det;
+            if (dets && !Array.isArray(dets)) dets = [dets];
+
+            items = (dets || []).map((d: any): ParsedNFeItem => ({
+                codigo: String(d.prod?.cProd || ""),
+                descricao: String(d.prod?.xProd || ""),
+                ncm: String(d.prod?.NCM || ""),
+                unidade: String(d.prod?.uCom || "UN"),
+                quantidade: Number(d.prod?.qCom || 0),
+                valor_unitario: Number(d.prod?.vUnCom || 0),
+                valor_total: Number(d.prod?.vProd || 0),
+            }));
+        } catch (e) {
+            console.warn("[getEntryInvoiceWithItems] Erro ao parsear XML:", e);
+        }
+    }
+
+    return { invoice, items };
+}
+
 export async function updateProductNCM(productId: string, ncm: string) {
     const supabase = createClient();
 

@@ -3,7 +3,17 @@
     "allow": [
       "Bash(node -e \"const d = new Date\\(2026, 3, 0\\); console.log\\('getDate:', d.getDate\\(\\)\\); console.log\\('full:', d\\);\")",
       "Bash(node -e \"const y='2026', m='02'; const d = new Date\\(parseInt\\(y\\), parseInt\\(m\\), 0\\); console.log\\('Feb 2026:', d.toISOString\\(\\), 'getDate:', d.getDate\\(\\)\\); const d2 = new Date\\(parseInt\\(y\\), parseInt\\(m\\)-1, 0\\); console.log\\('getDate for Feb:', d2.getDate\\(\\)\\);\")",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(curl -s 'https://osfipsbcdhcvndpmntxy.supabase.co/rest/v1/products?select=nome,marca,ean,organization_id&ean=not.is.null&order=nome' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zZmlwc2JjZGhjdm5kcG1udHh5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDQ1MjA2NiwiZXhwIjoyMDgwMDI4MDY2fQ.iDckgyNW34iappVvjkkvvkbEPVV6ljBj8Zr5iY9GlVc' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zZmlwc2JjZGhjdm5kcG1udHh5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDQ1MjA2NiwiZXhwIjoyMDgwMDI4MDY2fQ.iDckgyNW34iappVvjkkvvkbEPVV6ljBj8Zr5iY9GlVc')",
+      "Bash(curl -s 'https://osfipsbcdhcvndpmntxy.supabase.co/rest/v1/products?select=ean,organization_id&ean=not.is.null' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zZmlwc2JjZGhjdm5kcG1udHh5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDQ1MjA2NiwiZXhwIjoyMDgwMDI4MDY2fQ.iDckgyNW34iappVvjkkvvkbEPVV6ljBj8Zr5iY9GlVc' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zZmlwc2JjZGhjdm5kcG1udHh5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDQ1MjA2NiwiZXhwIjoyMDgwMDI4MDY2fQ.iDckgyNW34iappVvjkkvvkbEPVV6ljBj8Zr5iY9GlVc')",
+      "Bash(python3 -c ' *)",
+      "Bash(node -e ' *)",
+      "Bash(curl -s 'https://osfipsbcdhcvndpmntxy.supabase.co/rest/v1/global_products?select=ean,name,brand&limit=5' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zZmlwc2JjZGhjdm5kcG1udHh5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDQ1MjA2NiwiZXhwIjoyMDgwMDI4MDY2fQ.iDckgyNW34iappVvjkkvvkbEPVV6ljBj8Zr5iY9GlVc' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zZmlwc2JjZGhjdm5kcG1udHh5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDQ1MjA2NiwiZXhwIjoyMDgwMDI4MDY2fQ.iDckgyNW34iappVvjkkvvkbEPVV6ljBj8Zr5iY9GlVc')",
+      "Read(//g/projetos/**)",
+      "Bash(npx tsc *)"
+    ],
+    "additionalDirectories": [
+      "g:\\projetos\\autoeletrica\\app\\(admin)\\fiscal\\devolucao"
     ]
   }
 }

@@ -76,6 +76,7 @@ type WorkOrderFull = {
 };
 
 type CatalogItem = { id: string; nome: string; price?: number; preco_venda?: number; estoque_atual?: number; ean?: string };
+type GlobalProduct = { id: string; ean: string; name: string; brand: string | null; reference_code: string | null };
 
 export default function DetalhesOS() {
   const { id } = useParams();
@@ -168,6 +169,10 @@ export default function DetalhesOS() {
   const [scannerAberto, setScannerAberto] = useState(false);
   const [buscandoEAN, setBuscandoEAN] = useState(false);
   const [avisoEAN, setAvisoEAN] = useState<{ tipo: 'sucesso' | 'erro' | 'info'; msg: string } | null>(null);
+
+  // Base global de produtos
+  const [produtosGlobais, setProdutosGlobais] = useState<GlobalProduct[]>([]);
+  const [buscandoGlobal, setBuscandoGlobal] = useState(false);
 
   const [modalAdicionarTipo, setModalAdicionarTipo] = useState<'peca' | 'servico' | null>(null);
   const [modalEditarItemAberto, setModalEditarItemAberto] = useState(false);
@@ -488,6 +493,36 @@ export default function DetalhesOS() {
       Promise.all([fetchOS(), fetchCatalogo(), fetchDtcsSalvos(), fetchFuncionarios()]).finally(() => setLoading(false));
     }
   }, [fetchOS, fetchCatalogo, fetchDtcsSalvos, fetchFuncionarios, id, profile]);
+
+  // Busca na base global quando busca local não retorna resultado
+  useEffect(() => {
+    if (modalAdicionarTipo !== 'peca' || termoBusca.length < 3) {
+      setProdutosGlobais([]);
+      return;
+    }
+    const localResults = listaProdutos.filter(p =>
+      p.nome.toLowerCase().includes(termoBusca.toLowerCase()) ||
+      (p.ean && p.ean.includes(termoBusca))
+    );
+    if (localResults.length > 0) {
+      setProdutosGlobais([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setBuscandoGlobal(true);
+      try {
+        const { data } = await supabase
+          .from('global_products')
+          .select('id, ean, name, brand, reference_code')
+          .ilike('name', `%${termoBusca}%`)
+          .limit(10);
+        setProdutosGlobais(data || []);
+      } finally {
+        setBuscandoGlobal(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [termoBusca, modalAdicionarTipo, listaProdutos, supabase]);
 
   // Comissões: Buscar atribuições quando os dados da OS mudam
   useEffect(() => {
@@ -1149,6 +1184,40 @@ export default function DetalhesOS() {
     } catch (error: any) {
       alert("Erro ao adicionar item: " + error.message);
     } finally {
+      setAdicionandoItem(false);
+    }
+  };
+
+  const handleAdicionarGlobal = async (gp: GlobalProduct) => {
+    if (!profile?.organization_id) return;
+    setAdicionandoItem(true);
+    try {
+      const { data: novoProduto, error } = await supabase
+        .from('products')
+        .insert({
+          organization_id: profile.organization_id,
+          nome: gp.name,
+          marca: gp.brand || '',
+          codigo_ref: gp.reference_code || '',
+          ean: gp.ean,
+          estoque_atual: 0,
+          estoque_min: 0,
+          custo_reposicao: 0,
+          custo_contabil: 0,
+          preco_venda: 0,
+          global_product_id: gp.id
+        })
+        .select('id, nome, preco_venda, estoque_atual, ean')
+        .single();
+
+      if (error) throw error;
+
+      await handleAdicionarItem(
+        { id: novoProduto.id, nome: novoProduto.nome, preco_venda: 0, estoque_atual: 0, ean: novoProduto.ean },
+        'peca'
+      );
+    } catch (err: any) {
+      alert('Erro ao importar produto da base global: ' + err.message);
       setAdicionandoItem(false);
     }
   };
@@ -2483,6 +2552,44 @@ export default function DetalhesOS() {
                     >
                       Cadastrar {modalAdicionarTipo === 'servico' ? 'Novo Serviço' : 'Nova Peça'} <Plus size={14} />
                     </button>
+
+                    {modalAdicionarTipo === 'peca' && termoBusca.length >= 3 && (
+                      <div className="w-full mt-4 space-y-2">
+                        {buscandoGlobal && (
+                          <div className="flex items-center gap-2 text-stone-400 text-xs justify-center">
+                            <Loader2 size={12} className="animate-spin" />
+                            Buscando na base global...
+                          </div>
+                        )}
+                        {!buscandoGlobal && produtosGlobais.length > 0 && (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-px bg-stone-200" />
+                              <span className="text-xs text-stone-400 font-bold whitespace-nowrap">BASE GLOBAL</span>
+                              <div className="flex-1 h-px bg-stone-200" />
+                            </div>
+                            <p className="text-xs text-stone-400 text-center">Revise nome e preço após importar</p>
+                            {produtosGlobais.map(gp => (
+                              <button
+                                key={gp.id}
+                                onClick={() => handleAdicionarGlobal(gp)}
+                                className="w-full flex justify-between items-center p-3 bg-stone-50 border border-stone-200 hover:border-[#FACC15] rounded-xl text-left transition"
+                              >
+                                <div>
+                                  <p className="font-bold text-[#1A1A1A] text-sm">{gp.name}</p>
+                                  <p className="text-xs text-stone-400">
+                                    {gp.brand || ''}{gp.reference_code ? ` · ${gp.reference_code}` : ''}
+                                  </p>
+                                </div>
+                                <span className="text-xs bg-stone-200 text-stone-600 px-2 py-1 rounded-lg font-bold shrink-0 ml-2">
+                                  Global
+                                </span>
+                              </button>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

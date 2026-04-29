@@ -6,7 +6,7 @@ import { getFiscalInvoices } from "@/src/actions/fiscal_db";
 import { consultarNFSe, cancelarNota } from "@/src/actions/fiscal_emission";
 import {
     FileText, Plus, Search, Loader2, AlertCircle,
-    CheckCircle, XCircle, Clock, Download, RefreshCw, Edit, Ban, Printer, MessageCircle
+    CheckCircle, XCircle, Clock, Download, RefreshCw, Edit, Ban, Printer, MessageCircle, RotateCcw
 } from "lucide-react";
 import Link from "next/link";
 
@@ -404,6 +404,17 @@ export default function FiscalDashboard() {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex justify-end gap-2">
+                                                {isEntryInvoice(inv) && inv.status === "authorized" && (
+                                                    <Link href={`/fiscal/devolucao/${inv.id}`}>
+                                                        <button
+                                                            className="p-2 bg-orange-50 text-orange-600 hover:bg-orange-100 rounded-lg transition"
+                                                            title="Emitir nota de devolução"
+                                                        >
+                                                            <RotateCcw size={16} />
+                                                        </button>
+                                                    </Link>
+                                                )}
+
                                                 {isOutputInvoice(inv) && (inv.status === "authorized" || inv.status === "cancelled") && (
                                                     <button
                                                         onClick={() => handlePrint(inv.id)}
