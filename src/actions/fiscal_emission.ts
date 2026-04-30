@@ -91,20 +91,28 @@ function toMoneyNumber(value: unknown, fallback = 0) {
 }
 
 function getSaoPauloDatePartsWithSafety() {
+    const now = new Date();
     const parts = new Intl.DateTimeFormat("en-CA", {
         timeZone: "America/Sao_Paulo",
         year: "numeric",
         month: "2-digit",
-        day: "2-digit"
-    }).formatToParts(new Date());
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+    }).formatToParts(now);
 
-    const year = parts.find(p => p.type === "year")?.value || "2026";
-    const month = parts.find(p => p.type === "month")?.value || "01";
-    const day = parts.find(p => p.type === "day")?.value || "01";
+    const year   = parts.find(p => p.type === "year")?.value   || "2026";
+    const month  = parts.find(p => p.type === "month")?.value  || "01";
+    const day    = parts.find(p => p.type === "day")?.value    || "01";
+    const hour   = parts.find(p => p.type === "hour")?.value   || "00";
+    const minute = parts.find(p => p.type === "minute")?.value || "00";
+    const second = parts.find(p => p.type === "second")?.value || "00";
     const dCompet = `${year}-${month}-${day}`;
 
     return {
-        dhEmi: `${dCompet}T12:00:00-03:00`,
+        dhEmi: `${dCompet}T${hour}:${minute}:${second}-03:00`,
         dCompet
     };
 }
@@ -1985,8 +1993,47 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             .eq("direction", "entry")
             .single();
 
-        if (!entryInvoice?.chave_acesso) {
-            return { success: false, error: "Nota de entrada não encontrada ou sem chave de acesso." };
+        if (!entryInvoice) {
+            return { success: false, error: "Nota de entrada não encontrada." };
+        }
+
+        // Tenta recuperar chave_acesso do XML se não estiver no banco ou estiver corrompida
+        const isValidChave = (v: string) => /^[0-9]{44}$/.test(v);
+        let chaveAcesso = entryInvoice.chave_acesso || "";
+        if (!isValidChave(chaveAcesso) && entryInvoice.xml_content) {
+            try {
+                const { XMLParser } = await import("fast-xml-parser");
+                const parser = new XMLParser({
+                    ignoreAttributes: false,
+                    attributeNamePrefix: "@_",
+                    parseTagValue: false,    // mantém chNFe como string (44 dígitos não viram float)
+                    parseAttributeValue: false,
+                });
+                const xml = parser.parse(entryInvoice.xml_content);
+                // Preferência: chNFe do protNFe (mais confiável)
+                chaveAcesso = String(xml.nfeProc?.protNFe?.infProt?.chNFe || "").trim();
+                // Fallback: Id do infNFe (atributo XML)
+                if (!chaveAcesso) {
+                    const nfeProc = xml.nfeProc || xml.NFe;
+                    const infNFe = nfeProc?.NFe?.infNFe || xml.infNFe;
+                    const idAttr = infNFe?.["@_Id"] || infNFe?.Id || "";
+                    chaveAcesso = String(idAttr).replace(/^NFe/, "");
+                }
+                // Salva no banco para não precisar parsear novamente
+                if (chaveAcesso) {
+                    await supabase
+                        .from("fiscal_invoices")
+                        .update({ chave_acesso: chaveAcesso })
+                        .eq("id", payload.entry_invoice_id);
+                    console.log("[NFe Devolução] chave_acesso recuperada do XML e salva:", chaveAcesso);
+                }
+            } catch (e) {
+                console.warn("[NFe Devolução] Falha ao extrair chave do XML:", e);
+            }
+        }
+
+        if (!chaveAcesso) {
+            return { success: false, error: "Chave de acesso não encontrada na nota de entrada. Verifique se o XML foi importado corretamente." };
         }
 
         // 2. Configurações da empresa emitente
@@ -2042,13 +2089,14 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         const mesmoEstado = company.uf === fornecedorUF;
         const cfopDevolucao = mesmoEstado ? "5202" : "6202";
 
-        // 5. Próximo número de NF-e de devolução (série 1)
+        // 5. Próximo número de NF-e de devolução (série 1) — filtrado por ambiente
         const { data: lastNFe } = await supabase
             .from("fiscal_invoices")
             .select("numero")
             .eq("organization_id", payload.organization_id)
             .eq("tipo_documento", "NFe")
             .eq("direction", "output")
+            .eq("environment", env)
             .not("numero", "is", null)
             .order("created_at", { ascending: false })
             .limit(1)
@@ -2080,7 +2128,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     indPres: 9,
                     procEmi: 0,
                     verProc: "AutoEletrica 1.0",
-                    NFref: [{ refNFe: entryInvoice.chave_acesso }],
+                    NFref: [{ refNFe: chaveAcesso }],
                 },
                 emit: {
                     CNPJ: cnpjEmit,
@@ -2105,7 +2153,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     CNPJ: (entryInvoice.emitente_cnpj || "").replace(/\D/g, ""),
                     xNome: entryInvoice.emitente_nome,
                     ...(fornecedorEnd ? { enderDest: fornecedorEnd } : {}),
-                    indIEDest: fornecedorIE ? "1" : "9",
+                    indIEDest: fornecedorIE ? 1 : 9,
                     ...(fornecedorIE ? { IE: fornecedorIE } : {}),
                 },
                 det: payload.itens.map((item, idx) => ({
@@ -2145,9 +2193,9 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 transp: { modFrete: 9 },
                 pag: { detPag: [{ tPag: "90", vPag: 0 }] },
                 infRespTec: {
-                    CNPJ: cnpjEmit,
-                    xContato: (company.razao_social || "Responsavel Tecnico").substring(0, 60),
-                    email: company.email_contato || "email@exemplo.com",
+                    CNPJ: "65667543000102",
+                    xContato: "Jaime Rodrigues Jr",
+                    email: company.email_contato || "jaimerodriguesjunior@outlook.com",
                     fone: (company.telefone || "0000000000").replace(/\D/g, ""),
                 },
             },

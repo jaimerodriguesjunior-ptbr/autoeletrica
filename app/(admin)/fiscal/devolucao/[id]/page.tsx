@@ -97,14 +97,9 @@ export default function DevolucaoPage() {
             alert("Selecione ao menos um item para devolver.");
             return;
         }
-        if (!invoice?.chave_acesso) {
-            alert("Nota de entrada sem chave de acesso. Não é possível emitir devolução.");
-            return;
-        }
-
         const confirmMsg =
             `Emitir NF-e de Devolução em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?\n\n` +
-            `Fornecedor: ${invoice.emitente_nome}\n` +
+            `Fornecedor: ${invoice?.emitente_nome}\n` +
             `Itens: ${selectedItems.length}\n` +
             `Total: R$ ${valorTotal.toFixed(2)}`;
 

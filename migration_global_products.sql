@@ -15,9 +15,21 @@ CREATE TABLE IF NOT EXISTS global_products (
 -- 2. RLS: SELECT aberto a qualquer usuário autenticado
 ALTER TABLE global_products ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "global_products_select" ON global_products;
+-- Limpa todas as policies anteriores (evita erro de organization_id de tentativas antigas)
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT policyname FROM pg_policies WHERE tablename = 'global_products' LOOP
+    EXECUTE 'DROP POLICY IF EXISTS "' || r.policyname || '" ON global_products';
+  END LOOP;
+END $$;
+
 CREATE POLICY "global_products_select" ON global_products
   FOR SELECT TO authenticated USING (true);
+
+-- Permite INSERT/UPDATE via service_role (backfill e upsert_global_product)
+CREATE POLICY "global_products_insert" ON global_products
+  FOR INSERT TO authenticated WITH CHECK (true);
 
 -- 3. Coluna de rastreabilidade em products
 ALTER TABLE products ADD COLUMN IF NOT EXISTS global_product_id UUID REFERENCES global_products(id);

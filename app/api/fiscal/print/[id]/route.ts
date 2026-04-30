@@ -25,7 +25,9 @@ function buildDownloadName(invoice: any, extension: "pdf" | "xml") {
         ? "nfe-entrada"
         : invoice.tipo_documento === "NFCe"
             ? "nfce"
-            : "nfse";
+            : invoice.tipo_documento === "NFe"
+                ? "nfe-devolucao"
+                : "nfse";
 
     return `${tipoPrefix}-${invoice.numero || "documento"}.${extension}`;
 }
@@ -91,7 +93,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
             : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
 
-        const endpointType = invoice.tipo_documento === "NFCe" ? "nfce" : "nfse";
+        const endpointType = invoice.tipo_documento === "NFCe" ? "nfce"
+            : invoice.tipo_documento === "NFe" ? "nfe"
+            : "nfse";
         const pdfUrl = `${baseUrl}/${endpointType}/${invoice.nuvemfiscal_uuid}/pdf`;
 
         console.log(`[PDF Proxy] Fetching from: ${pdfUrl}`);
