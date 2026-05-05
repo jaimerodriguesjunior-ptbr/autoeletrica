@@ -38,6 +38,7 @@ type CompanySettings = {
   cep: string;
   telefone: string;
   email_contato: string;
+  email_contador?: string;
   csc_token_production?: string;
   csc_id_production?: string;
   csc_token_homologation?: string;
@@ -96,7 +97,7 @@ export default function Configuracoes() {
     inscricao_estadual: "", inscricao_municipal: "", regime_tributario: "1",
     logradouro: "", numero: "", complemento: "", bairro: "",
     codigo_municipio_ibge: "", cidade: "", uf: "", cep: "",
-    telefone: "", email_contato: "",
+    telefone: "", email_contato: "", email_contador: "",
     csc_token_production: "", csc_id_production: "",
     csc_token_homologation: "", csc_id_homologation: "",
     nfse_login: "", nfse_password: "", usa_fiscal: true, usa_caixa: true, usa_agendamento: true, usa_comissao: false,
@@ -285,6 +286,7 @@ export default function Configuracoes() {
         uf: company.uf,
         cep: company.cep,
         email_contato: company.email_contato,
+        email_contador: company.email_contador,
         telefone: company.telefone,
         csc_token_production: company.csc_token_production,
         csc_id_production: company.csc_id_production,
@@ -599,6 +601,19 @@ export default function Configuracoes() {
                     onChange={e => setCompany({ ...company, email_contato: e.target.value })}
                     className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                     placeholder="contato@empresa.com.br"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">EMAIL DO CONTADOR</label>
+                <div className="relative">
+                  <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                  <input
+                    type="email"
+                    value={company.email_contador || ''}
+                    onChange={e => setCompany({ ...company, email_contador: e.target.value })}
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                    placeholder="contador@escritorio.com.br"
                   />
                 </div>
               </div>

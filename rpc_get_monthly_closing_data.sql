@@ -17,10 +17,10 @@ BEGIN
     v_start_date := (p_year || '-' || p_month || '-01')::DATE;
     v_end_date := (v_start_date + interval '1 month')::DATE;
 
-    WITH 
+    WITH
     pecas_servicos AS (
         -- Soma Peças e Serviços de OS finalizadas que tiveram movimentação financeira no mês
-        SELECT 
+        SELECT
             COALESCE(SUM(CASE WHEN i.tipo = 'peca' AND NOT COALESCE(i.peca_cliente, false) THEN i.total_price ELSE 0 END), 0) as total_pecas,
             COALESCE(SUM(CASE WHEN i.tipo = 'servico' THEN i.total_price ELSE 0 END), 0) as total_servicos
         FROM work_orders o
@@ -28,9 +28,9 @@ BEGIN
         WHERE o.organization_id = p_organization_id
         AND o.status IN ('entregue', 'finalizado')
         AND EXISTS (
-            SELECT 1 FROM transactions t 
-            WHERE t.work_order_id = o.id 
-            AND t.date >= v_start_date 
+            SELECT 1 FROM transactions t
+            WHERE t.work_order_id = o.id
+            AND t.date >= v_start_date
             AND t.date < v_end_date
             AND t.type = 'income'
             AND t.status = 'paid'
@@ -38,7 +38,7 @@ BEGIN
     ),
     faturamento_por_cfop AS (
         -- Agrupa faturamento por CFOP (ou 5933 para serviços)
-        SELECT 
+        SELECT
             COALESCE(p.cfop, CASE WHEN i.tipo = 'servico' THEN '5933' ELSE 'Outros' END) as cfop,
             SUM(i.total_price) as total
         FROM work_orders o
@@ -48,9 +48,9 @@ BEGIN
         AND o.status IN ('entregue', 'finalizado')
         AND (i.tipo = 'servico' OR NOT COALESCE(i.peca_cliente, false))
         AND EXISTS (
-            SELECT 1 FROM transactions t 
-            WHERE t.work_order_id = o.id 
-            AND t.date >= v_start_date 
+            SELECT 1 FROM transactions t
+            WHERE t.work_order_id = o.id
+            AND t.date >= v_start_date
             AND t.date < v_end_date
             AND t.type = 'income'
             AND t.status = 'paid'
@@ -59,9 +59,9 @@ BEGIN
     ),
     meios_pagamento AS (
         -- Agrupa recebimentos (entradas) por forma de pagamento
-        SELECT 
-            COALESCE(payment_method, 
-                CASE 
+        SELECT
+            COALESCE(payment_method,
+                CASE
                     WHEN description ILIKE '%(pix)%' OR description ILIKE '% pix %' THEN 'pix'
                     WHEN description ILIKE '%(cartao_credito)%' OR description ILIKE '%credito%' THEN 'cartao_credito'
                     WHEN description ILIKE '%(cartao_debito)%' OR description ILIKE '%debito%' THEN 'cartao_debito'
@@ -81,20 +81,22 @@ BEGIN
         GROUP BY 1
     ),
     fiscal_resumo AS (
-        -- Resumo de documentos fiscais (NFC-e, NFS-e e NFe de entrada)
-        SELECT 
+        -- Resumo de documentos fiscais (NFC-e, NFS-e, NFe entrada e NFe saída/devolução)
+        SELECT
             COUNT(*) FILTER (WHERE direction = 'output' AND tipo_documento = 'NFSe' AND status = 'authorized') as autorizadas_nfse,
             COUNT(*) FILTER (WHERE direction = 'output' AND tipo_documento = 'NFSe' AND status = 'cancelled') as canceladas_nfse,
             COUNT(*) FILTER (WHERE direction = 'output' AND tipo_documento = 'NFCe' AND status = 'authorized') as autorizadas_nfce,
             COUNT(*) FILTER (WHERE direction = 'output' AND tipo_documento = 'NFCe' AND status = 'cancelled') as canceladas_nfce,
-            COUNT(*) FILTER (WHERE direction = 'entry') as entradas_qtd,
-            COALESCE(SUM(valor_total) FILTER (WHERE direction = 'entry'), 0) as entradas_valor
+            COUNT(*) FILTER (WHERE direction = 'entry' AND status != 'cancelled') as entradas_qtd,
+            COALESCE(SUM(valor_total) FILTER (WHERE direction = 'entry' AND status != 'cancelled'), 0) as entradas_valor,
+            COUNT(*) FILTER (WHERE direction = 'output' AND tipo_documento = 'NFe' AND status = 'authorized') as devolucoes_qtd,
+            COALESCE(SUM(valor_total) FILTER (WHERE direction = 'output' AND tipo_documento = 'NFe' AND status = 'authorized'), 0) as devolucoes_valor
         FROM fiscal_invoices
         WHERE organization_id = p_organization_id
         AND COALESCE(environment, 'production') != 'homologation'
         AND (
             (data_emissao >= v_start_date AND data_emissao < v_end_date)
-            OR 
+            OR
             (created_at >= v_start_date AND created_at < v_end_date)
         )
     )
@@ -108,7 +110,9 @@ BEGIN
             'autorizadas_nfce', autorizadas_nfce,
             'canceladas_nfce', canceladas_nfce,
             'entradas_qtd', entradas_qtd,
-            'entradas_valor', entradas_valor
+            'entradas_valor', entradas_valor,
+            'devolucoes_qtd', devolucoes_qtd,
+            'devolucoes_valor', devolucoes_valor
         ) FROM fiscal_resumo)
     ) INTO v_result;
 

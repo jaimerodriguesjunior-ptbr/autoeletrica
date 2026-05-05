@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/src/contexts/AuthContext";
-import { getFiscalInvoices } from "@/src/actions/fiscal_db";
+import { getFiscalInvoices, backfillEntryInvoicesChave } from "@/src/actions/fiscal_db";
 import { consultarNFSe, cancelarNota } from "@/src/actions/fiscal_emission";
 import {
     FileText, Plus, Search, Loader2, AlertCircle,
@@ -116,6 +116,10 @@ export default function FiscalDashboard() {
         try {
             const data = await getFiscalInvoices(profile.organization_id);
             setInvoices(data as Invoice[]);
+            // Corrige chave_acesso vazia em segundo plano, sem bloquear a UI
+            backfillEntryInvoicesChave(profile.organization_id).then(({ fixed }) => {
+                console.log(`[Fiscal] Backfill chaves: ${fixed} corrigida(s).`);
+            }).catch((e) => console.warn("[Fiscal] Backfill erro:", e));
         } catch (error) {
             console.error(error);
         } finally {

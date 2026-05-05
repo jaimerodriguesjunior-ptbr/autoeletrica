@@ -100,7 +100,12 @@ export default function ImportarXML() {
         setLoading(true);
         try {
             const text = await file.text();
-            const parser = new XMLParser({ ignoreAttributes: false });
+            const parser = new XMLParser({
+                ignoreAttributes: false,
+                attributeNamePrefix: "@_",
+                parseTagValue: false,
+                parseAttributeValue: false,
+            });
             const xml = parser.parse(text);
 
             const nfeProc = xml.nfeProc || xml.NFe; // Depende se tem envelope ou não
@@ -113,6 +118,28 @@ export default function ImportarXML() {
             const ide = infNFe.ide;
             const total = infNFe.total?.ICMSTot?.vNF || 0;
 
+            // Extrai chave: preferencialmente do protNFe, fallback no atributo Id do infNFe
+            let chNFe = String(xml.nfeProc?.protNFe?.infProt?.chNFe || "").trim();
+            if (!/^[0-9]{44}$/.test(chNFe)) {
+                const idAttr = infNFe["@_Id"] || "";
+                chNFe = String(idAttr).replace(/^NFe/, "").trim();
+            }
+
+            // Verificar duplicata antes de prosseguir
+            if (/^[0-9]{44}$/.test(chNFe) && profile?.organization_id) {
+                const { data: existing } = await supabase
+                    .from('fiscal_invoices')
+                    .select('numero, emitente_nome, data_emissao')
+                    .eq('chave_acesso', chNFe)
+                    .eq('organization_id', profile.organization_id)
+                    .maybeSingle();
+
+                if (existing) {
+                    const dataFormatada = new Date(existing.data_emissao).toLocaleDateString('pt-BR');
+                    throw new Error(`A Nota ${existing.numero} de ${existing.emitente_nome} já foi importada em ${dataFormatada}.`);
+                }
+            }
+
             setRawXml(text); // Guardar XML bruto
 
             setNotaInfo({
@@ -120,7 +147,7 @@ export default function ImportarXML() {
                 emitente: emit.xNome,
                 emitenteCNPJ: emit.CNPJ,
                 total: Number(total),
-                chNFe: infNFe.Id?.replace('NFe', '') || '',
+                chNFe,
                 dhEmi: ide.dhEmi || new Date().toISOString()
             });
 
@@ -213,7 +240,7 @@ export default function ImportarXML() {
                     const { data: newProd, error } = await supabase.from('products').insert({
                         organization_id: profile.organization_id,
                         nome: item.xProd,
-                        marca: notaInfo?.emitente || null,
+                        marca: null,
                         custo_contabil: item.vUnCom,
                         custo_reposicao: item.vUnCom,
                         estoque_atual: item.qCom,

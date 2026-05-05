@@ -2048,10 +2048,12 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         const cnpjEmit = (company.cnpj || company.cpf_cnpj || "").replace(/\D/g, "");
         if (!cnpjEmit) return { success: false, error: "CNPJ da empresa ausente." };
 
-        // 3. Parsear endereço e IE do fornecedor a partir do XML armazenado
+        // 3. Parsear endereço, IE e ICMS por item do XML do fornecedor
         let fornecedorEnd: any = null;
         let fornecedorIE: string | undefined;
         let fornecedorUF = "SP";
+        // cProd → ICMS original (usado para replicar destaque na devolução)
+        const itemIcmsMap = new Map<string, { vBC: number; pICMS: number; modBC: number; vProd: number }>();
 
         if (entryInvoice.xml_content) {
             try {
@@ -2080,6 +2082,25 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 if (ie && String(ie) !== "ISENTO") {
                     fornecedorIE = String(ie).replace(/\D/g, "");
                 }
+                // Extrair ICMS por item para replicar destaque na devolução (CSOSN 900)
+                let dets = infNFe?.det;
+                if (dets && !Array.isArray(dets)) dets = [dets];
+                for (const det of (dets || [])) {
+                    const cProd = String(det.prod?.cProd || "");
+                    const vProd = Number(det.prod?.vProd || 0);
+                    if (!cProd || !vProd) continue;
+                    const icmsGroup = det?.imposto?.ICMS;
+                    if (!icmsGroup) continue;
+                    const icmsValues = Object.values(icmsGroup)[0] as any;
+                    const vICMS = Number(icmsValues?.vICMS || 0);
+                    if (vICMS <= 0) continue;
+                    itemIcmsMap.set(cProd, {
+                        vBC: Number(icmsValues?.vBC || vProd),
+                        pICMS: Number(icmsValues?.pICMS || 0),
+                        modBC: Number(icmsValues?.modBC ?? 3),
+                        vProd,
+                    });
+                }
             } catch (e) {
                 console.warn("[NFe Devolução] Falha ao parsear XML:", e);
             }
@@ -2105,7 +2126,61 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         const nfeNumber = lastNFe?.numero ? parseInt(lastNFe.numero) + 1 : 1;
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
 
-        // 6. Montar payload NF-e
+        // 6. Precomputar itens com ICMS proporcional à quantidade devolvida
+        // Se o fornecedor destacou ICMS na nota original, a devolução deve espelhar (CSOSN 900)
+        const detItemsComputed = payload.itens.map((item, idx) => {
+            const originalIcms = itemIcmsMap.get(item.codigo || "");
+            const itemVProd = toMoneyNumber(item.valor_total);
+            let icmsImposto: any;
+            let vBC_item = 0;
+            let vICMS_item = 0;
+
+            if (originalIcms && originalIcms.vProd > 0) {
+                // BC da devolução = só o valor da mercadoria (sem frete/outros da nota original)
+                vBC_item = itemVProd;
+                const pICMS = originalIcms.pICMS;
+                vICMS_item = toMoneyNumber(vBC_item * pICMS / 100);
+                icmsImposto = {
+                    ICMSSN900: { orig: 0, CSOSN: "900", modBC: 3, vBC: vBC_item, pICMS, vICMS: vICMS_item },
+                };
+            } else {
+                icmsImposto = { ICMSSN102: { orig: 0, CSOSN: "102" } };
+            }
+
+            return {
+                det: {
+                    nItem: idx + 1,
+                    prod: {
+                        cProd: item.codigo || String(idx + 1),
+                        cEAN: "SEM GTIN",
+                        xProd: item.descricao,
+                        NCM: item.ncm || "00000000",
+                        CFOP: cfopDevolucao,
+                        uCom: item.unidade,
+                        qCom: item.quantidade,
+                        vUnCom: toMoneyNumber(item.valor_unitario),
+                        vProd: itemVProd,
+                        cEANTrib: "SEM GTIN",
+                        uTrib: item.unidade,
+                        qTrib: item.quantidade,
+                        vUnTrib: toMoneyNumber(item.valor_unitario),
+                        indTot: 1,
+                    },
+                    imposto: {
+                        ICMS: icmsImposto,
+                        PIS: { PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 } },
+                        COFINS: { COFINSOutr: { CST: "99", vBC: 0, pCOFINS: 0, vCOFINS: 0 } },
+                    },
+                },
+                vBC: vBC_item,
+                vICMS: vICMS_item,
+            };
+        });
+
+        const totalVBC = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.vBC, 0));
+        const totalVICMS = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.vICMS, 0));
+
+        // 7. Montar payload NF-e
         const nfePayload = {
             ambiente: env === "production" ? "producao" : "homologacao",
             infNFe: {
@@ -2156,33 +2231,10 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     indIEDest: fornecedorIE ? 1 : 9,
                     ...(fornecedorIE ? { IE: fornecedorIE } : {}),
                 },
-                det: payload.itens.map((item, idx) => ({
-                    nItem: idx + 1,
-                    prod: {
-                        cProd: item.codigo || String(idx + 1),
-                        cEAN: "SEM GTIN",
-                        xProd: item.descricao,
-                        NCM: item.ncm || "00000000",
-                        CFOP: cfopDevolucao,
-                        uCom: item.unidade,
-                        qCom: item.quantidade,
-                        vUnCom: toMoneyNumber(item.valor_unitario),
-                        vProd: toMoneyNumber(item.valor_total),
-                        cEANTrib: "SEM GTIN",
-                        uTrib: item.unidade,
-                        qTrib: item.quantidade,
-                        vUnTrib: toMoneyNumber(item.valor_unitario),
-                        indTot: 1,
-                    },
-                    imposto: {
-                        ICMS: { ICMSSN102: { orig: 0, CSOSN: "102" } },
-                        PIS: { PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 } },
-                        COFINS: { COFINSOutr: { CST: "99", vBC: 0, pCOFINS: 0, vCOFINS: 0 } },
-                    },
-                })),
+                det: detItemsComputed.map((d) => d.det),
                 total: {
                     ICMSTot: {
-                        vBC: 0, vICMS: 0, vICMSDeson: 0, vFCP: 0,
+                        vBC: totalVBC, vICMS: totalVICMS, vICMSDeson: 0, vFCP: 0,
                         vBCST: 0, vST: 0, vFCPST: 0, vFCPSTRet: 0,
                         vProd: toMoneyNumber(payload.valor_total),
                         vFrete: 0, vSeg: 0, vDesc: 0, vII: 0,

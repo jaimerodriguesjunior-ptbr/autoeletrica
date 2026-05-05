@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { GlobalAppointmentAlert } from "../../src/components/GlobalAppointmentAlert";
+import { ClosingAutoSend } from "../../src/components/ClosingAutoSend";
 
 export default function AdminLayout({
   children,
@@ -256,6 +257,7 @@ export default function AdminLayout({
       {/* ÁREA DE CONTEÚDO */}
       <main className="flex-1 min-w-0 h-screen overflow-y-auto thin-scrollbar flex flex-col">
         <GlobalAppointmentAlert />
+        <ClosingAutoSend />
 
         <header className={`sticky top-0 z-30 bg-[#F8F7F2]/95 backdrop-blur-md px-6 py-4 flex justify-between items-center shadow-sm ${isOwner ? "lg:hidden" : ""}`}>
           {isOwner && (

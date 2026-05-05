@@ -11,12 +11,17 @@ import {
     ArrowUpRight,
     Loader2,
     FileArchive,
-    FileText
+    FileText,
+    Mail,
+    CheckCircle,
+    AlertCircle,
+    X
 } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { getClosingLog } from "@/src/actions/closing_log";
 
 type ClosingData = {
     faturamento: {
@@ -38,6 +43,8 @@ type ClosingData = {
         canceladas_nfce: number;
         entradas_qtd: number;
         entradas_valor: number;
+        devolucoes_qtd: number;
+        devolucoes_valor: number;
     };
 };
 
@@ -106,6 +113,116 @@ export default function FechamentoMensal() {
     }, [profile, month, year, supabase]);
 
     const [exporting, setExporting] = useState(false);
+    const [sendingEmail, setSendingEmail] = useState(false);
+
+    type ClosingLog = { id?: string; year: number; month: number; sent_at: string; status: string; error_message: string | null } | null;
+    const [closingLog, setClosingLog] = useState<ClosingLog>(null);
+    const [bannerDismissed, setBannerDismissed] = useState(false);
+
+    const buildZipBlob = async (): Promise<{ blob: Blob; folderName: string }> => {
+        if (!profile?.organization_id || !data) throw new Error("Dados não disponíveis");
+        const zip = new JSZip();
+        const folderName = `Fechamento_${MONTHS[month]}_${year}`;
+        const root = zip.folder(folderName);
+        if (!root) throw new Error("Erro ao criar pasta no ZIP");
+
+        const csvContent = [
+            ["RELATORIO DE FECHAMENTO MENSAL"],
+            ["Periodo", `${MONTHS[month]} / ${year}`],
+            ["Empresa ID", profile.organization_id],
+            [""],
+            ["FATURAMENTO"],
+            ["Venda de Pecas", data.faturamento.total_pecas.toFixed(2)],
+            ["Prestacao de Servicos", data.faturamento.total_servicos.toFixed(2)],
+            ["Total Bruto", (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
+            [""],
+            ["FATURAMENTO POR CFOP"],
+            ...data.faturamento_por_cfop.map(c => [c.cfop, c.total.toFixed(2)]),
+            [""],
+            ["MOVIMENTACAO FISCAL"],
+            ["NFS-e Emitidas (Servicos)", data.fiscal.autorizadas_nfse],
+            ["NFC-e Emitidas (Pecas)", data.fiscal.autorizadas_nfce],
+            ["Canceladas (NFS-e + NFC-e)", data.fiscal.canceladas_nfse + data.fiscal.canceladas_nfce],
+            ["NFe Compras (Qtd)", data.fiscal.entradas_qtd],
+            ["NFe Compras (Valor)", data.fiscal.entradas_valor.toFixed(2)],
+            ["NF-e Devolucoes (Qtd)", data.fiscal.devolucoes_qtd],
+            ["NF-e Devolucoes (Valor)", data.fiscal.devolucoes_valor.toFixed(2)],
+            [""],
+            ["MEIOS DE PAGAMENTO"],
+            ...data.pagamentos.map(p => [PAYMENT_METHOD_LABELS[p.metodo] || p.metodo, p.total.toFixed(2)])
+        ].map(e => e.join(";")).join("\n");
+        root.file("Resumo_Fechamento.csv", "﻿" + csvContent);
+
+        const pdfDoc = new jsPDF();
+        pdfDoc.setFontSize(16);
+        pdfDoc.text("Relatório de Fechamento Mensal", 14, 20);
+        pdfDoc.setFontSize(10);
+        pdfDoc.text(`Período: ${MONTHS[month]} / ${year}`, 14, 28);
+        pdfDoc.text(`Empresa ID: ${profile.organization_id}`, 14, 34);
+        autoTable(pdfDoc, {
+            startY: 42,
+            head: [['Faturamento', 'Valor (R$)']],
+            body: [
+                ['Venda de Peças (Produtos)', data.faturamento.total_pecas.toFixed(2)],
+                ['Prestação de Serviços', data.faturamento.total_servicos.toFixed(2)],
+                ['Total Bruto', (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
+            ]
+        });
+        autoTable(pdfDoc, {
+            startY: (pdfDoc as any).lastAutoTable.finalY + 10,
+            head: [['Faturamento por CFOP', 'Valor (R$)']],
+            body: data.faturamento_por_cfop.map(c => [c.cfop === '5933' ? '5933 (Serviço)' : c.cfop, c.total.toFixed(2)])
+        });
+        autoTable(pdfDoc, {
+            startY: (pdfDoc as any).lastAutoTable.finalY + 10,
+            head: [['Movimentação Fiscal', 'Quantidade / Valor']],
+            body: [
+                ['NFS-e Emitidas (Serviços)', data.fiscal.autorizadas_nfse.toString()],
+                ['NFC-e Emitidas (Peças)', data.fiscal.autorizadas_nfce.toString()],
+                ['Canceladas (NFS-e + NFC-e)', (data.fiscal.canceladas_nfse + data.fiscal.canceladas_nfce).toString()],
+                ['NFe Compras — Qtd', data.fiscal.entradas_qtd.toString()],
+                ['NFe Compras — Valor (R$)', data.fiscal.entradas_valor.toFixed(2)],
+                ['NF-e Devoluções — Qtd', data.fiscal.devolucoes_qtd.toString()],
+                ['NF-e Devoluções — Valor (R$)', data.fiscal.devolucoes_valor.toFixed(2)],
+            ]
+        });
+        autoTable(pdfDoc, {
+            startY: (pdfDoc as any).lastAutoTable.finalY + 10,
+            head: [['Meios de Pagamento', 'Valor (R$)']],
+            body: data.pagamentos.map(p => [PAYMENT_METHOD_LABELS[p.metodo] || p.metodo, p.total.toFixed(2)])
+        });
+        root.file("Resumo_Fechamento.pdf", pdfDoc.output('arraybuffer'));
+
+        const startDate = new Date(year, month, 1).toISOString();
+        const endDate = new Date(year, month + 1, 1).toISOString();
+        const baseFields = 'id, direction, xml_content, xml_url, chave_acesso, numero, status, data_emissao, created_at';
+        const [{ data: datedFiscalFiles }, { data: fallbackFiscalFiles }] = await Promise.all([
+            supabase.from('fiscal_invoices').select(baseFields)
+                .eq('organization_id', profile.organization_id).neq('environment', 'homologation')
+                .gte('data_emissao', startDate).lt('data_emissao', endDate),
+            supabase.from('fiscal_invoices').select(baseFields)
+                .eq('organization_id', profile.organization_id).neq('environment', 'homologation')
+                .is('data_emissao', null).gte('created_at', startDate).lt('created_at', endDate)
+        ]);
+        const fiscalFiles = [...(datedFiscalFiles || []), ...(fallbackFiscalFiles || [])]
+            .filter((d, i, arr) => arr.findIndex(x => x.id === d.id) === i);
+        if (fiscalFiles.length > 0) {
+            const outFolder = root.folder("XMLs_Saida_Vendas");
+            const inFolder = root.folder("XMLs_Entrada_Compras");
+            const cancelFolder = root.folder("XMLs_Cancelados");
+            for (const d of fiscalFiles) {
+                let xmlContent = d.xml_content;
+                if (!xmlContent && d.xml_url) xmlContent = await fetchXmlText(d.xml_url);
+                if (xmlContent) {
+                    const xmlFileName = `${d.numero || d.chave_acesso || 'doc'}.xml`;
+                    if (d.status === 'cancelled' && cancelFolder) cancelFolder.file(`Cancelado_${xmlFileName}`, xmlContent);
+                    else if (d.direction === 'output' && outFolder) outFolder.file(xmlFileName, xmlContent);
+                    else if (d.direction === 'entry' && inFolder) inFolder.file(xmlFileName, xmlContent);
+                }
+            }
+        }
+        return { blob: await zip.generateAsync({ type: "blob" }), folderName };
+    };
 
     const handleExportZip = async () => {
         if (!profile?.organization_id || !data) return;
@@ -138,6 +255,8 @@ export default function FechamentoMensal() {
                 ["Canceladas (NFS-e + NFC-e)", data.fiscal.canceladas_nfse + data.fiscal.canceladas_nfce],
                 ["NFe Compras (Qtd)", data.fiscal.entradas_qtd],
                 ["NFe Compras (Valor)", data.fiscal.entradas_valor.toFixed(2)],
+                ["NF-e Devolucoes (Qtd)", data.fiscal.devolucoes_qtd],
+                ["NF-e Devolucoes (Valor)", data.fiscal.devolucoes_valor.toFixed(2)],
                 [""],
                 ["MEIOS DE PAGAMENTO"],
                 ...data.pagamentos.map(p => [PAYMENT_METHOD_LABELS[p.metodo] || p.metodo, p.total.toFixed(2)])
@@ -182,7 +301,9 @@ export default function FechamentoMensal() {
                     ['NFC-e Emitidas (Peças)', data.fiscal.autorizadas_nfce.toString()],
                     ['Canceladas (NFS-e + NFC-e)', (data.fiscal.canceladas_nfse + data.fiscal.canceladas_nfce).toString()],
                     ['NFe Compras (Qtd)', data.fiscal.entradas_qtd.toString()],
-                    ['NFe Compras (Valor)', data.fiscal.entradas_valor.toFixed(2)]
+                    ['NFe Compras (Valor)', data.fiscal.entradas_valor.toFixed(2)],
+                    ['NF-e Devoluções (Qtd)', data.fiscal.devolucoes_qtd.toString()],
+                    ['NF-e Devoluções (Valor R$)', data.fiscal.devolucoes_valor.toFixed(2)],
                 ]
             });
 
@@ -260,9 +381,51 @@ export default function FechamentoMensal() {
         }
     };
 
+    const handleSendEmailContador = async (isAuto = false) => {
+        if (sendingEmail) return;
+        setSendingEmail(true);
+        const period = { year, month: month + 1 };
+        try {
+            const { blob, folderName } = await buildZipBlob();
+            const base64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            const res = await fetch("/api/email/zip-contador", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ zipBase64: base64, fileName: `${folderName}.zip`, year: period.year, month: period.month }),
+            });
+            const json = await res.json();
+            if (!res.ok || !json.success) throw new Error(json.error || "Erro ao enviar");
+            const updatedLog = await getClosingLog(period.year, period.month);
+            setClosingLog(updatedLog);
+            setBannerDismissed(false);
+            if (!isAuto) alert("E-mail enviado com sucesso para o contador!");
+        } catch (err: any) {
+            console.error("Erro ao enviar e-mail para o contador:", err);
+            const updatedLog = await getClosingLog(period.year, period.month);
+            setClosingLog(updatedLog ?? { year: period.year, month: period.month, sent_at: new Date().toISOString(), status: 'error', error_message: err.message || "Erro ao enviar" });
+            setBannerDismissed(false);
+            if (!isAuto) alert(err.message || "Erro ao enviar e-mail.");
+        } finally {
+            setSendingEmail(false);
+        }
+    };
+
     useEffect(() => {
         fetchClosingData();
     }, [fetchClosingData]);
+
+    useEffect(() => {
+        if (!profile?.organization_id) return;
+        getClosingLog(year, month + 1).then(log => {
+            setClosingLog(log);
+            setBannerDismissed(false);
+        });
+    }, [profile, year, month]);
 
     const totalGeral = (data?.faturamento.total_pecas || 0) + (data?.faturamento.total_servicos || 0);
 
@@ -301,13 +464,50 @@ export default function FechamentoMensal() {
                     <button
                         className="flex items-center gap-2 bg-stone-900 hover:bg-stone-800 text-white px-4 py-1.5 rounded-md font-medium text-sm shadow-sm transition-colors disabled:opacity-70"
                         onClick={handleExportZip}
-                        disabled={exporting || loading}
+                        disabled={exporting || sendingEmail || loading}
                     >
                         {exporting ? <Loader2 className="animate-spin text-stone-300" size={16} /> : <FileArchive className="text-stone-300" size={16} />}
-                        {exporting ? "Gerando ZIP..." : "Exportar Contabilidade (.zip)"}
+                        {exporting ? "Gerando ZIP..." : "Exportar (.zip)"}
+                    </button>
+                    <button
+                        className="flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white px-4 py-1.5 rounded-md font-medium text-sm shadow-sm transition-colors disabled:opacity-70"
+                        onClick={handleSendEmailContador}
+                        disabled={exporting || sendingEmail || loading}
+                        title="Envia o ZIP de contabilidade para o e-mail do contador cadastrado nas configurações"
+                    >
+                        {sendingEmail ? <Loader2 className="animate-spin" size={16} /> : <Mail size={16} />}
+                        {sendingEmail ? "Enviando..." : "Enviar para Contador"}
                     </button>
                 </div>
             </div>
+
+            {closingLog && !bannerDismissed && (
+                <div className={`flex items-center justify-between px-4 py-3 rounded-lg mb-4 text-sm font-medium ${
+                    closingLog.status === 'success'
+                        ? 'bg-green-50 border border-green-200 text-green-800'
+                        : 'bg-red-50 border border-red-200 text-red-800'
+                }`}>
+                    <div className="flex items-center gap-2">
+                        {closingLog.status === 'success'
+                            ? <CheckCircle size={16} />
+                            : <AlertCircle size={16} />
+                        }
+                        <span>
+                            {closingLog.status === 'success'
+                                ? `Fechamento de ${MONTHS[closingLog.month - 1]}/${closingLog.year} enviado ao contador em ${new Date(closingLog.sent_at).toLocaleString('pt-BR')}.`
+                                : `Erro ao enviar fechamento de ${MONTHS[closingLog.month - 1]}/${closingLog.year}: ${closingLog.error_message || 'Erro desconhecido'}`
+                            }
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => setBannerDismissed(true)}
+                        className="ml-4 hover:opacity-70 transition-opacity"
+                        title="Fechar"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
 
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-20 bg-stone-50 rounded-lg border border-stone-200 border-dashed">

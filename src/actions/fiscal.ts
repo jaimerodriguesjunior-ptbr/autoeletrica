@@ -20,6 +20,7 @@ type CompanyData = {
     uf: string;
     cep: string;
     email_contato: string;
+    email_contador?: string;
     telefone: string;
     csc_token_production?: string;
     csc_id_production?: string;
@@ -111,6 +112,7 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
             uf: data.uf,
             cep: data.cep,
             email_contato: data.email_contato,
+            email_contador: data.email_contador,
             telefone: data.telefone,
             csc_id_production: data.csc_id_production,
             csc_id_homologation: data.csc_id_homologation,

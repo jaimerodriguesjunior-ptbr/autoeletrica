@@ -222,6 +222,68 @@ export async function getEntryInvoiceWithItems(invoiceId: string) {
     return { invoice, items };
 }
 
+export async function backfillEntryInvoicesChave(organizationId: string) {
+    const supabase = createClient();
+
+    const { data: allEntries } = await supabase
+        .from("fiscal_invoices")
+        .select("id, xml_content, chave_acesso")
+        .eq("organization_id", organizationId)
+        .eq("direction", "entry")
+        .not("xml_content", "is", null);
+
+    const invoices = (allEntries || []).filter(
+        (inv) => !inv.chave_acesso || !/^[0-9]{44}$/.test(inv.chave_acesso)
+    );
+
+    if (!invoices.length) return { fixed: 0 };
+
+    const { XMLParser } = await import("fast-xml-parser");
+    const parser = new XMLParser({
+        ignoreAttributes: false,
+        attributeNamePrefix: "@_",
+        parseTagValue: false,
+        parseAttributeValue: false,
+    });
+
+    console.log(`[Backfill] ${invoices.length} nota(s) com chave vazia para corrigir.`);
+
+    let fixed = 0;
+    for (const invoice of invoices) {
+        if (!invoice.xml_content) continue;
+        try {
+            const xml = parser.parse(invoice.xml_content);
+
+            // Diagnóstico: ver estrutura raiz do XML
+            const rootKeys = Object.keys(xml).join(", ");
+            let chave = String(xml.nfeProc?.protNFe?.infProt?.chNFe || "").trim();
+
+            if (!/^[0-9]{44}$/.test(chave)) {
+                const nfeProc = xml.nfeProc || xml.NFe;
+                const infNFe = nfeProc?.NFe?.infNFe || xml.infNFe;
+                const idAttr = infNFe?.["@_Id"] || "";
+                chave = String(idAttr).replace(/^NFe/, "").trim();
+                console.log(`[Backfill] id=${invoice.id} rootKeys=${rootKeys} idAttr=${idAttr} chave=${chave.substring(0, 10)}...`);
+            }
+
+            if (/^[0-9]{44}$/.test(chave)) {
+                await supabase
+                    .from("fiscal_invoices")
+                    .update({ chave_acesso: chave })
+                    .eq("id", invoice.id);
+                fixed++;
+            } else {
+                console.warn(`[Backfill] id=${invoice.id} — chave não encontrada. rootKeys=${rootKeys}`);
+            }
+        } catch (e: any) {
+            console.warn(`[Backfill] id=${invoice.id} erro: ${e.message}`);
+        }
+    }
+
+    console.log(`[Backfill] Concluído. ${fixed} corrigida(s).`);
+    return { fixed };
+}
+
 export async function updateProductNCM(productId: string, ncm: string) {
     const supabase = createClient();
 
