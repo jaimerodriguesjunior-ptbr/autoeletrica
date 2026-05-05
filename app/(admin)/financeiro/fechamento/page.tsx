@@ -471,7 +471,7 @@ export default function FechamentoMensal() {
                     </button>
                     <button
                         className="flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white px-4 py-1.5 rounded-md font-medium text-sm shadow-sm transition-colors disabled:opacity-70"
-                        onClick={handleSendEmailContador}
+                        onClick={() => handleSendEmailContador()}
                         disabled={exporting || sendingEmail || loading}
                         title="Envia o ZIP de contabilidade para o e-mail do contador cadastrado nas configurações"
                     >

@@ -37,34 +37,42 @@ async function getOrgId(): Promise<string | null> {
 }
 
 export async function POST(req: NextRequest) {
+    let orgId: string | null = null;
+    let year: number | null = null;
+    let month: number | null = null;
+
+    const saveLog = async (status: string, errorMessage?: string) => {
+        if (!orgId || !year || !month) return;
+        try {
+            const { createAdminClient } = await import('@/src/utils/supabase/admin');
+            const supabaseAdmin = createAdminClient();
+            await supabaseAdmin.from("monthly_closing_log").upsert({
+                organization_id: orgId,
+                year: Number(year),
+                month: Number(month),
+                sent_at: new Date().toISOString(),
+                status,
+                error_message: errorMessage || null,
+            }, { onConflict: 'organization_id,year,month' });
+        } catch (e) {
+            console.error("[Email Contador] Erro ao salvar log:", e);
+        }
+    };
+
     try {
-        const orgId = await getOrgId();
+        orgId = await getOrgId();
         if (!orgId) {
             return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
         }
 
-        const { zipBase64, fileName, year, month } = await req.json();
+        const body = await req.json();
+        const { zipBase64, fileName } = body;
+        year = body.year;
+        month = body.month;
+        
         if (!zipBase64 || !fileName) {
             return NextResponse.json({ error: "ZIP ou nome do arquivo ausente" }, { status: 400 });
         }
-
-        const saveLog = async (status: string, errorMessage?: string) => {
-            if (!year || !month) return;
-            try {
-                const { createAdminClient } = await import('@/src/utils/supabase/admin');
-                const supabaseAdmin = createAdminClient();
-                await supabaseAdmin.from("monthly_closing_log").upsert({
-                    organization_id: orgId,
-                    year: Number(year),
-                    month: Number(month),
-                    sent_at: new Date().toISOString(),
-                    status,
-                    error_message: errorMessage || null,
-                }, { onConflict: 'organization_id,year,month' });
-            } catch (e) {
-                console.error("[Email Contador] Erro ao salvar log:", e);
-            }
-        };
 
         // Buscar email do contador e nome da empresa
         const cookieStore = cookies();
