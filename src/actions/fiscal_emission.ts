@@ -1360,7 +1360,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                 console.log("[NuvemFiscal] Detectado erro 00229. Tentando reenvio sem endereço do tomador...");
 
                 if (dpsPayload.infDPS.toma && dpsPayload.infDPS.toma.end) {
-                    delete dpsPayload.infDPS.toma.end;
+                    (dpsPayload.infDPS.toma as any).end = undefined;
 
                     console.log("[NuvemFiscal] Reenviando payload modificado (sem endereço)...");
 
