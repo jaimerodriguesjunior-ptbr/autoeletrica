@@ -352,8 +352,10 @@ EDITAR OU EXCLUIR LANÇAMENTO
 - Lançamentos originados de fechamento de OS não podem ser editados aqui — precisam ser corrigidos na própria OS.
 
 FECHAMENTO PARA CONTADOR (módulo fiscal)
-- Botão "Fechamento p/ Contador" nas Ações Rápidas.
-- Gera relatório consolidado do período com movimentações e notas fiscais para envio ao contador.
+- Botão "Fechamento p/ Contador" nas Ações Rápidas da tela do Caixa.
+- Gera relatório consolidado do período com movimentações e notas fiscais. Você pode baixar em ZIP ou clicar no botão "Enviar para Contador".
+- O sistema também tem uma função de envio automático desse fechamento todo dia primeiro do mês por e-mail para a contabilidade.
+- OBRIGATÓRIO: Para que o envio automático ou manual de e-mail funcione, é preciso que o "E-mail do Contador" esteja registrado na aba Dados da Oficina, em Configurações.
 
 RELATÓRIOS DETALHADOS
 - Botão "Relatórios Detalhados" (ícone de gráfico) nas Ações Rápidas.
@@ -554,6 +556,7 @@ ABA 1 — DADOS DA OFICINA:
   - CNPJ.
   - Inscrição Estadual e Inscrição Municipal.
   - Telefone/WhatsApp, Email de contato.
+  - E-mail do Contador: obrigatório ser preenchido para que a oficina consiga despachar o fechamento de caixa por email de forma manual ou automática.
   - CEP, Logradouro, Número, Bairro, Complemento, Cidade, UF e Código IBGE.
 - Telefone:
   - Preencher com DDD (ex: 11987654321).
