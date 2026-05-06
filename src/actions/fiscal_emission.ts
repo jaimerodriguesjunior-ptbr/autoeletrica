@@ -1049,22 +1049,30 @@ export async function emitirNFSe(payload: EmissionPayload) {
                     const phoneToSend = clientPhone || companyPhone;
                     const clientEmail = payload.cliente.email?.trim();
 
-                    let blockEnd = undefined;
-                    if (payload.cliente.endereco && payload.cliente.endereco.logradouro) {
-                        const cleanCep = payload.cliente.endereco.cep?.replace(/\D/g, "");
-                        // O CEP deve ter exatos 8 dígitos para a Nuvem Fiscal / NFSe
-                        if (cleanCep && cleanCep.length === 8) {
-                            blockEnd = {
-                                xLgr: payload.cliente.endereco.logradouro,
-                                nro: payload.cliente.endereco.numero || "SN",
-                                xBairro: payload.cliente.endereco.bairro || "Centro",
-                                endNac: {
-                                    cMun: normalizeMunicipio(payload.cliente.endereco.codigo_municipio),
-                                    CEP: cleanCep
-                                }
-                            };
-                        }
+                    const addressRaw = payload.cliente.endereco || {};
+                    const logradouro = addressRaw.logradouro || addressRaw.rua || "";
+                    const bairro = addressRaw.bairro || "";
+                    const numero = addressRaw.numero || "";
+                    const cepRaw = addressRaw.cep || "";
+                    
+                    let cleanCep = cepRaw.replace(/\D/g, "");
+                    if (cleanCep.length !== 8) {
+                        cleanCep = company?.cep?.replace(/\D/g, "") || "85980000"; // Fallback
                     }
+
+                    const finalLogradouro = logradouro.trim() || "Nao Informado";
+                    const finalBairro = bairro.trim() || "Centro";
+                    const finalNumero = numero.trim() || "SN";
+
+                    const blockEnd = {
+                        xLgr: finalLogradouro,
+                        nro: finalNumero,
+                        xBairro: finalBairro,
+                        endNac: {
+                            cMun: normalizeMunicipio(addressRaw.codigo_municipio),
+                            CEP: cleanCep
+                        }
+                    };
 
                     return {
                         CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
@@ -1234,10 +1242,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
         const debugMini = `[DEBUG NFSe vServ=${totalServicosFinal} itens=${payload.itens.map(i => toMoneyNumber(i.valor_total, 0).toFixed(2)).join("+")} cTribNac=${dpsPayload.infDPS.serv.cServ.cTribNac} cTribMun=${dpsPayload.infDPS.serv.cServ.cTribMun}]`;
 
-
-
         if (!response.ok) {
-
             const errorDetails = result.error?.message || JSON.stringify(result);
 
             console.error("[NuvemFiscal] Erro detalhado:", errorDetails);
@@ -1260,29 +1265,105 @@ export async function emitirNFSe(payload: EmissionPayload) {
                 return {
                     success: false,
                     error:
-                        `Erro NuvemFiscal: ${errorDetails}
-` +
+                        `Erro NuvemFiscal: ${errorDetails}\n` +
                         "Diagnóstico Toledo Produção: verifique na Nuvem Fiscal (ambiente Produção) o cadastro da empresa, configuração NFS-e (login/IM), prestador ativo e a numeração de lote/RPS sem reutilização." +
                         ` ${debugMini}`
                 };
             }
 
-            // AUTO-RETRY LOGIC PARA ERRO 00229 (Endereço já cadastrado)
-            // "00229: O Tomador do serviço possui cadastro econômico no município. Não é possível inserir um novo endereço.."
-            // OBS: Verificando "229", "cadastr" e "endere" (sem sufixo) para evitar problemas de encoding (ex: endereço)
+            let isRecovered = false;
+
+            // AUTO-RETRY LOGIC PARA ERRO 00209 (RPS já utilizado / Identificador de arquivo duplicado)
             if (
-                fullErrorString.includes("229") ||
-                (fullErrorString.includes("cadastr") && (fullErrorString.includes("endere") || fullErrorString.includes("endereco")))
+                fullErrorString.includes("00209") ||
+                normalizedError.includes("identificador de arquivo")
+            ) {
+                console.log("[NuvemFiscal] Detectado erro 00209 (RPS duplicado). Tentando auto-recuperar incrementando a sequência do RPS...");
+                try {
+                    const cnpjLimpo = cnpj.replace(/\D/g, "");
+                    const configRes = await fetch(`${baseUrl}/empresas/${cnpjLimpo}/nfse`, {
+                        headers: { "Authorization": `Bearer ${token}` }
+                    });
+
+                    if (configRes.ok) {
+                        const config = await configRes.json();
+                        if (config.rps && typeof config.rps.numero === 'number') {
+                            const newNumber = config.rps.numero + 1;
+                            console.log(`[NuvemFiscal] RPS atual é ${config.rps.numero}. Atualizando para ${newNumber}...`);
+                            
+                            const updateRes = await fetch(`${baseUrl}/empresas/${cnpjLimpo}/nfse`, {
+                                method: "PUT",
+                                headers: {
+                                    "Authorization": `Bearer ${token}`,
+                                    "Content-Type": "application/json"
+                                },
+                                body: JSON.stringify({ rps: { ...config.rps, numero: newNumber } })
+                            });
+
+                            if (updateRes.ok) {
+                                console.log("[NuvemFiscal] RPS incrementado com sucesso! Reenviando DPS...");
+                                
+                                const retryResponse = await fetch(`${baseUrl}/nfse/dps`, {
+                                    method: "POST",
+                                    headers: {
+                                        "Authorization": `Bearer ${token}`,
+                                        "Content-Type": "application/json"
+                                    },
+                                    body: JSON.stringify(dpsPayload)
+                                });
+
+                                const retryResponseText = await retryResponse.text();
+                                let retryResult;
+                                try { retryResult = retryResponseText ? JSON.parse(retryResponseText) : {}; } catch (e) { retryResult = {}; }
+
+                                if (retryResponse.ok) {
+                                    result = retryResult;
+                                    isRecovered = true;
+                                    console.log("[NuvemFiscal] Auto-recovery do RPS funcionou!");
+                                } else {
+                                    const retryErrorString = JSON.stringify(retryResult);
+                                    await supabase.from("fiscal_invoices").update({
+                                        status: "error",
+                                        error_message: `Falha no auto-recovery RPS. Tentativa 1: ${fullErrorString} | Tentativa 2: ${retryErrorString}`
+                                    }).eq("id", invoice.id);
+                                    return { success: false, error: `Erro NuvemFiscal (Recovery de RPS falhou): ${retryErrorString} ${debugMini}` };
+                                }
+                            } else {
+                                console.warn("[NuvemFiscal] Falha ao atualizar config na API:", await updateRes.text());
+                            }
+                        } else {
+                            console.warn("[NuvemFiscal] Configuração de RPS não retornou a sequência esperada.");
+                        }
+                    } else {
+                        console.warn("[NuvemFiscal] Falha ao buscar config NFSe:", await configRes.text());
+                    }
+                } catch (e: any) {
+                    console.error("[NuvemFiscal] Erro durante auto-recovery 00209:", e);
+                }
+
+                if (!isRecovered) {
+                    await supabase.from("fiscal_invoices").update({
+                        status: "error",
+                        error_message: fullErrorString
+                    }).eq("id", invoice.id);
+                    return { success: false, error: `Erro NuvemFiscal: O RPS já foi utilizado (Erro 209). O sistema tentou corrigir automaticamente mas falhou. Vá ao site da Nuvem Fiscal e atualize o Próximo Número do RPS manualmente. ${debugMini}` };
+                }
+            }
+
+            // AUTO-RETRY LOGIC PARA ERRO 00229 (Endereço já cadastrado)
+            else if (
+                !isRecovered && (
+                    fullErrorString.includes("229") ||
+                    (fullErrorString.includes("cadastr") && (fullErrorString.includes("endere") || fullErrorString.includes("endereco")))
+                )
             ) {
                 console.log("[NuvemFiscal] Detectado erro 00229. Tentando reenvio sem endereço do tomador...");
 
-                // Remove o endereço do payload original
                 if (dpsPayload.infDPS.toma && dpsPayload.infDPS.toma.end) {
                     delete dpsPayload.infDPS.toma.end;
 
                     console.log("[NuvemFiscal] Reenviando payload modificado (sem endereço)...");
 
-                    // Tenta enviar novamente
                     const retryResponse = await fetch(`${baseUrl}/nfse/dps`, {
                         method: "POST",
                         headers: {
@@ -1293,61 +1374,38 @@ export async function emitirNFSe(payload: EmissionPayload) {
                     });
 
                     const retryResponseText = await retryResponse.text();
-                    console.log("[NuvemFiscal] Retry Response Status:", retryResponse.status);
-
                     let retryResult;
-                    try {
-                        retryResult = retryResponseText ? JSON.parse(retryResponseText) : {};
-                    } catch (e) {
-                        retryResult = {};
-                    }
+                    try { retryResult = retryResponseText ? JSON.parse(retryResponseText) : {}; } catch (e) { retryResult = {}; }
 
                     if (retryResponse.ok) {
-                        // SUCESSO NO RETRY!
                         result = retryResult;
-                        // Continua o fluxo normal de sucesso abaixo...
+                        isRecovered = true;
                     } else {
-                        // Falhou de novo, retorna o erro original (ou o novo)
                         const retryErrorString = JSON.stringify(retryResult);
-                        await supabase
-                            .from("fiscal_invoices")
-                            .update({
-                                status: "error",
-                                error_message: `Tentativa 1: ${fullErrorString} | Tentativa 2: ${retryErrorString}`
-                            })
-                            .eq("id", invoice.id);
-
+                        await supabase.from("fiscal_invoices").update({
+                            status: "error",
+                            error_message: `Tentativa 1: ${fullErrorString} | Tentativa 2: ${retryErrorString}`
+                        }).eq("id", invoice.id);
                         return { success: false, error: `Erro NuvemFiscal (Retry falhou): ${retryErrorString} ${debugMini}` };
                     }
-
                 } else {
-                    // Log para debug se não achou endereço
                     console.log("[NuvemFiscal] Erro 00229 detectado mas não havia endereço para remover.");
-
-                    // Se não tinha endereço para tirar, falha normal
-                    await supabase
-                        .from("fiscal_invoices")
-                        .update({
-                            status: "error",
-                            error_message: fullErrorString // Salva JSON completo
-                        })
-                        .eq("id", invoice.id);
-
+                    await supabase.from("fiscal_invoices").update({
+                        status: "error",
+                        error_message: fullErrorString
+                    }).eq("id", invoice.id);
                     return { success: false, error: `Erro NuvemFiscal: ${errorDetails} ${debugMini}` };
                 }
-            } else {
-                // Erro normal (não é o 00229)
-                await supabase
-                    .from("fiscal_invoices")
-                    .update({
-                        status: "error",
-                        error_message: fullErrorString // Salva JSON completo para debug
-                    })
-                    .eq("id", invoice.id);
-
-                return { success: false, error: `Erro NuvemFiscal: ${errorDetails} ${debugMini}` };
             }
 
+            else if (!isRecovered) {
+                // Erro normal genérico
+                await supabase.from("fiscal_invoices").update({
+                    status: "error",
+                    error_message: fullErrorString
+                }).eq("id", invoice.id);
+                return { success: false, error: `Erro NuvemFiscal: ${errorDetails} ${debugMini}` };
+            }
         }
 
         // Se response.ok era true OU se recuperamos no retry:
