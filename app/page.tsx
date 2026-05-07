@@ -34,6 +34,12 @@ export default function Login() {
     }
   }, [user]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('email');
+    if (emailParam) setEmail(decodeURIComponent(emailParam));
+  }, []);
+
   const handleLogin = async (e?: React.FormEvent | React.MouseEvent) => {
     e?.preventDefault();
     setError("");

@@ -628,15 +628,17 @@ export default function DetalhesOS() {
     if (!os) return;
     setSalvandoLaudo(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('work_orders')
         .update({
           defeitos_constatados: defeitosConstatados,
           servicos_executados: servicosExecutados
         })
-        .eq('id', os!.id);
+        .eq('id', os!.id)
+        .select('defeitos_constatados, servicos_executados')
+        .single();
       if (error) throw error;
-      setOs({ ...os, defeitos_constatados: defeitosConstatados, servicos_executados: servicosExecutados });
+      setOs({ ...os, defeitos_constatados: data.defeitos_constatados, servicos_executados: data.servicos_executados });
       alert("Laudo atualizado com sucesso!");
     } catch (err: any) {
       alert("Erro ao salvar laudo: " + err.message);
@@ -2940,14 +2942,24 @@ export default function DetalhesOS() {
                   <label className="text-xs font-bold text-stone-400 ml-1">QUANTIDADE</label>
                   <div className="flex items-center justify-between bg-[#F8F7F2] rounded-2xl p-2 border-2 border-stone-300">
                     <button
-                      onClick={() => setItemEditando(prev => prev ? { ...prev, quantity: Math.max(1, prev.quantity - 1) } : prev)}
+                      onClick={() => setItemEditando(prev => prev ? { ...prev, quantity: Math.max(0.01, parseFloat((prev.quantity - 1).toFixed(2))) } : prev)}
                       className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
                     >
                       <Minus size={20} />
                     </button>
-                    <span className="font-bold text-2xl">{itemEditando.quantity}</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={itemEditando.quantity}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setItemEditando(prev => prev ? { ...prev, quantity: isNaN(val) || val <= 0 ? 0.01 : val } : prev);
+                      }}
+                      className="w-24 font-bold text-2xl text-center bg-transparent outline-none border-none"
+                    />
                     <button
-                      onClick={() => setItemEditando(prev => prev ? { ...prev, quantity: prev.quantity + 1 } : prev)}
+                      onClick={() => setItemEditando(prev => prev ? { ...prev, quantity: parseFloat((prev.quantity + 1).toFixed(2)) } : prev)}
                       className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-[#1A1A1A] hover:bg-stone-50"
                     >
                       <Plus size={20} />

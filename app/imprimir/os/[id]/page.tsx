@@ -37,8 +37,14 @@ export default function ImprimirOSA5() {
       if (osError) throw osError;
       setOs(osData);
 
-      const { data: companyData } = await supabase.from('company_settings').select('*').limit(1).single();
-      setCompany(companyData || {});
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profileData } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
+        if (profileData?.organization_id) {
+          const { data: companyData } = await supabase.from('company_settings').select('*').eq('organization_id', profileData.organization_id).single();
+          setCompany(companyData || {});
+        }
+      }
     } catch (error: any) {
       console.error(error);
       alert("Erro: " + error.message);
@@ -71,15 +77,15 @@ export default function ImprimirOSA5() {
           onClick={handlePrint}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-bold flex items-center gap-2 shadow-lg transition"
         >
-          <Printer size={16} /> IMPRIMIR (A5 em A4)
+          <Printer size={16} /> IMPRIMIR
         </button>
       </div>
 
-      {/* FOLHA A4 - O CONTEÚDO OCUPA SÓ A METADE (A5) */}
-      <div className="w-full max-w-[210mm] bg-white shadow-xl print:shadow-none print:w-full print:h-[297mm] p-0 text-[10px] sm:text-xs">
+      {/* FOLHA A4 - OCUPA METADE OU A4 INTEIRO DEPENDENDO DO CONTEÚDO */}
+      <div className="w-full max-w-[210mm] bg-white shadow-xl print:shadow-none print:w-full p-0 text-[10px] sm:text-xs">
 
-        {/* CAIXA DE CONTEÚDO COM ALTURA MÁXIMA A5 (148mm) - Flexibildade vertical */}
-        <div className="w-full h-[140mm] p-[8mm] flex flex-col relative overflow-hidden">
+        {/* CAIXA DE CONTEÚDO: cresce a partir de 140mm até preencher o A4 */}
+        <div className="w-full p-[8mm] flex flex-col">
           {/* CABEÇALHO */}
           <div className="flex justify-between items-start border-b-2 border-black pb-3 mb-3">
             <div className="flex items-center gap-3 w-2/3">
@@ -211,8 +217,7 @@ export default function ImprimirOSA5() {
       <style jsx global>{`
         @media print {
           @page { size: A4 portrait; margin: 0; }
-          body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding:0; }
-          .max-w-[210mm] { max-width: 100% !important; margin: 0 !important; border: none !important; box-shadow: none !important; }
+          body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
         }
       `}</style>
     </div>

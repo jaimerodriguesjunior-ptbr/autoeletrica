@@ -612,14 +612,17 @@ DADOS DE PIX (na aba Opções de Uso):
   - Obrigatória para gerar QR Code no padrão BCB.
 
 ABA 3 — GESTÃO DE EQUIPE:
-- Botão "Novo Funcionário":
-  - Cadastra usuário com nome, email, senha, cargo e comissão.
-- Na lista de usuários:
-  - Alterar comissão (%).
-  - Trocar senha.
-  - Bloquear/liberar acesso.
+- Botão "Novo Colaborador":
+  - Cadastra usuário com nome, e-mail, celular (WhatsApp), senha inicial, cargo (Colaborador ou Gerente) e comissão (%).
+- Na lista de colaboradores, ações disponíveis por linha:
+  - Ícone WhatsApp (verde): envia link de acesso via WhatsApp. A mensagem já vem pronta com o link do sistema e o e-mail do colaborador pré-preenchido na tela de login — ele só precisa digitar a senha. Se o celular não estiver cadastrado, o sistema avisa para preenchê-lo antes.
+  - Ícone de lápis (editar): abre modal para alterar nome, celular, cargo e comissão sem recriar o cadastro.
+  - Ícone de chave: troca a senha do colaborador.
+  - Ícone de cadeado/bloqueio: bloqueia ou libera o acesso sem excluir o histórico.
+  - Comissão (%): também editável diretamente na tabela, sem abrir modal.
 - Implicação:
   - Controle direto de permissões e operação da equipe.
+  - Sempre cadastrar o celular para poder usar o envio de link via WhatsApp.
 
 CHECKLIST FINAL:
 1. Revisar dados da oficina e telefone com DDD.

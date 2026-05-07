@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { action, email, password, nome, cargo, user_id, comissao_percentual } = body;
+    const { action, email, password, nome, cargo, user_id, comissao_percentual, celular } = body;
 
     // --- AÇÃO 1: CRIAR NOVO USUÁRIO ---
     if (action === 'create') {
@@ -76,6 +76,7 @@ export async function POST(req: Request) {
             email,
             cargo,
             comissao_percentual: comissao_percentual || 0,
+            celular: celular || null,
             ativo: true
           });
 
@@ -130,6 +131,7 @@ export async function POST(req: Request) {
       if (nome) updates.nome = nome;
       if (cargo) updates.cargo = cargo;
       if (comissao_percentual !== undefined) updates.comissao_percentual = comissao_percentual;
+      if (celular !== undefined) updates.celular = celular || null;
 
       const { error: profileError } = await supabaseAdmin
         .from('profiles')
