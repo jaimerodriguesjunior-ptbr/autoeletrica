@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
         *,
         vehicles ( modelo, placa, cor, fabricante ),
         clients ( nome, whatsapp ),
-        work_order_items ( name, total_price, peca_cliente )
+        work_order_items ( name, total_price, peca_cliente, tipo )
       `)
             .eq('public_token', token)
             .single()

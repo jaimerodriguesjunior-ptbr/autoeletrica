@@ -562,15 +562,48 @@ function ConteudoPortal() {
               </button>
 
               {detalhesAbertos && (
-                <div className="px-5 pb-5 bg-stone-50 border-t-2 border-stone-300 pt-4 space-y-3 animate-in slide-in-from-top-2">
-                  {os.work_order_items?.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <span className="text-stone-600">{item.name}</span>
-                      <span className="font-bold text-[#1A1A1A]">R$ {Number(item.total_price).toFixed(2)}</span>
-                    </div>
-                  ))}
-                  {(!os.work_order_items || os.work_order_items.length === 0) && <p className="text-xs text-stone-400 text-center">Itens não detalhados.</p>}
-                  <div className="border-t border-stone-200 my-2"></div>
+                <div className="px-5 pb-5 bg-stone-50 border-t-2 border-stone-300 pt-4 space-y-4 animate-in slide-in-from-top-2">
+                  {(() => {
+                    const servicos = os.work_order_items?.filter((i: any) => i.tipo === 'servico') || [];
+                    const pecas = os.work_order_items?.filter((i: any) => i.tipo === 'peca') || [];
+                    const total = (os.work_order_items?.length || 0);
+                    if (total === 0) return <p className="text-xs text-stone-400 text-center">Itens não detalhados.</p>;
+                    return (
+                      <>
+                        {servicos.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider flex items-center gap-1">
+                              <Wrench size={11} /> Mão de Obra
+                            </p>
+                            {servicos.map((item: any, idx: number) => (
+                              <div key={idx} className="flex justify-between text-sm">
+                                <span className="text-stone-600">{item.name}</span>
+                                <span className="font-bold text-[#1A1A1A]">R$ {Number(item.total_price).toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {pecas.length > 0 && (
+                          <div className="space-y-2">
+                            {servicos.length > 0 && <div className="border-t border-stone-200"></div>}
+                            <p className="text-[10px] font-extrabold text-stone-400 uppercase tracking-wider flex items-center gap-1">
+                              <Package size={11} /> Peças
+                            </p>
+                            {pecas.map((item: any, idx: number) => (
+                              <div key={idx} className="flex justify-between text-sm">
+                                <span className="text-stone-600">
+                                  {item.name}
+                                  {item.peca_cliente && <span className="ml-1 text-[9px] font-bold text-orange-500 uppercase">(do cliente)</span>}
+                                </span>
+                                <span className="font-bold text-[#1A1A1A]">R$ {Number(item.total_price).toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                  <div className="border-t border-stone-200"></div>
                   <p className="text-xs text-center text-stone-400">Orçamento válido por 7 dias.</p>
                 </div>
               )}
