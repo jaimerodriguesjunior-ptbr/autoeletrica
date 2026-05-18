@@ -1,6 +1,9 @@
 // src/lib/nuvemfiscal.ts
 
-export async function getNuvemFiscalToken(environment: 'production' | 'homologation' = 'production') {
+export async function getNuvemFiscalToken(
+  environment: 'production' | 'homologation' = 'production',
+  scope = 'empresa nfce nfe nfse'
+) {
   // 1. Pega as credenciais do arquivo .env baseado no ambiente
   let clientId, clientSecret;
 
@@ -28,7 +31,7 @@ export async function getNuvemFiscalToken(environment: 'production' | 'homologat
   params.append('grant_type', 'client_credentials');
   params.append('client_id', clientId);
   params.append('client_secret', clientSecret);
-  params.append('scope', 'empresa nfce nfe nfse'); // Permissão para empresas e emissão (NFC-e, NF-e, NFS-e)
+  params.append('scope', scope); // Permissao solicitada para a chamada atual
 
   try {
     // 3. Faz a chamada para a API de Autenticação

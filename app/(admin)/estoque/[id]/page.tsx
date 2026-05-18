@@ -7,7 +7,7 @@ import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
 import {
   ArrowLeft, Package, DollarSign, Barcode,
-  Save, Calculator, Trash2, Loader2, AlertCircle, Wallet
+  Save, Calculator, Trash2, Loader2, AlertCircle, Wallet, Sparkles, X
 } from "lucide-react";
 import { getCompanySettings } from "@/src/actions/fiscal";
 
@@ -19,12 +19,16 @@ export default function EditarProduto() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [fetchingNCM, setFetchingNCM] = useState(false);
+  const [ncmOptions, setNcmOptions] = useState<{ code: string; description: string }[] | null>(null);
+  const [ncmAiStatus, setNcmAiStatus] = useState<{ label: string; tone: "green" | "yellow" | "red"; confidence?: number } | null>(null);
 
   // Estados
   const [nome, setNome] = useState("");
   const [marca, setMarca] = useState("");
   const [codigoRef, setCodigoRef] = useState("");
   const [ean, setEan] = useState("");
+  const [ncm, setNcm] = useState("");
 
   // Markup da empresa
   const [markupAtivo, setMarkupAtivo] = useState(false);
@@ -67,6 +71,7 @@ export default function EditarProduto() {
         setMarca(data.marca || "");
         setCodigoRef(data.codigo_ref || "");
         setEan(data.ean || "");
+        setNcm(data.ncm || "");
         setEstoqueAtual(data.estoque_atual.toString());
         setEstoqueMin(data.estoque_min.toString());
         setLocalizacao(data.localizacao || "");
@@ -112,6 +117,7 @@ export default function EditarProduto() {
           marca,
           codigo_ref: codigoRef,
           ean: ean || null,
+          ncm: ncm ? ncm.replace(/\D/g, "").slice(0, 8) : null,
           estoque_atual: Number(estoqueAtual),
           estoque_min: Number(estoqueMin),
           custo_reposicao: Number(custoReposicao),
@@ -154,6 +160,44 @@ export default function EditarProduto() {
     const custo = parseFloat(custoReposicao) || 0;
     const m = parseFloat(margem) || 0;
     return (custo + (custo * (m / 100))).toFixed(2);
+  };
+
+  const handleFetchNCM = async () => {
+    if (!nome.trim()) {
+      alert("Preencha a descrição/nome da peça antes de buscar NCM.");
+      return;
+    }
+
+    setFetchingNCM(true);
+    try {
+      const res = await fetch("/api/fiscal/ncm-ia", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descricao: nome })
+      });
+      const data = await res.json();
+      const confidence = typeof data.confidence === "number" ? Math.max(0, Math.min(100, Math.round(data.confidence))) : undefined;
+      const status = data.error
+        ? { label: "Sem confiança", tone: "red" as const, confidence }
+        : data.needs_review
+          ? { label: "Revisar", tone: "yellow" as const, confidence }
+          : { label: "Confiável", tone: "green" as const, confidence };
+      setNcmAiStatus(status);
+
+      if (data.options && data.options.length > 1) {
+        setNcmOptions(data.options);
+      } else if (data.recommendation) {
+        setNcm(String(data.recommendation).replace(/\D/g, "").slice(0, 8));
+      } else if (data.options?.[0]?.code) {
+        setNcm(String(data.options[0].code).replace(/\D/g, "").slice(0, 8));
+      } else {
+        alert(data.error || "A IA não conseguiu sugerir um NCM confiável.");
+      }
+    } catch (e: any) {
+      alert("Erro ao buscar NCM com IA: " + e.message);
+    } finally {
+      setFetchingNCM(false);
+    }
   };
 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={40} /></div>;
@@ -209,6 +253,44 @@ export default function EditarProduto() {
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Barcode size={12} /> EAN (CÓDIGO DE BARRAS)</label>
                 <input type="text" value={ean} onChange={e => setEan(e.target.value)} placeholder="Ex: 7891234567890" className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-stone-400 ml-2">NCM</label>
+                {ncmAiStatus && (
+                  <div className={`ml-2 mt-1 inline-flex items-center gap-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    ncmAiStatus.tone === "green"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : ncmAiStatus.tone === "yellow"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-red-100 text-red-700"
+                  }`}>
+                    <span>{ncmAiStatus.label}</span>
+                    {typeof ncmAiStatus.confidence === "number" && <span>{ncmAiStatus.confidence}%</span>}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={ncm}
+                    onChange={e => {
+                      setNcm(e.target.value.replace(/\D/g, "").slice(0, 8));
+                      setNcmAiStatus(null);
+                    }}
+                    placeholder="Ex: 84099120"
+                    maxLength={8}
+                    className="flex-1 bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleFetchNCM}
+                    disabled={fetchingNCM}
+                    className="px-4 rounded-2xl border-2 border-stone-300 bg-white hover:bg-stone-50 text-[#1A1A1A] font-bold text-xs flex items-center gap-2 disabled:opacity-60"
+                  >
+                    {fetchingNCM ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    IA
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -347,6 +429,29 @@ export default function EditarProduto() {
           {saving ? "Salvando..." : "Salvar Alterações"}
         </button>
       </div>
+
+      {ncmOptions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-xl rounded-[24px] p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-[#1A1A1A]">Escolha o NCM sugerido</h3>
+              <button onClick={() => setNcmOptions(null)} className="text-stone-400 hover:text-[#1A1A1A]"><X size={18} /></button>
+            </div>
+            <div className="space-y-2">
+              {ncmOptions.map((opt, i) => (
+                <button
+                  key={`${opt.code}-${i}`}
+                  onClick={() => { setNcm(opt.code); setNcmOptions(null); }}
+                  className="w-full text-left border border-stone-200 rounded-xl p-3 hover:bg-stone-50"
+                >
+                  <p className="font-bold text-[#1A1A1A]">{opt.code}</p>
+                  <p className="text-xs text-stone-500">{opt.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

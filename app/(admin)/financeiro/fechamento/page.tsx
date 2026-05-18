@@ -22,6 +22,7 @@ import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getClosingLog } from "@/src/actions/closing_log";
+import { inutilizarNumeracaoNFCe, listarInutilizacoesNFCe } from "@/src/actions/fiscal_emission";
 
 type ClosingData = {
     faturamento: {
@@ -46,6 +47,21 @@ type ClosingData = {
         devolucoes_qtd: number;
         devolucoes_valor: number;
     };
+};
+
+type InutilizacaoItem = {
+    id: number;
+    environment: "production" | "homologation";
+    year: number;
+    serie: number;
+    numero_inicial: number;
+    numero_final: number;
+    justificativa: string;
+    protocol: string | null;
+    external_id: string | null;
+    status: string | null;
+    response_json: any;
+    created_at: string;
 };
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -114,10 +130,106 @@ export default function FechamentoMensal() {
 
     const [exporting, setExporting] = useState(false);
     const [sendingEmail, setSendingEmail] = useState(false);
+    const [invalidating, setInvalidating] = useState(false);
+    const [invalidateEnvironment, setInvalidateEnvironment] = useState<"production" | "homologation">("production");
+    const [invalidateSerie, setInvalidateSerie] = useState(2);
+    const [invalidateStart, setInvalidateStart] = useState("");
+    const [invalidateEnd, setInvalidateEnd] = useState("");
+    const [invalidateReason, setInvalidateReason] = useState("Falha operacional no controle de numeracao, sem autorizacao de uso para os numeros informados.");
+    const [inutilizacoes, setInutilizacoes] = useState<InutilizacaoItem[]>([]);
 
     type ClosingLog = { id?: string; year: number; month: number; sent_at: string; status: string; error_message: string | null } | null;
     const [closingLog, setClosingLog] = useState<ClosingLog>(null);
     const [bannerDismissed, setBannerDismissed] = useState(false);
+
+    const refreshInutilizacoes = useCallback(async () => {
+        if (!profile?.organization_id) return;
+        const res = await listarInutilizacoesNFCe({
+            organizationId: profile.organization_id,
+            year,
+            environment: invalidateEnvironment,
+        });
+        if (res.success) setInutilizacoes((res.data as InutilizacaoItem[]) || []);
+    }, [profile?.organization_id, year, invalidateEnvironment]);
+
+    const downloadInutilizacaoJson = (item: InutilizacaoItem) => {
+        const blob = new Blob([JSON.stringify(item.response_json || {}, null, 2)], { type: "application/json;charset=utf-8" });
+        saveAs(blob, `Inutilizacao_NFCe_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.json`);
+    };
+
+    const downloadInutilizacaoPdf = (item: InutilizacaoItem) => {
+        const doc = new jsPDF();
+        doc.setFontSize(14);
+        doc.text("Comprovante de Inutilizacao de Numeracao NFC-e", 14, 18);
+        doc.setFontSize(10);
+        doc.text(`Empresa ID: ${profile?.organization_id || "-"}`, 14, 28);
+        doc.text(`Ambiente: ${item.environment === "production" ? "Producao" : "Homologacao"}`, 14, 34);
+        doc.text(`Ano: ${item.year}`, 14, 40);
+        doc.text(`Serie: ${item.serie}`, 14, 46);
+        doc.text(`Faixa: ${item.numero_inicial} a ${item.numero_final}`, 14, 52);
+        doc.text(`Protocolo: ${item.protocol || "-"}`, 14, 58);
+        doc.text(`Status: ${item.status || "-"}`, 14, 64);
+        doc.text(`Data da solicitacao: ${new Date(item.created_at).toLocaleString("pt-BR")}`, 14, 70);
+        autoTable(doc, {
+            startY: 78,
+            head: [["Campo", "Valor"]],
+            body: [
+                ["Justificativa", item.justificativa],
+                ["ID externo", item.external_id || "-"],
+            ],
+            styles: { fontSize: 9 },
+            headStyles: { fillColor: [28, 25, 23] },
+        });
+        doc.save(`Comprovante_Inutilizacao_NFCe_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.pdf`);
+    };
+
+    const handleInvalidateNumbers = async () => {
+        if (!profile?.organization_id) return;
+        const start = parseInt(invalidateStart, 10);
+        const end = parseInt(invalidateEnd, 10);
+        if (!start || !end) {
+            alert("Informe numero inicial e final para inutilizacao.");
+            return;
+        }
+        if (end < start) {
+            alert("Numero final deve ser maior ou igual ao inicial.");
+            return;
+        }
+        if (!invalidateReason || invalidateReason.trim().length < 15) {
+            alert("A justificativa deve ter no minimo 15 caracteres.");
+            return;
+        }
+
+        const envLabel = invalidateEnvironment === "production" ? "producao" : "homologacao";
+        if (!confirm(`Confirmar inutilizacao NFC-e serie ${invalidateSerie}, faixa ${start} a ${end}, ano ${year}, em ${envLabel}?`)) return;
+
+        setInvalidating(true);
+        try {
+            const res = await inutilizarNumeracaoNFCe({
+                organizationId: profile.organization_id,
+                year,
+                serie: invalidateSerie,
+                numeroInicial: start,
+                numeroFinal: end,
+                justificativa: invalidateReason,
+                environment: invalidateEnvironment,
+            });
+
+            if (!res.success) {
+                alert(`Erro na inutilizacao: ${res.error}`);
+                return;
+            }
+
+            const protocolo = res.data?.numero_protocolo || res.data?.autorizacao?.numero_protocolo || "N/A";
+            const status = res.data?.status || res.data?.autorizacao?.status || "solicitado";
+            alert(`Inutilizacao enviada com sucesso.\nStatus: ${status}\nProtocolo: ${protocolo}`);
+            await refreshInutilizacoes();
+        } catch (err: any) {
+            alert("Erro ao inutilizar faixa: " + err.message);
+        } finally {
+            setInvalidating(false);
+        }
+    };
 
     const buildZipBlob = async (): Promise<{ blob: Blob; folderName: string }> => {
         if (!profile?.organization_id || !data) throw new Error("Dados não disponíveis");
@@ -195,7 +307,7 @@ export default function FechamentoMensal() {
 
         const startDate = new Date(year, month, 1).toISOString();
         const endDate = new Date(year, month + 1, 1).toISOString();
-        const baseFields = 'id, direction, xml_content, xml_url, chave_acesso, numero, status, data_emissao, created_at';
+        const baseFields = 'id, direction, tipo_documento, xml_content, xml_url, chave_acesso, numero, status, motivo_rejeicao, error_message, data_emissao, created_at';
         const [{ data: datedFiscalFiles }, { data: fallbackFiscalFiles }] = await Promise.all([
             supabase.from('fiscal_invoices').select(baseFields)
                 .eq('organization_id', profile.organization_id).neq('environment', 'homologation')
@@ -206,6 +318,54 @@ export default function FechamentoMensal() {
         ]);
         const fiscalFiles = [...(datedFiscalFiles || []), ...(fallbackFiscalFiles || [])]
             .filter((d, i, arr) => arr.findIndex(x => x.id === d.id) === i);
+        const rejectedDocs = fiscalFiles.filter(d => d.status === "rejected" || d.status === "error");
+        const rejectedRows = [
+            ["TIPO", "NUMERO", "STATUS", "MOTIVO", "CHAVE_ACESSO"],
+            ...rejectedDocs.map(d => [
+                d.tipo_documento || "",
+                d.numero || "",
+                d.status || "",
+                (d.motivo_rejeicao || d.error_message || "").replace(/\r?\n/g, " "),
+                d.chave_acesso || "",
+            ])
+        ];
+        root.file("Numeracoes_Rejeitadas.csv", "\ufeff" + rejectedRows.map(r => r.join(";")).join("\n"));
+
+        const { data: inutilizacoesZip } = await supabase
+            .from("fiscal_inutilizations")
+            .select("environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
+            .eq("organization_id", profile.organization_id)
+            .eq("model", "NFCe")
+            .eq("environment", "production")
+            .eq("year", year)
+            .order("created_at", { ascending: false });
+
+        const inutilRows = [
+            ["AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
+            ...((inutilizacoesZip || []) as any[]).map(i => [
+                i.environment === "production" ? "producao" : "homologacao",
+                String(i.year),
+                String(i.serie),
+                String(i.numero_inicial),
+                String(i.numero_final),
+                i.protocol || "",
+                i.status || "",
+                new Date(i.created_at).toLocaleString("pt-BR"),
+                (i.justificativa || "").replace(/\r?\n/g, " "),
+            ])
+        ];
+        root.file("Inutilizacoes_NFCe.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
+
+        if (inutilizacoesZip && inutilizacoesZip.length > 0) {
+            const inutilFolder = root.folder("Inutilizacoes_Comprovantes");
+            for (const i of inutilizacoesZip as any[]) {
+                inutilFolder?.file(
+                    `NFCe_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`,
+                    JSON.stringify(i.response_json || {}, null, 2)
+                );
+            }
+        }
+
         if (fiscalFiles.length > 0) {
             const outFolder = root.folder("XMLs_Saida_Vendas");
             const inFolder = root.folder("XMLs_Entrada_Compras");
@@ -323,7 +483,7 @@ export default function FechamentoMensal() {
             const startDate = new Date(year, month, 1).toISOString();
             const endDate = new Date(year, month + 1, 1).toISOString();
 
-            const baseFields = 'id, direction, xml_content, xml_url, chave_acesso, numero, status, data_emissao, created_at';
+            const baseFields = 'id, direction, tipo_documento, xml_content, xml_url, chave_acesso, numero, status, motivo_rejeicao, error_message, data_emissao, created_at';
             const [{ data: datedFiscalFiles }, { data: fallbackFiscalFiles }] = await Promise.all([
                 supabase
                     .from('fiscal_invoices')
@@ -344,6 +504,54 @@ export default function FechamentoMensal() {
 
             const fiscalFiles = [...(datedFiscalFiles || []), ...(fallbackFiscalFiles || [])]
                 .filter((doc, index, array) => array.findIndex(item => item.id === doc.id) === index);
+
+            const rejectedDocs = fiscalFiles.filter(doc => doc.status === "rejected" || doc.status === "error");
+            const rejectedRows = [
+                ["TIPO", "NUMERO", "STATUS", "MOTIVO", "CHAVE_ACESSO"],
+                ...rejectedDocs.map(doc => [
+                    doc.tipo_documento || "",
+                    doc.numero || "",
+                    doc.status || "",
+                    (doc.motivo_rejeicao || doc.error_message || "").replace(/\r?\n/g, " "),
+                    doc.chave_acesso || "",
+                ])
+            ];
+            root.file("Numeracoes_Rejeitadas.csv", "\ufeff" + rejectedRows.map(r => r.join(";")).join("\n"));
+
+            const { data: inutilizacoesZip } = await supabase
+                .from("fiscal_inutilizations")
+                .select("environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
+                .eq("organization_id", profile.organization_id)
+                .eq("model", "NFCe")
+                .eq("environment", "production")
+                .eq("year", year)
+                .order("created_at", { ascending: false });
+
+            const inutilRows = [
+                ["AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
+                ...((inutilizacoesZip || []) as any[]).map(i => [
+                    i.environment === "production" ? "producao" : "homologacao",
+                    String(i.year),
+                    String(i.serie),
+                    String(i.numero_inicial),
+                    String(i.numero_final),
+                    i.protocol || "",
+                    i.status || "",
+                    new Date(i.created_at).toLocaleString("pt-BR"),
+                    (i.justificativa || "").replace(/\r?\n/g, " "),
+                ])
+            ];
+            root.file("Inutilizacoes_NFCe.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
+
+            if (inutilizacoesZip && inutilizacoesZip.length > 0) {
+                const inutilFolder = root.folder("Inutilizacoes_Comprovantes");
+                for (const i of inutilizacoesZip as any[]) {
+                    inutilFolder?.file(
+                        `NFCe_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`,
+                        JSON.stringify(i.response_json || {}, null, 2)
+                    );
+                }
+            }
 
             if (fiscalFiles.length > 0) {
                 const outFolder = root.folder("XMLs_Saida_Vendas");
@@ -418,6 +626,10 @@ export default function FechamentoMensal() {
     useEffect(() => {
         fetchClosingData();
     }, [fetchClosingData]);
+
+    useEffect(() => {
+        refreshInutilizacoes();
+    }, [refreshInutilizacoes]);
 
     useEffect(() => {
         if (!profile?.organization_id) return;
@@ -508,6 +720,101 @@ export default function FechamentoMensal() {
                     </button>
                 </div>
             )}
+
+            <div className="bg-white border border-stone-200 rounded-lg shadow-sm p-4 mb-6">
+                <div className="flex flex-col gap-1 mb-3">
+                    <h2 className="text-sm font-bold text-stone-900">Inutilizacao de Numeracao NFC-e</h2>
+                    <p className="text-xs text-stone-500">
+                        Envia a solicitacao para a Nuvem Fiscal e guarda o comprovante para o ZIP do contador.
+                    </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <select
+                        value={invalidateEnvironment}
+                        onChange={(e) => setInvalidateEnvironment(e.target.value as "production" | "homologation")}
+                        className="border border-stone-300 rounded-md px-3 py-2 text-sm bg-white"
+                    >
+                        <option value="production">Producao</option>
+                        <option value="homologation">Homologacao</option>
+                    </select>
+                    <input
+                        type="number"
+                        min={1}
+                        value={invalidateSerie}
+                        onChange={(e) => setInvalidateSerie(parseInt(e.target.value || "0", 10))}
+                        className="border border-stone-300 rounded-md px-3 py-2 text-sm"
+                        placeholder="Serie"
+                    />
+                    <input
+                        type="number"
+                        min={1}
+                        value={invalidateStart}
+                        onChange={(e) => setInvalidateStart(e.target.value)}
+                        className="border border-stone-300 rounded-md px-3 py-2 text-sm"
+                        placeholder="Numero inicial"
+                    />
+                    <input
+                        type="number"
+                        min={1}
+                        value={invalidateEnd}
+                        onChange={(e) => setInvalidateEnd(e.target.value)}
+                        className="border border-stone-300 rounded-md px-3 py-2 text-sm"
+                        placeholder="Numero final"
+                    />
+                    <button
+                        onClick={handleInvalidateNumbers}
+                        disabled={invalidating || !profile?.organization_id}
+                        className="flex items-center justify-center gap-2 bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-md font-medium text-sm disabled:opacity-60"
+                    >
+                        {invalidating ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}
+                        {invalidating ? "Enviando..." : "Inutilizar"}
+                    </button>
+                </div>
+                <textarea
+                    value={invalidateReason}
+                    onChange={(e) => setInvalidateReason(e.target.value)}
+                    className="mt-3 w-full border border-stone-300 rounded-md px-3 py-2 text-sm"
+                    rows={2}
+                    placeholder="Justificativa"
+                />
+                <div className="mt-4 border-t border-stone-100 pt-3">
+                    <p className="text-xs font-bold text-stone-700 mb-2">
+                        Comprovantes salvos ({invalidateEnvironment === "production" ? "producao" : "homologacao"})
+                    </p>
+                    {inutilizacoes.length === 0 ? (
+                        <p className="text-xs text-stone-500">Nenhuma inutilizacao salva para {year} neste ambiente.</p>
+                    ) : (
+                        <div className="space-y-2">
+                            {inutilizacoes.map((item) => (
+                                <div key={item.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-stone-200 px-3 py-2">
+                                    <div>
+                                        <p className="text-sm font-semibold text-stone-800">
+                                            Serie {item.serie} - {item.numero_inicial} a {item.numero_final}
+                                        </p>
+                                        <p className="text-xs text-stone-500">
+                                            Protocolo: {item.protocol || "-"} - Status: {item.status || "-"} - {new Date(item.created_at).toLocaleString("pt-BR")}
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => downloadInutilizacaoPdf(item)}
+                                            className="px-3 py-1.5 rounded-md bg-stone-900 text-white text-xs font-semibold"
+                                        >
+                                            PDF
+                                        </button>
+                                        <button
+                                            onClick={() => downloadInutilizacaoJson(item)}
+                                            className="px-3 py-1.5 rounded-md bg-stone-100 text-stone-800 text-xs font-semibold"
+                                        >
+                                            JSON
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
 
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-20 bg-stone-50 rounded-lg border border-stone-200 border-dashed">

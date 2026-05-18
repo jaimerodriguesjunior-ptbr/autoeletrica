@@ -21,6 +21,8 @@ type Invoice = {
     data_emissao?: string | null;
     pdf_url: string | null;
     xml_url: string | null;
+    xml_content?: string | null;
+    environment?: string | null;
     error_message: string | null;
     work_order_id: number | null;
     chave_acesso: string | null;
@@ -60,6 +62,7 @@ export default function FiscalDashboard() {
         return invoice.tipo_documento;
     };
     const displayDate = (invoice: Invoice) => invoice.data_emissao || invoice.created_at;
+    const hasXml = (invoice: Invoice) => Boolean(invoice.xml_content || invoice.xml_url);
 
     useEffect(() => {
         const checkForUpdates = async () => {
@@ -70,7 +73,7 @@ export default function FiscalDashboard() {
 
             let updated = false;
             for (const inv of processingInvoices) {
-                if (inv.tipo_documento === "NFSe") {
+                if (["NFSe", "NFCe", "NFe"].includes(inv.tipo_documento)) {
                     const res = await consultarNFSe(inv.id);
                     if (res.success && res.status !== "processing") {
                         updated = true;
@@ -152,7 +155,9 @@ export default function FiscalDashboard() {
 
         const tipoText = invoice.tipo_documento === "NFSe"
             ? "Nota Fiscal de Serviço (NFS-e)"
-            : "Nota Fiscal (NFC-e)";
+            : invoice.tipo_documento === "NFe"
+                ? "Nota Fiscal Eletrônica (NF-e)"
+                : "Nota Fiscal (NFC-e)";
         const text = `Olá, segue o link para baixar a sua ${tipoText}:\n\n${link}`;
 
         let url = `https://wa.me/?text=${encodeURIComponent(text)}`;
@@ -233,13 +238,15 @@ export default function FiscalDashboard() {
         if (endDate && matchesDate) {
             matchesDate = invoiceDate <= new Date(endDate + "T23:59:59");
         }
-        return matchesDate;
+        const matchesEnvironment = !inv.environment || inv.environment === environment;
+        return matchesDate && matchesEnvironment;
     });
 
     const filteredInvoices = dateFilteredInvoices.filter((inv) => {
         const matchesSearch =
             !searchTerm ||
             (inv.numero || "").includes(searchTerm) ||
+            (inv.chave_acesso || "").includes(searchTerm.replace(/\D/g, "")) ||
             (inv.status || "").includes(searchTerm) ||
             displayType(inv).toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
@@ -278,6 +285,11 @@ export default function FiscalDashboard() {
                 <Link href="/financeiro/fechamento">
                     <button className="bg-white border-2 border-stone-200 hover:border-stone-400 text-stone-600 px-6 py-3 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 transition hover:scale-105">
                         <FileText size={20} /> Fechamento Mensal
+                    </button>
+                </Link>
+                <Link href="/fiscal/nfe">
+                    <button className="bg-white border-2 border-stone-200 hover:border-[#FACC15] text-stone-700 px-6 py-3 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 transition hover:scale-105">
+                        <FileText size={20} /> NF-e Completa
                     </button>
                 </Link>
                 <Link href={`/fiscal/emitir?env=${environment}`}>
@@ -380,6 +392,9 @@ export default function FiscalDashboard() {
                                         <td className="px-6 py-4">
                                             <p className="font-bold text-[#1A1A1A]">{inv.numero ? `#${inv.numero}` : "S/N"}</p>
                                             <p className="text-xs text-stone-400">Série {inv.serie || "-"}</p>
+                                            <p className={`mt-1 w-fit rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${inv.environment === "homologation" ? "bg-yellow-50 text-yellow-700" : "bg-green-50 text-green-700"}`}>
+                                                {inv.environment === "homologation" ? "Homologacao" : "Producao"}
+                                            </p>
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${isEntryInvoice(inv) ? "bg-blue-50 text-blue-700" : "bg-stone-100 text-stone-600"}`}>
@@ -399,11 +414,18 @@ export default function FiscalDashboard() {
                                             {isEntryInvoice(inv) && (
                                                 <p className="text-[10px] text-blue-600 mt-1 font-bold">XML importado de fornecedor</p>
                                             )}
-                                            {inv.tipo_documento === "NFSe" && inv.chave_acesso && (
+                                            {inv.chave_acesso && (
                                                 <div className="mt-1">
-                                                    <p className="text-[10px] text-stone-400 font-bold">Cód. Verificação:</p>
+                                                    <p className="text-[10px] text-stone-400 font-bold">
+                                                        {inv.tipo_documento === "NFSe" ? "Cod. Verificacao:" : "Chave de acesso:"}
+                                                    </p>
                                                     <p className="text-[10px] text-stone-600 font-mono select-all bg-stone-100 p-1 rounded w-fit">{inv.chave_acesso}</p>
                                                 </div>
+                                            )}
+                                            {isOutputInvoice(inv) && inv.status === "authorized" && ["NFe", "NFCe", "NFSe"].includes(inv.tipo_documento) && (
+                                                <p className={`mt-1 text-[10px] font-bold ${hasXml(inv) ? "text-green-600" : "text-amber-600"}`}>
+                                                    {hasXml(inv) ? "XML disponivel" : "XML ainda nao salvo. Use atualizar."}
+                                                </p>
                                             )}
                                         </td>
                                         <td className="px-6 py-4 text-right">
@@ -423,7 +445,7 @@ export default function FiscalDashboard() {
                                                     <button
                                                         onClick={() => handlePrint(inv.id)}
                                                         className="p-2 bg-stone-50 hover:bg-stone-100 rounded-lg transition text-stone-600"
-                                                        title="Imprimir nota"
+                                                        title="Imprimir DANFE/PDF"
                                                     >
                                                         <Printer size={16} />
                                                     </button>
@@ -435,9 +457,21 @@ export default function FiscalDashboard() {
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="p-2 bg-stone-50 hover:bg-stone-100 rounded-lg transition text-stone-600"
-                                                        title={isEntryInvoice(inv) ? "Baixar XML da nota de entrada" : "Baixar PDF da nota"}
+                                                        title={isEntryInvoice(inv) ? "Baixar XML da nota de entrada" : "Baixar DANFE/PDF"}
                                                     >
                                                         <Download size={16} />
+                                                    </a>
+                                                )}
+
+                                                {isOutputInvoice(inv) && (inv.status === "authorized" || inv.status === "cancelled") && ["NFe", "NFCe", "NFSe"].includes(inv.tipo_documento) && (
+                                                    <a
+                                                        href={`/api/fiscal/print/${inv.id}?download=true&format=xml`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className={`p-2 rounded-lg transition ${hasXml(inv) ? "bg-blue-50 text-blue-600 hover:bg-blue-100" : "bg-amber-50 text-amber-600 hover:bg-amber-100"}`}
+                                                        title={hasXml(inv) ? "Baixar XML" : "Tentar baixar XML da NuvemFiscal"}
+                                                    >
+                                                        <FileText size={16} />
                                                     </a>
                                                 )}
 
@@ -461,11 +495,11 @@ export default function FiscalDashboard() {
                                                     </button>
                                                 )}
 
-                                                {isOutputInvoice(inv) && (inv.status === "processing" || inv.status === "error") && inv.tipo_documento === "NFSe" && (
+                                                {isOutputInvoice(inv) && (inv.status === "processing" || inv.status === "error" || (inv.status === "authorized" && !hasXml(inv))) && ["NFSe", "NFCe", "NFe"].includes(inv.tipo_documento) && (
                                                     <button
                                                         onClick={() => handleRefreshStatus(inv.id)}
                                                         className={`p-2 rounded-lg transition ${inv.status === "error" ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-blue-50 text-blue-600 hover:bg-blue-100"}`}
-                                                        title={inv.status === "error" ? "Ver detalhes do erro" : "Atualizar status"}
+                                                        title={inv.status === "error" ? "Ver detalhes do erro" : "Atualizar status/XML"}
                                                     >
                                                         {inv.status === "error" ? <AlertCircle size={16} /> : <RefreshCw size={16} />}
                                                     </button>
@@ -481,7 +515,7 @@ export default function FiscalDashboard() {
                                                     </button>
                                                 )}
 
-                                                {isOutputInvoice(inv) && inv.status === "error" && (
+                                                {isOutputInvoice(inv) && inv.status === "error" && inv.tipo_documento !== "NFe" && (
                                                     <Link href={`/fiscal/corrigir/${inv.id}`}>
                                                         <button
                                                             className="p-2 bg-orange-50 text-orange-600 hover:bg-orange-100 rounded-lg transition"
@@ -503,3 +537,6 @@ export default function FiscalDashboard() {
         </div>
     );
 }
+
+
+

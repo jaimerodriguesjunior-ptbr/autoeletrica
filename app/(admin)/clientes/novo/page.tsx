@@ -18,6 +18,7 @@ export default function NovoCliente() {
   const { profile } = useAuth();
 
   const [saving, setSaving] = useState(false);
+  const [loadingCep, setLoadingCep] = useState(false);
   const [tipoPessoa, setTipoPessoa] = useState<"pf" | "pj">("pf");
   const [addCarro, setAddCarro] = useState(false);
 
@@ -32,10 +33,36 @@ export default function NovoCliente() {
   const [rua, setRua] = useState("");
   const [numero, setNumero] = useState("");
   const [bairro, setBairro] = useState("");
+  const [cidade, setCidade] = useState("");
+  const [uf, setUf] = useState("");
+  const [codigoMunicipio, setCodigoMunicipio] = useState("");
 
   // Veículo
   const [placa, setPlaca] = useState("");
   const [modelo, setModelo] = useState("");
+
+  const buscarCep = async (cepValue = cep) => {
+    const cleanCep = cepValue.replace(/\D/g, "");
+    if (cleanCep.length !== 8) return;
+
+    setLoadingCep(true);
+    try {
+      const res = await fetch(`/api/cep?cep=${cleanCep}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "CEP nÃ£o encontrado.");
+
+      setCep(data.cep || cepValue);
+      setRua(data.logradouro || "");
+      setBairro(data.bairro || "");
+      setCidade(data.cidade || "");
+      setUf(data.uf || "");
+      setCodigoMunicipio(data.codigo_municipio || "");
+    } catch (error: any) {
+      alert(error.message || "Erro ao buscar CEP.");
+    } finally {
+      setLoadingCep(false);
+    }
+  };
 
   const handleSalvar = async () => {
     if (!profile?.organization_id) {
@@ -60,7 +87,7 @@ export default function NovoCliente() {
           cpf_cnpj: cpfCnpj,
           whatsapp,
           email,
-          endereco: { cep, rua, numero, bairro },
+          endereco: { cep, rua, logradouro: rua, numero, bairro, cidade, uf, codigo_municipio: codigoMunicipio },
           public_token: crypto.randomUUID().replace(/-/g, '')
         })
         .select()
@@ -193,7 +220,25 @@ export default function NovoCliente() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
             <label className="text-xs font-bold text-stone-400 ml-2">CEP</label>
-            <input type="text" value={cep} onChange={e => setCep(e.target.value)} placeholder="00000-000" className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition" />
+            <div className="relative">
+              <input
+                type="text"
+                value={cep}
+                onChange={e => setCep(e.target.value)}
+                onBlur={() => buscarCep()}
+                placeholder="00000-000"
+                className="w-full bg-[#F8F7F2] rounded-2xl p-4 pr-12 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition"
+              />
+              <button
+                type="button"
+                onClick={() => buscarCep()}
+                disabled={loadingCep}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-stone-400 hover:text-[#1A1A1A] disabled:opacity-50"
+                title="Buscar endereÃ§o pelo CEP"
+              >
+                {loadingCep ? <Loader2 size={16} className="animate-spin" /> : <MapPin size={16} />}
+              </button>
+            </div>
           </div>
           <div className="md:col-span-2 space-y-1">
             <label className="text-xs font-bold text-stone-400 ml-2">RUA / AVENIDA</label>
@@ -206,6 +251,15 @@ export default function NovoCliente() {
           <div className="md:col-span-2 space-y-1">
             <label className="text-xs font-bold text-stone-400 ml-2">BAIRRO</label>
             <input type="text" value={bairro} onChange={e => setBairro(e.target.value)} placeholder="Centro" className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition" />
+          </div>
+          <div className="md:col-span-2 space-y-1">
+            <label className="text-xs font-bold text-stone-400 ml-2">CIDADE</label>
+            <input type="text" value={cidade} onChange={e => setCidade(e.target.value)} placeholder="Cidade" className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-stone-400 ml-2">UF</label>
+            <input type="text" value={uf} onChange={e => setUf(e.target.value.toUpperCase())} placeholder="PR" maxLength={2} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-bold uppercase text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition" />
+            <input type="hidden" value={codigoMunicipio} readOnly />
           </div>
         </div>
       </div>

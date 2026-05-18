@@ -23,6 +23,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { getPendingWorkOrders, searchProducts, searchServices, getProductFiscalData, getServiceFiscalData, updateProductNCM } from "@/src/actions/fiscal_db";
+import { getCompanySettings } from "@/src/actions/fiscal";
 
 
 
@@ -147,22 +148,82 @@ export default function EmitirNotaPage() {
 
     const [itens, setItens] = useState<InvoiceItem[]>([]);
     const [itensServico, setItensServico] = useState<any[]>([]);
+    const [produtoDocumento, setProdutoDocumento] = useState<"NFCe" | "NFe">("NFCe");
+    const [emitenteUF, setEmitenteUF] = useState("");
 
     const [emitting, setEmitting] = useState(false);
+    const [loadingCep, setLoadingCep] = useState(false);
 
     const [focusedField, setFocusedField] = useState<{ type: 'prod' | 'serv', idx: number } | null>(null);
 
     const [fetchingNCM, setFetchingNCM] = useState<number | null>(null);
     const [ncmModalData, setNcmModalData] = useState<{ idx: number, options: { code: string, description: string }[] } | null>(null);
+    const destinatarioUF = String(clienteEndereco?.uf || "").trim().toUpperCase();
+    const isNFeVendaRapida = produtoDocumento === "NFe";
+    const shouldValidateNFeVendaRapida = isNFeVendaRapida && itens.length > 0;
+    const nfeDestinoLabel = !isNFeVendaRapida
+        ? ""
+        : !destinatarioUF || !emitenteUF
+            ? "Aguardando UF do destinatario"
+            : destinatarioUF === emitenteUF
+                ? "Venda interna"
+                : "Venda interestadual";
+    const nfeCfopRigido = destinatarioUF && emitenteUF && destinatarioUF !== emitenteUF ? "6102" : "5102";
 
-    const finalizeNCM = async (idx: number, ncm: string) => {
+    const getNFeVendaRapidaPendencias = () => {
+        if (!shouldValidateNFeVendaRapida) return [];
+
+        const pendencias: string[] = [];
+        const endereco = clienteEndereco || {};
+        const docDigits = String(clienteDoc || "").replace(/\D/g, "");
+
+        if (!clienteNome.trim()) pendencias.push("Informe o nome do destinatario.");
+        if (docDigits.length !== 11 && docDigits.length !== 14) pendencias.push("Informe CPF/CNPJ valido do destinatario.");
+        if (!endereco.cep || !endereco.logradouro || !endereco.numero || !endereco.bairro || !endereco.cidade || !endereco.uf || !endereco.codigo_municipio) {
+            pendencias.push("Complete o endereco do destinatario para emitir NF-e.");
+        }
+        if (!emitenteUF) pendencias.push("UF da empresa emissora nao carregada.");
+        if (itens.some(i => !/^\d{8}$/.test(String(i.ncm || "")) || i.ncm === "00000000")) {
+            pendencias.push("Todos os produtos precisam ter NCM valido.");
+        }
+
+        return pendencias;
+    };
+
+    const buscarCep = async (cepValue = clienteEndereco?.cep || "") => {
+        const cleanCep = String(cepValue).replace(/\D/g, "");
+        if (cleanCep.length !== 8) return;
+
+        setLoadingCep(true);
+        try {
+            const res = await fetch(`/api/cep?cep=${cleanCep}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "CEP não encontrado.");
+
+            setClienteEndereco((current: any) => ({
+                ...current,
+                cep: data.cep || cepValue,
+                logradouro: data.logradouro || "",
+                bairro: data.bairro || "",
+                cidade: data.cidade || "",
+                uf: data.uf || "",
+                codigo_municipio: data.codigo_municipio || "",
+            }));
+        } catch (error: any) {
+            alert(error.message || "Erro ao buscar CEP.");
+        } finally {
+            setLoadingCep(false);
+        }
+    };
+
+    const finalizeNCM = async (idx: number, ncm: string, persistInCatalog = false) => {
         const item = itens[idx];
         const newItens = [...itens];
         newItens[idx].ncm = ncm;
         setItens(newItens);
 
         // Persistência automática: só não salva se for "avulso" que o user criou agora com código genérico "NEW"
-        if (item.codigo && item.codigo !== 'GEN' && item.codigo !== 'NEW') {
+        if (persistInCatalog && item.codigo && item.codigo !== 'GEN' && item.codigo !== 'NEW') {
             const saveRes = await updateProductNCM(item.codigo, ncm);
             if (saveRes.success) {
                 console.log(`NCM ${ncm} salvo no BD para o produto ${item.codigo}.`);
@@ -187,16 +248,20 @@ export default function EmitirNotaPage() {
                 body: JSON.stringify({ descricao: item.descricao })
             });
             const data = await res.json();
+            const shouldPersistFromAi = !data.error && data.needs_review === false;
             
             if (data.options && data.options.length > 1) {
                 // Múltiplas opções encontradas, abrir modal
                 setNcmModalData({ idx: index, options: data.options });
             } else if (data.recommendation) {
                 // Direto à única recomendação
-                await finalizeNCM(index, data.recommendation);
+                await finalizeNCM(index, data.recommendation, shouldPersistFromAi);
+            } else if (data.options?.[0]?.code) {
+                // Sem recommendation, mas com uma opção válida
+                await finalizeNCM(index, data.options[0].code, shouldPersistFromAi);
             } else if (data.ncm) {
                 // Fallback legado (garantia caso o JSON quebre e volte apenas `ncm: val`)
-                await finalizeNCM(index, data.ncm);
+                await finalizeNCM(index, data.ncm, shouldPersistFromAi);
             } else {
                 alert(data.error || "A IA não conseguiu encontrar um NCM válido para esta descrição.");
             }
@@ -222,6 +287,15 @@ export default function EmitirNotaPage() {
         }
 
     }, [profile]);
+
+    useEffect(() => {
+        const loadCompanyUf = async () => {
+            const settings = await getCompanySettings();
+            setEmitenteUF(String(settings?.uf || "").trim().toUpperCase());
+        };
+
+        loadCompanyUf();
+    }, []);
 
     useEffect(() => {
         if (!isHomologation) return;
@@ -294,7 +368,7 @@ export default function EmitirNotaPage() {
 
                 .from('clients')
 
-                .select('cep, logradouro, numero, bairro, cidade, uf, codigo_municipio')
+                .select('endereco')
 
                 .eq('id', os.client_id)
 
@@ -302,23 +376,24 @@ export default function EmitirNotaPage() {
 
 
 
-            if (clientData) {
+            if (clientData?.endereco) {
+                const endereco = clientData.endereco;
 
                 setClienteEndereco({
 
-                    logradouro: clientData.logradouro || "",
+                    logradouro: endereco.logradouro || endereco.rua || "",
 
-                    numero: clientData.numero || "",
+                    numero: endereco.numero || "",
 
-                    bairro: clientData.bairro || "",
+                    bairro: endereco.bairro || "",
 
-                    cidade: clientData.cidade || "",
+                    cidade: endereco.cidade || "",
 
-                    uf: clientData.uf || "",
+                    uf: endereco.uf || "",
 
-                    codigo_municipio: clientData.codigo_municipio || "",
+                    codigo_municipio: endereco.codigo_municipio || "",
 
-                    cep: clientData.cep || ""
+                    cep: endereco.cep || ""
 
                 });
 
@@ -344,7 +419,7 @@ export default function EmitirNotaPage() {
 
             .not('status', 'in', '(error,cancelled,rejected)');
 
-        const hasExistingNFCe = (existingInvoices || []).some((invoice: any) => invoice.tipo_documento === 'NFCe');
+        const hasExistingProductInvoice = (existingInvoices || []).some((invoice: any) => invoice.tipo_documento === 'NFCe' || invoice.tipo_documento === 'NFe');
 
         const hasExistingNFSe = (existingInvoices || []).some((invoice: any) => invoice.tipo_documento === 'NFSe');
 
@@ -372,7 +447,7 @@ export default function EmitirNotaPage() {
 
                 if (item.tipo === 'peca') {
 
-                    if (item.peca_cliente || hasExistingNFCe) return;
+                    if (item.peca_cliente || hasExistingProductInvoice) return;
 
                     let fiscalData = { ncm: '00000000', cfop: '5102', unidade: 'UN' };
 
@@ -538,6 +613,12 @@ export default function EmitirNotaPage() {
 
 
 
+        const nfePendencias = getNFeVendaRapidaPendencias();
+        if (nfePendencias.length > 0) {
+            alert(`NF-e rapida de venda bloqueada:\n${nfePendencias.join("\n")}`);
+            return;
+        }
+
         setEmitting(true);
 
         try {
@@ -546,19 +627,23 @@ export default function EmitirNotaPage() {
 
 
 
-            // 1. Emissão de NFC-e (Produtos)
+            // 1. Emissão de produtos (NFC-e ou NF-e)
 
             if (itens.length > 0) {
 
                 const totalProdutos = itens.reduce((acc, item) => acc + item.valor_total, 0);
 
-                const resNFCe = await emitirNFCe({
+                const produtosPayload = {
 
                     organization_id: profile.organization_id,
 
                     work_order_id: selectedOS?.id,
 
-                    cliente: { nome: clienteNome, cpf_cnpj: clienteDoc },
+                    cliente: {
+                        nome: clienteNome,
+                        cpf_cnpj: clienteDoc,
+                        endereco: clienteEndereco,
+                    },
 
                     itens: itens,
 
@@ -568,9 +653,14 @@ export default function EmitirNotaPage() {
 
                     environment
 
+                };
+
+                const resProdutos = await emitirNFCe({
+                    ...produtosPayload,
+                    tipo_documento: produtoDocumento,
                 });
 
-                results.push({ type: 'NFC-e', ...resNFCe });
+                results.push({ type: produtoDocumento === "NFe" ? 'NF-e' : 'NFC-e', ...resProdutos });
 
             }
 
@@ -702,7 +792,7 @@ export default function EmitirNotaPage() {
 
                     <h1 className="text-xl font-bold text-[#1A1A1A]">Nova Emissão Fiscal</h1>
 
-                    <p className="text-stone-400 text-xs">NFC-e (Consumidor) / NFS-e (Serviços)</p>
+                    <p className="text-stone-400 text-xs">NFC-e ou NF-e (Produtos) / NFS-e (Serviços)</p>
 
                 </div>
 
@@ -900,7 +990,7 @@ export default function EmitirNotaPage() {
 
 
 
-                    {/* FORMULÁRIO (ESQUERDA - 3 colunas) */}
+                    {/* FORMULRIO (ESQUERDA - 3 colunas) */}
 
                     <div className="lg:col-span-3 space-y-4">
 
@@ -934,7 +1024,24 @@ export default function EmitirNotaPage() {
 
                                     <label className="text-[10px] font-bold text-stone-400 ml-1">CEP</label>
 
-                                    <input value={clienteEndereco?.cep || ""} onChange={e => setClienteEndereco({ ...clienteEndereco, cep: e.target.value })} className="w-full bg-white border border-stone-300 p-2 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all" placeholder="00000-000" />
+                                    <div className="relative">
+                                        <input
+                                            value={clienteEndereco?.cep || ""}
+                                            onChange={e => setClienteEndereco({ ...clienteEndereco, cep: e.target.value })}
+                                            onBlur={() => buscarCep()}
+                                            className="w-full bg-white border border-stone-300 p-2 pr-9 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all"
+                                            placeholder="00000-000"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => buscarCep()}
+                                            disabled={loadingCep}
+                                            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-[#1A1A1A] disabled:opacity-50"
+                                            title="Buscar endereço pelo CEP"
+                                        >
+                                            {loadingCep ? <Loader2 size={14} className="animate-spin" /> : <MapPin size={14} />}
+                                        </button>
+                                    </div>
 
                                 </div>
 
@@ -946,7 +1053,7 @@ export default function EmitirNotaPage() {
 
                             <div className="mt-3 pt-3 border-t border-stone-50">
 
-                                <h4 className="text-[10px] font-bold text-stone-400 mb-2 ml-1 flex items-center gap-1"><MapPin size={10} /> ENDEREÇO (Obrigatório para NFS-e)</h4>
+                                <h4 className="text-[10px] font-bold text-stone-400 mb-2 ml-1 flex items-center gap-1"><MapPin size={10} /> ENDEREÇO (Obrigatório para NF-e e NFS-e)</h4>
 
                                 <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
 
@@ -1004,11 +1111,41 @@ export default function EmitirNotaPage() {
 
 
 
-                        {/* PRODUTOS (NFC-e) */}
+                        {/* PRODUTOS */}
 
                         <div className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
 
-                            <h3 className="font-bold text-sm text-[#1A1A1A] mb-3 flex items-center gap-2"><ShoppingCart size={14} /> Produtos (NFC-e)</h3>
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                                <h3 className="font-bold text-sm text-[#1A1A1A] flex items-center gap-2"><ShoppingCart size={14} /> Produtos ({produtoDocumento === "NFe" ? "NF-e" : "NFC-e"})</h3>
+                                <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-xl w-fit">
+                                    <button
+                                        type="button"
+                                        onClick={() => setProdutoDocumento("NFCe")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${produtoDocumento === "NFCe" ? "bg-white text-[#1A1A1A] shadow-sm" : "text-stone-500 hover:text-[#1A1A1A]"}`}
+                                    >
+                                        NFC-e
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setProdutoDocumento("NFe")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${produtoDocumento === "NFe" ? "bg-white text-[#1A1A1A] shadow-sm" : "text-stone-500 hover:text-[#1A1A1A]"}`}
+                                    >
+                                        NF-e rapida
+                                    </button>
+                                </div>
+                            </div>
+
+                            {shouldValidateNFeVendaRapida && (
+                                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                        <span className="font-bold">Venda com regras rigidas</span>
+                                        <span className="font-bold">{nfeDestinoLabel} | CFOP {nfeCfopRigido}</span>
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-amber-800">
+                                        O sistema calcula dentro/fora do estado pelo endereco do destinatario e aplica CFOP {nfeCfopRigido} automaticamente na emissao.
+                                    </p>
+                                </div>
+                            )}
 
                             <div className="space-y-2">
 
@@ -1110,6 +1247,12 @@ export default function EmitirNotaPage() {
 
                                                     const newItens = [...itens]; newItens[idx].ncm = e.target.value; setItens(newItens);
 
+                                                }} onBlur={async e => {
+                                                    const manualNcm = String(e.target.value || "").replace(/\D/g, "").slice(0, 8);
+                                                    if (manualNcm.length !== 8) return;
+                                                    const currentItem = itens[idx];
+                                                    if (!currentItem?.codigo || currentItem.codigo === 'GEN' || currentItem.codigo === 'NEW') return;
+                                                    await updateProductNCM(currentItem.codigo, manualNcm);
                                                 }} className={`w-full bg-white p-1.5 pr-7 rounded-lg text-xs font-medium outline-none text-center border ${(!item.ncm || item.ncm === '00000000') ? 'border-red-400 bg-red-50' : 'border-stone-300'} focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all`} placeholder="NCM" title={(!item.ncm || item.ncm === '00000000') ? 'NCM obigatório' : ''} />
 
                                                 <button
@@ -1215,7 +1358,7 @@ export default function EmitirNotaPage() {
 
                                 <h3 className="font-bold text-sm text-blue-700 flex items-center gap-2"><Wrench size={14} /> Serviços (NFS-e)</h3>
 
-                                <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-2 py-0.5 rounded">AUTOMÁTICO</span>
+                                <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-2 py-0.5 rounded">AUTOMTICO</span>
 
                             </div>
 
@@ -1361,7 +1504,7 @@ export default function EmitirNotaPage() {
 
                                 <div className="flex justify-between font-bold text-sm pt-2 border-t border-white/10">
 
-                                    <span>NFC-e</span>
+                                    <span>{produtoDocumento === "NFe" ? "NF-e" : "NFC-e"}</span>
 
                                     <span>R$ {itens.reduce((acc, i) => acc + i.valor_total, 0).toFixed(2)}</span>
 
@@ -1388,21 +1531,29 @@ export default function EmitirNotaPage() {
 
                             {(() => {
                                 const hasMissingNCM = itens.some(i => !i.ncm || i.ncm === '00000000');
+                                const nfePendencias = getNFeVendaRapidaPendencias();
+                                const hasBlockingPendencias = hasMissingNCM || nfePendencias.length > 0;
                                 return (
                                     <>
                                         <button
                                             onClick={handleEmitir}
-                                            disabled={emitting || hasMissingNCM}
+                                            disabled={emitting || hasBlockingPendencias}
                                             title={hasMissingNCM ? "Algum produto não possui um NCM válido." : ""}
                                             className="w-full bg-[#FACC15] text-[#1A1A1A] py-3 rounded-xl font-bold text-sm hover:bg-white transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                                         >
                                             {emitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
-                                            {emitting ? "Emitindo..." : "Emitir Nota"}
+                                            {emitting ? "Emitindo..." : isNFeVendaRapida ? "Emitir NF-e de Venda" : "Emitir Nota"}
                                         </button>
                                         
-                                        {hasMissingNCM && (
+                                        {hasBlockingPendencias && isNFeVendaRapida && (
                                             <p className="text-[10px] text-red-400 text-center mt-2 font-medium bg-red-900/30 p-2 rounded-lg border border-red-500/20">
-                                                Bloqueado: Preencha todos os NCMs dos produtos (use a IA se necessário).
+                                                Bloqueado: {nfePendencias[0]}
+                                            </p>
+                                        )}
+
+                                        {hasBlockingPendencias && !isNFeVendaRapida && (
+                                            <p className="text-[10px] text-red-400 text-center mt-2 font-medium bg-red-900/30 p-2 rounded-lg border border-red-500/20">
+                                                Bloqueado: Preencha todos os NCMs dos produtos.
                                             </p>
                                         )}
                                     </>
@@ -1448,7 +1599,7 @@ export default function EmitirNotaPage() {
                             <div>
                                 <h3 className="font-bold text-lg text-[#1A1A1A] leading-tight mb-1">Qual NCM é mais adequado?</h3>
                                 <p className="text-xs text-stone-500 leading-relaxed">
-                                    Encontramos mais de uma opção para <strong className="text-[#1A1A1A]">{itens[ncmModalData.idx]?.descricao}</strong>. 
+                                    Encontramos mais de uma opção para <strong className="text-[#1A1A1A]">{itens[ncmModalData.idx]?.descricao}</strong>.
                                     A sua escolha será salva automaticamente no cadastro do produto.
                                 </p>
                             </div>
@@ -1474,8 +1625,6 @@ export default function EmitirNotaPage() {
     );
 
 }
-
-
 
 // Componentes Auxiliares de Busca (Poderiam ser extraídos)
 
@@ -1565,8 +1714,6 @@ function ProductSearch({ query, onSelect }: { query: string, onSelect: (prod: an
 
 }
 
-
-
 function ServiceSearch({ query, onSelect }: { query: string, onSelect: (serv: any) => void }) {
 
     const [results, setResults] = useState<any[]>([]);
@@ -1650,4 +1797,3 @@ function ServiceSearch({ query, onSelect }: { query: string, onSelect: (serv: an
     );
 
 }
-

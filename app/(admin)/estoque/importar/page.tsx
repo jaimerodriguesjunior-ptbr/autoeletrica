@@ -1,15 +1,24 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@/src/lib/supabase";
 import { useAuth } from "@/src/contexts/AuthContext";
 import {
     FileJson, AlertCircle, CheckCircle, Search,
-    ArrowRight, Save, Plus, X, Loader2, Upload
+    ArrowRight, Save, Plus, X, Loader2, Upload, CloudDownload, FolderOpen, Inbox, RefreshCw, Copy
 } from "lucide-react";
 import { XMLParser } from "fast-xml-parser";
 import { ProductCombobox } from "./ProductCombobox";
 import { getCompanySettings } from "@/src/actions/fiscal";
+import {
+    getNfeQueueXml,
+    listNfeImportQueue,
+    markNfeQueueImported,
+    searchNfeByAccessKey,
+    syncNfeFromSefaz,
+    type NfeQueueItem,
+} from "@/src/actions/nfe_import_queue";
+import { searchNfeDirectSefazByAccessKey } from "@/src/actions/sefaz_direct_distribution";
 
 // Tipos
 type ImportedProduct = {
@@ -48,6 +57,19 @@ export default function ImportarXML() {
     const [notaInfo, setNotaInfo] = useState<{ nNF: string, emitente: string, emitenteCNPJ: string, total: number, chNFe: string, dhEmi: string } | null>(null);
     const [rawXml, setRawXml] = useState<string>("");
     const [isDragging, setIsDragging] = useState(false);
+    const [sourceMode, setSourceMode] = useState<'computer' | 'sefaz'>('computer');
+    const [queueItems, setQueueItems] = useState<NfeQueueItem[]>([]);
+    const [queueLoading, setQueueLoading] = useState(false);
+    const [syncingSefaz, setSyncingSefaz] = useState(false);
+    const [searchingKey, setSearchingKey] = useState(false);
+    const [searchingDirectKey, setSearchingDirectKey] = useState(false);
+    const [accessKeyInput, setAccessKeyInput] = useState("");
+    const [selectedQueueId, setSelectedQueueId] = useState<string | null>(null);
+    const [lastSyncInfo, setLastSyncInfo] = useState<{
+        type: 'success' | 'error';
+        message: string;
+        details?: string;
+    } | null>(null);
 
     // Markup settings
     const [markupAtivo, setMarkupAtivo] = useState(false);
@@ -64,6 +86,32 @@ export default function ImportarXML() {
         };
         loadSettings();
     }, []);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("origem") === "sefaz") {
+            setSourceMode("sefaz");
+        }
+    }, []);
+
+    const loadQueue = useCallback(async () => {
+        setQueueLoading(true);
+        try {
+            const result = await listNfeImportQueue();
+            if (!result.success) throw new Error(result.error);
+            setQueueItems(result.data || []);
+        } catch (error: any) {
+            alert("Erro ao carregar fila da SEFAZ: " + error.message);
+        } finally {
+            setQueueLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (sourceMode === 'sefaz') {
+            loadQueue();
+        }
+    }, [sourceMode, loadQueue]);
 
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
@@ -97,9 +145,19 @@ export default function ImportarXML() {
     };
 
     const processFile = async (file: File) => {
+        setSelectedQueueId(null);
         setLoading(true);
         try {
             const text = await file.text();
+            await processXmlText(text);
+        } catch (error: any) {
+            alert("Erro ao ler XML: " + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const processXmlText = async (text: string) => {
             const parser = new XMLParser({
                 ignoreAttributes: false,
                 attributeNamePrefix: "@_",
@@ -196,11 +254,161 @@ export default function ImportarXML() {
 
             setItems(conciliated);
             setStep('conciliate');
+    };
 
+    const handleSyncSefaz = async () => {
+        setSyncingSefaz(true);
+        try {
+            const result = await syncNfeFromSefaz();
+            if (!result.success) throw new Error(result.error);
+            await loadQueue();
+            const loteInfo = result.initialSync && !result.initialSyncCompleted
+                ? "\nPrimeira carga ainda em andamento: clique em Verificar novas emissoes novamente para continuar o proximo lote."
+                : "";
+            setLastSyncInfo({
+                type: 'success',
+                message: (result.inserted || 0) > 0
+                    ? `${result.inserted} emissao(oes) nova(s) adicionada(s) na fila.`
+                    : "Verificacao concluida sem novas emissoes para importar.",
+                details: `CNPJ: ${result.cpfCnpj || "-"} | Status: ${result.codigoStatus || "-"} ${result.motivoStatus || ""} | Recebidas da API: ${result.received || 0} | Eventos/nao-notas: ${result.skippedNonNote || 0} | Sem chave: ${result.skippedMissingKey || 0} | Ja importadas: ${result.skippedDuplicated || 0} | Fora dos 60 dias iniciais: ${result.skippedOld || 0} | ultNSU: ${result.ultimoNsu || 0} | maxNSU: ${result.maxNsu || 0}${loteInfo ? " | Primeira carga ainda em andamento" : ""}`,
+            });
+            alert(`Verificacao concluida.\nCNPJ: ${result.cpfCnpj || "-"}\nStatus: ${result.codigoStatus || "-"} ${result.motivoStatus || ""}\nRecebidas: ${result.received || 0}\nNovas emissoes na fila: ${result.inserted || 0}\nEventos/nao-notas: ${result.skippedNonNote || 0}\nSem chave: ${result.skippedMissingKey || 0}\nJa importadas: ${result.skippedDuplicated || 0}\nFora dos 60 dias iniciais: ${result.skippedOld || 0}\nultNSU: ${result.ultimoNsu || 0}\nmaxNSU: ${result.maxNsu || 0}${loteInfo}`);
         } catch (error: any) {
-            alert("Erro ao ler XML: " + error.message);
+            setLastSyncInfo({
+                type: 'error',
+                message: "A verificacao de emissoes falhou.",
+                details: error.message,
+            });
+            alert("Erro ao verificar novas emissoes: " + error.message);
+        } finally {
+            setSyncingSefaz(false);
+        }
+    };
+
+    const handleOpenQueueItem = async (queueItem: NfeQueueItem) => {
+        if (!queueItem.resumo && !window.confirm("XML encontrada. Gostaria de importar agora?")) {
+            return;
+        }
+
+        setLoading(true);
+        setSelectedQueueId(queueItem.id);
+        try {
+            const result = await getNfeQueueXml(queueItem.id);
+            if (!result.success || !result.xmlContent) throw new Error(result.error || "XML nao encontrado.");
+            await processXmlText(result.xmlContent);
+        } catch (error: any) {
+            setSelectedQueueId(null);
+            alert("Erro ao abrir XML da SEFAZ: " + error.message);
+            await loadQueue();
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleCopyAccessKey = async (chaveAcesso: string) => {
+        try {
+            await navigator.clipboard.writeText(chaveAcesso);
+            alert("Chave de acesso copiada.");
+        } catch {
+            alert(`Nao foi possivel copiar automaticamente. Chave: ${chaveAcesso}`);
+        }
+    };
+
+    const handleSearchByKey = async () => {
+        setSearchingKey(true);
+        try {
+            const result = await searchNfeByAccessKey(accessKeyInput);
+            if (!result.success) throw new Error(result.error);
+
+            if (result.alreadyImported) {
+                const invoiceDate = result.invoice?.data_emissao
+                    ? new Date(result.invoice.data_emissao).toLocaleDateString('pt-BR')
+                    : "-";
+                setLastSyncInfo({
+                    type: 'success',
+                    message: "NF-e localizada, mas ja estava importada.",
+                    details: `CNPJ: ${result.cpfCnpj || "-"} | Status: ${result.codigoStatus || "-"} ${result.motivoStatus || ""} | NF: ${result.invoice?.numero || "-"} | Data: ${invoiceDate}`,
+                });
+                alert(`NF-e localizada, mas ja estava importada.\nNF: ${result.invoice?.numero || "-"}\nData: ${invoiceDate}`);
+            } else if (result.found) {
+                setLastSyncInfo({
+                    type: 'success',
+                    message: result.resumo
+                        ? "NF-e localizada como resumo e adicionada na fila."
+                        : "NF-e completa localizada e adicionada na fila.",
+                    details: `CNPJ: ${result.cpfCnpj || "-"} | Status: ${result.codigoStatus || "-"} ${result.motivoStatus || ""}`,
+                });
+                alert(result.resumo
+                    ? "NF-e localizada como resumo e adicionada na fila. Ao abrir, o sistema tentara manifestar ciencia. Se o XML completo ainda nao vier, tente novamente apenas na proxima janela da SEFAZ (cerca de 1 hora)."
+                    : "NF-e completa localizada e adicionada na fila.");
+            } else {
+                setLastSyncInfo({
+                    type: 'success',
+                    message: "Nenhuma NF-e foi localizada para essa chave.",
+                    details: `CNPJ: ${result.cpfCnpj || "-"} | Status: ${result.codigoStatus || "-"} ${result.motivoStatus || ""}`,
+                });
+                alert("Nenhuma NF-e foi localizada para essa chave.");
+            }
+
+            await loadQueue();
+        } catch (error: any) {
+            setLastSyncInfo({
+                type: 'error',
+                message: "A busca por chave falhou.",
+                details: error.message,
+            });
+            alert("Erro ao buscar por chave: " + error.message);
+        } finally {
+            setSearchingKey(false);
+        }
+    };
+
+    const handleSearchDirectByKey = async () => {
+        setSearchingDirectKey(true);
+        try {
+            const result = await searchNfeDirectSefazByAccessKey(accessKeyInput);
+            if (!result.success) throw new Error(result.error);
+
+            if (result.alreadyImported) {
+                const invoiceDate = result.invoice?.data_emissao
+                    ? new Date(result.invoice.data_emissao).toLocaleDateString('pt-BR')
+                    : "-";
+                setLastSyncInfo({
+                    type: 'success',
+                    message: "SEFAZ direta localizou, mas a NF-e ja estava importada.",
+                    details: `CNPJ: ${result.cpfCnpj || "-"} | Status: ${result.codigoStatus || "-"} ${result.motivoStatus || ""} | NF: ${result.invoice?.numero || "-"} | Data: ${invoiceDate}`,
+                });
+                alert(`SEFAZ direta localizou, mas ja estava importada.\nNF: ${result.invoice?.numero || "-"}\nData: ${invoiceDate}`);
+            } else if (result.found) {
+                setLastSyncInfo({
+                    type: 'success',
+                    message: result.resumo
+                        ? "SEFAZ direta localizou como resumo e adicionou na fila."
+                        : "SEFAZ direta localizou XML completo e adicionou na fila.",
+                    details: `CNPJ: ${result.cpfCnpj || "-"} | Status: ${result.codigoStatus || "-"} ${result.motivoStatus || ""}`,
+                });
+                alert(result.resumo
+                    ? "SEFAZ direta localizou como resumo e adicionou na fila."
+                    : "SEFAZ direta localizou XML completo e adicionou na fila.");
+            } else {
+                setLastSyncInfo({
+                    type: 'success',
+                    message: "SEFAZ direta nao localizou NF-e para essa chave.",
+                    details: `CNPJ: ${result.cpfCnpj || "-"} | Status: ${result.codigoStatus || "-"} ${result.motivoStatus || ""}`,
+                });
+                alert("SEFAZ direta nao localizou NF-e para essa chave.");
+            }
+
+            await loadQueue();
+        } catch (error: any) {
+            setLastSyncInfo({
+                type: 'error',
+                message: "A busca direta na SEFAZ falhou.",
+                details: error.message,
+            });
+            alert("Erro na busca direta SEFAZ: " + error.message);
+        } finally {
+            setSearchingDirectKey(false);
         }
     };
 
@@ -319,6 +527,13 @@ export default function ImportarXML() {
             }
 
             alert(`Importação concluída!\n${createdCount} produtos criados.\n${updatedCount} produtos atualizados.`);
+            if (selectedQueueId || notaInfo?.chNFe) {
+                const markResult = await markNfeQueueImported(selectedQueueId, notaInfo?.chNFe);
+                if (!markResult.success) {
+                    console.warn("Nota importada, mas nao foi possivel atualizar a fila:", markResult.error);
+                }
+            }
+
             window.location.href = '/estoque';
 
         } catch (error: any) {
@@ -337,6 +552,29 @@ export default function ImportarXML() {
 
             {/* STEP 1: UPLOAD */}
             {step === 'upload' && (
+                <>
+                <div className="flex flex-col sm:flex-row gap-2 mb-6">
+                    <button
+                        onClick={() => {
+                            setSelectedQueueId(null);
+                            setSourceMode('computer');
+                        }}
+                        className={`px-5 py-3 rounded-2xl font-bold text-sm border-2 flex items-center gap-2 transition ${sourceMode === 'computer' ? 'bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A]' : 'bg-white text-stone-600 border-stone-200 hover:border-stone-400'}`}
+                    >
+                        <FolderOpen size={18} /> Procurar no computador
+                    </button>
+                    <button
+                        onClick={() => {
+                            setSelectedQueueId(null);
+                            setSourceMode('sefaz');
+                        }}
+                        className={`px-5 py-3 rounded-2xl font-bold text-sm border-2 flex items-center gap-2 transition ${sourceMode === 'sefaz' ? 'bg-[#1A1A1A] text-[#FACC15] border-[#1A1A1A]' : 'bg-white text-stone-600 border-stone-200 hover:border-stone-400'}`}
+                    >
+                        <CloudDownload size={18} /> Verificar novas emissoes
+                    </button>
+                </div>
+
+                {sourceMode === 'computer' && (
                 <div
                     className={`rounded-[32px] p-12 shadow-sm border-2 text-center transition-all cursor-pointer ${isDragging
                         ? 'bg-blue-50 border-blue-400 border-dashed scale-[1.02]'
@@ -370,6 +608,108 @@ export default function ImportarXML() {
                         Selecionar Arquivo
                     </button>
                 </div>
+                )}
+
+                {sourceMode === 'sefaz' && (
+                    <div className="bg-white rounded-[28px] border-2 border-stone-200 shadow-sm overflow-hidden">
+                        <div className="p-5 border-b border-stone-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div>
+                                <h2 className="font-bold text-[#1A1A1A] flex items-center gap-2">
+                                    <Inbox size={20} /> Emissoes encontradas
+                                </h2>
+                                <p className="text-xs text-stone-500 mt-1">
+                                    A consulta verifica NF-e emitidas contra o CNPJ da oficina. Quando o XML completo estiver disponivel, voce podera importar; quando vier apenas resumo, use a chave para localizar o XML.
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleSyncSefaz}
+                                disabled={syncingSefaz || queueLoading}
+                                className="bg-[#1A1A1A] text-[#FACC15] px-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
+                            >
+                                {syncingSefaz ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
+                                Verificar novas emissoes
+                            </button>
+                        </div>
+
+                        {queueLoading ? (
+                            <div className="py-16 flex flex-col items-center gap-2 text-stone-400">
+                                <Loader2 className="animate-spin text-[#FACC15]" />
+                                <p className="text-sm">Carregando fila...</p>
+                            </div>
+                        ) : queueItems.length === 0 ? (
+                            <div className="py-12 px-6 flex flex-col items-center gap-3 text-stone-400">
+                                {lastSyncInfo && (
+                                    <div className={`w-full max-w-2xl border rounded-2xl p-4 text-left mb-4 ${lastSyncInfo.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+                                        <p className="text-sm font-bold">{lastSyncInfo.message}</p>
+                                        {lastSyncInfo.details && <p className="text-xs mt-1 opacity-80">{lastSyncInfo.details}</p>}
+                                    </div>
+                                )}
+                                <Inbox size={36} className="text-stone-300" />
+                                <p className="text-sm font-medium">
+                                    {lastSyncInfo ? "Nenhuma emissao pendente na fila." : "Clique em Verificar novas emissoes para consultar a SEFAZ."}
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-stone-100">
+                                {lastSyncInfo && (
+                                    <div className={`m-4 border rounded-2xl p-4 ${lastSyncInfo.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+                                        <p className="text-sm font-bold">{lastSyncInfo.message}</p>
+                                        {lastSyncInfo.details && <p className="text-xs mt-1 opacity-80">{lastSyncInfo.details}</p>}
+                                    </div>
+                                )}
+                                {queueItems.map((note) => (
+                                    <div
+                                        key={note.id}
+                                        className="w-full p-5 hover:bg-stone-50 transition flex flex-col md:flex-row md:items-center justify-between gap-4"
+                                    >
+                                        <div className="min-w-0">
+                                            <p className="font-bold text-[#1A1A1A] truncate">{note.emitente_nome || "Fornecedor nao identificado"}</p>
+                                            <p className="text-xs text-stone-500 mt-1">
+                                                NF {note.numero || "-"} {note.data_emissao ? `- ${new Date(note.data_emissao).toLocaleDateString('pt-BR')}` : ""} - Chave {note.chave_acesso}
+                                            </p>
+                                            {note.resumo && (
+                                                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-2 inline-flex">
+                                                    XML ainda nao disponivel pela SEFAZ. Copie a chave para localizar o XML manualmente ou tente baixar novamente na proxima janela da SEFAZ.
+                                                </p>
+                                            )}
+                                            {!note.resumo && (
+                                                <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-2 py-1 mt-2 inline-flex">
+                                                    XML encontrada. Voce pode importar esta nota agora.
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0">
+                                            <span className="font-bold text-[#1A1A1A]">
+                                                R$ {(Number(note.valor_total || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCopyAccessKey(note.chave_acesso)}
+                                                className="bg-white text-[#1A1A1A] px-4 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-stone-200 hover:border-stone-400"
+                                            >
+                                                <Copy size={15} /> Copiar chave
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenQueueItem(note)}
+                                                disabled={loading}
+                                                className={`${note.resumo ? "bg-stone-100 text-stone-600 border border-stone-200" : "bg-[#1A1A1A] text-[#FACC15] border border-[#1A1A1A]"} px-4 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-60`}
+                                            >
+                                                {loading && selectedQueueId === note.id ? (
+                                                    <Loader2 className="animate-spin" size={15} />
+                                                ) : (
+                                                    <ArrowRight size={15} />
+                                                )}
+                                                {note.resumo ? "Tentar baixar XML" : "Importar XML"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+                </>
             )}
 
             {/* STEP 2: CONCILIATE */}

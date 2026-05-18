@@ -13,6 +13,7 @@ type Product = {
   id: string;
   nome: string;
   marca: string | null;
+  ncm: string | null;
   ean: string | null;
   estoque_atual: number;
   estoque_min: number;
@@ -195,7 +196,7 @@ export default function EstoqueEServicos() {
               onClick={() => window.location.href = "/estoque/importar"}
               className="bg-white hover:bg-stone-50 text-[#1A1A1A] px-6 py-3 rounded-full font-bold text-sm shadow-md flex items-center gap-2 border border-stone-200 transition"
             >
-              <FileJson size={20} /> Importar XML
+              <FileJson size={20} /> Importar / Conferir XML
             </button>
             <button
               onClick={() => window.location.href = "/estoque/novo"}
@@ -333,6 +334,7 @@ export default function EstoqueEServicos() {
                       <td className="px-6 py-4">
                         <p className="font-bold text-[#1A1A1A]">{p.nome}</p>
                         <p className="text-xs text-stone-400">{p.marca || "Marca não inf."}</p>
+                        <p className="text-xs text-stone-400">NCM: {p.ncm || "não informado"}</p>
                         {status === 'atencao_preco' && (
                           <div className="mt-1 flex items-center gap-2 text-[10px] bg-yellow-50 text-yellow-700 px-2 py-1 rounded w-fit">
                             <span>Pagou: R$ {p.custo_contabil.toFixed(2)}</span>

@@ -127,7 +127,7 @@ export async function buildClosingZip(
 
     const startDate = new Date(year, month, 1).toISOString();
     const endDate = new Date(year, month + 1, 1).toISOString();
-    const baseFields = "id, direction, xml_content, xml_url, chave_acesso, numero, status, data_emissao, created_at";
+    const baseFields = "id, direction, tipo_documento, xml_content, xml_url, chave_acesso, numero, status, motivo_rejeicao, error_message, data_emissao, created_at";
 
     const [{ data: datedFiles }, { data: fallbackFiles }] = await Promise.all([
         supabase.from("fiscal_invoices").select(baseFields)
@@ -140,6 +140,54 @@ export async function buildClosingZip(
 
     const fiscalFiles: any[] = [...(datedFiles || []), ...(fallbackFiles || [])]
         .filter((d, i, arr) => arr.findIndex(x => x.id === d.id) === i);
+
+    const rejectedDocs = fiscalFiles.filter(f => f.status === "rejected" || f.status === "error");
+    const rejectedRows = [
+        ["TIPO", "NUMERO", "STATUS", "MOTIVO", "CHAVE_ACESSO"],
+        ...rejectedDocs.map(f => [
+            f.tipo_documento || "",
+            f.numero || "",
+            f.status || "",
+            (f.motivo_rejeicao || f.error_message || "").replace(/\r?\n/g, " "),
+            f.chave_acesso || "",
+        ])
+    ];
+    root.file("Numeracoes_Rejeitadas.csv", "\ufeff" + rejectedRows.map(r => r.join(";")).join("\n"));
+
+    const { data: inutilizacoes } = await supabase
+        .from("fiscal_inutilizations")
+        .select("environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
+        .eq("organization_id", organizationId)
+        .eq("model", "NFCe")
+        .eq("environment", "production")
+        .eq("year", year)
+        .order("created_at", { ascending: false });
+
+    const inutilRows = [
+        ["AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
+        ...((inutilizacoes || []) as any[]).map(i => [
+            i.environment === "production" ? "producao" : "homologacao",
+            String(i.year),
+            String(i.serie),
+            String(i.numero_inicial),
+            String(i.numero_final),
+            i.protocol || "",
+            i.status || "",
+            new Date(i.created_at).toLocaleString("pt-BR"),
+            (i.justificativa || "").replace(/\r?\n/g, " "),
+        ])
+    ];
+    root.file("Inutilizacoes_NFCe.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
+
+    if (inutilizacoes && inutilizacoes.length > 0) {
+        const inutilFolder = root.folder("Inutilizacoes_Comprovantes");
+        for (const i of inutilizacoes as any[]) {
+            inutilFolder?.file(
+                `NFCe_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`,
+                JSON.stringify(i.response_json || {}, null, 2)
+            );
+        }
+    }
 
     if (fiscalFiles.length > 0) {
         const outFolder = root.folder("XMLs_Saida_Vendas");

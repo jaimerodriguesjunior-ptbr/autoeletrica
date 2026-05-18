@@ -26,7 +26,7 @@ function buildDownloadName(invoice: any, extension: "pdf" | "xml") {
         : invoice.tipo_documento === "NFCe"
             ? "nfce"
             : invoice.tipo_documento === "NFe"
-                ? "nfe-devolucao"
+                ? "nfe"
                 : "nfse";
 
     return `${tipoPrefix}-${invoice.numero || "documento"}.${extension}`;
@@ -48,18 +48,18 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         }
 
         const download = request.nextUrl.searchParams.get("download") === "true";
+        const format = request.nextUrl.searchParams.get("format");
         const pdfDisposition = download
             ? `attachment; filename="${buildDownloadName(invoice, "pdf")}"`
             : `inline; filename="${buildDownloadName(invoice, "pdf")}"`;
+        const xmlDisposition = download
+            ? `attachment; filename="${buildDownloadName(invoice, "xml")}"`
+            : `inline; filename="${buildDownloadName(invoice, "xml")}"`;
 
         if (invoice.direction === "entry") {
             if (!invoice.xml_content) {
                 return NextResponse.json({ error: "XML da nota de entrada nao encontrado" }, { status: 404 });
             }
-
-            const xmlDisposition = download
-                ? `attachment; filename="${buildDownloadName(invoice, "xml")}"`
-                : `inline; filename="${buildDownloadName(invoice, "xml")}"`;
 
             return new NextResponse(invoice.xml_content, {
                 headers: {
@@ -67,6 +67,29 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
                     "Content-Disposition": xmlDisposition,
                 },
             });
+        }
+
+        if (format === "xml") {
+            if (invoice.xml_content) {
+                return new NextResponse(invoice.xml_content, {
+                    headers: {
+                        "Content-Type": "application/xml; charset=utf-8",
+                        "Content-Disposition": xmlDisposition,
+                    },
+                });
+            }
+
+            if (invoice.xml_url) {
+                const xmlResponse = await fetch(invoice.xml_url);
+                if (xmlResponse.ok) {
+                    return new NextResponse(await xmlResponse.text(), {
+                        headers: {
+                            "Content-Type": "application/xml; charset=utf-8",
+                            "Content-Disposition": xmlDisposition,
+                        },
+                    });
+                }
+            }
         }
 
         if (!invoice.nuvemfiscal_uuid) {
@@ -96,6 +119,28 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         const endpointType = invoice.tipo_documento === "NFCe" ? "nfce"
             : invoice.tipo_documento === "NFe" ? "nfe"
             : "nfse";
+
+        if (format === "xml") {
+            const xmlUrl = `${baseUrl}/${endpointType}/${invoice.nuvemfiscal_uuid}/xml`;
+            const xmlResponse = await fetch(xmlUrl, {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (!xmlResponse.ok) {
+                return NextResponse.json({ error: "Falha ao obter XML da NuvemFiscal" }, { status: xmlResponse.status });
+            }
+
+            return new NextResponse(await xmlResponse.text(), {
+                headers: {
+                    "Content-Type": "application/xml; charset=utf-8",
+                    "Content-Disposition": xmlDisposition,
+                },
+            });
+        }
+
         const pdfUrl = `${baseUrl}/${endpointType}/${invoice.nuvemfiscal_uuid}/pdf`;
 
         console.log(`[PDF Proxy] Fetching from: ${pdfUrl}`);

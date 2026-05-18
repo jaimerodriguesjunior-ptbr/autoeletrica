@@ -65,12 +65,12 @@ export async function getPendingWorkOrders(organizationId: string) {
         itemsByWorkOrder.set(item.work_order_id, current);
     }
 
-    const invoicesByWorkOrder = new Map<number, { hasNFCe: boolean; hasNFSe: boolean }>();
+    const invoicesByWorkOrder = new Map<number, { hasProductInvoice: boolean; hasNFSe: boolean }>();
 
     for (const invoice of invoices || []) {
-        const current = invoicesByWorkOrder.get(invoice.work_order_id) || { hasNFCe: false, hasNFSe: false };
+        const current = invoicesByWorkOrder.get(invoice.work_order_id) || { hasProductInvoice: false, hasNFSe: false };
 
-        if (invoice.tipo_documento === "NFCe") current.hasNFCe = true;
+        if (invoice.tipo_documento === "NFCe" || invoice.tipo_documento === "NFe") current.hasProductInvoice = true;
         if (invoice.tipo_documento === "NFSe") current.hasNFSe = true;
 
         invoicesByWorkOrder.set(invoice.work_order_id, current);
@@ -79,10 +79,10 @@ export async function getPendingWorkOrders(organizationId: string) {
     return workOrders
         .map((os) => {
             const itemSummary = itemsByWorkOrder.get(os.id) || { hasPecas: false, hasServicos: false };
-            const invoiceSummary = invoicesByWorkOrder.get(os.id) || { hasNFCe: false, hasNFSe: false };
+            const invoiceSummary = invoicesByWorkOrder.get(os.id) || { hasProductInvoice: false, hasNFSe: false };
 
             const pending_documentos = [
-                itemSummary.hasPecas && !invoiceSummary.hasNFCe ? "NFCe" : null,
+                itemSummary.hasPecas && !invoiceSummary.hasProductInvoice ? "NFCe/NFe" : null,
                 itemSummary.hasServicos && !invoiceSummary.hasNFSe ? "NFSe" : null,
             ].filter(Boolean);
 
@@ -181,6 +181,21 @@ export type ParsedNFeItem = {
     valor_total: number;
 };
 
+function extractItemsFromInfNFe(infNFe: any): ParsedNFeItem[] {
+    let dets = infNFe?.det;
+    if (dets && !Array.isArray(dets)) dets = [dets];
+
+    return (dets || []).map((d: any): ParsedNFeItem => ({
+        codigo: String(d.prod?.cProd || ""),
+        descricao: String(d.prod?.xProd || ""),
+        ncm: String(d.prod?.NCM || ""),
+        unidade: String(d.prod?.uCom || "UN"),
+        quantidade: Number(d.prod?.qCom || 0),
+        valor_unitario: Number(d.prod?.vUnCom || 0),
+        valor_total: Number(d.prod?.vProd || 0),
+    }));
+}
+
 export async function getEntryInvoiceWithItems(invoiceId: string) {
     const supabase = createClient();
 
@@ -202,24 +217,74 @@ export async function getEntryInvoiceWithItems(invoiceId: string) {
             const xml = parser.parse(invoice.xml_content);
             const nfeProc = xml.nfeProc || xml.NFe;
             const infNFe = nfeProc?.NFe?.infNFe || xml.infNFe;
-            let dets = infNFe?.det;
-            if (dets && !Array.isArray(dets)) dets = [dets];
-
-            items = (dets || []).map((d: any): ParsedNFeItem => ({
-                codigo: String(d.prod?.cProd || ""),
-                descricao: String(d.prod?.xProd || ""),
-                ncm: String(d.prod?.NCM || ""),
-                unidade: String(d.prod?.uCom || "UN"),
-                quantidade: Number(d.prod?.qCom || 0),
-                valor_unitario: Number(d.prod?.vUnCom || 0),
-                valor_total: Number(d.prod?.vProd || 0),
-            }));
+            items = extractItemsFromInfNFe(infNFe);
         } catch (e) {
             console.warn("[getEntryInvoiceWithItems] Erro ao parsear XML:", e);
         }
     }
 
     return { invoice, items };
+}
+
+export async function getNFeInvoiceWithItems(invoiceId: string) {
+    const supabase = createClient();
+
+    const { data: invoice, error } = await supabase
+        .from("fiscal_invoices")
+        .select("*")
+        .eq("id", invoiceId)
+        .eq("tipo_documento", "NFe")
+        .single();
+
+    if (error || !invoice) return null;
+
+    let items: ParsedNFeItem[] = [];
+
+    let xmlContent = invoice.xml_content;
+
+    if (!xmlContent && invoice.xml_url) {
+        try {
+            const response = await fetch(invoice.xml_url);
+            if (response.ok) {
+                xmlContent = await response.text();
+                await supabase
+                    .from("fiscal_invoices")
+                    .update({ xml_content: xmlContent })
+                    .eq("id", invoiceId);
+            }
+        } catch (e) {
+            console.warn("[getNFeInvoiceWithItems] Nao foi possivel baixar XML da NF-e:", e);
+        }
+    }
+
+    if (xmlContent) {
+        try {
+            const { XMLParser } = await import("fast-xml-parser");
+            const parser = new XMLParser({ ignoreAttributes: false });
+            const xml = parser.parse(xmlContent);
+            const nfeProc = xml.nfeProc || xml.NFe;
+            const infNFe = nfeProc?.NFe?.infNFe || xml.infNFe;
+            items = extractItemsFromInfNFe(infNFe);
+        } catch (e) {
+            console.warn("[getNFeInvoiceWithItems] Erro ao parsear XML:", e);
+        }
+    }
+
+    if (items.length === 0 && invoice.payload_json?.infNFe) {
+        items = extractItemsFromInfNFe(invoice.payload_json.infNFe);
+    }
+
+    return { invoice, items };
+}
+
+export async function getEntryInvoiceWithItemsAction(invoiceId: string) {
+    "use server";
+    return getEntryInvoiceWithItems(invoiceId);
+}
+
+export async function getNFeInvoiceWithItemsAction(invoiceId: string) {
+    "use server";
+    return getNFeInvoiceWithItems(invoiceId);
 }
 
 export async function backfillEntryInvoicesChave(organizationId: string) {
