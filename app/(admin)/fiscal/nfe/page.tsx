@@ -10,6 +10,7 @@ import {
     CheckCircle,
     ChevronLeft,
     ChevronRight,
+    Copy,
     FileCheck2,
     FileText,
     Gift,
@@ -27,8 +28,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { createClient } from "@/src/lib/supabase";
-import { emitirNFeDevolucaoAction, emitirNFeRemessaConsertoUiAction, emitirNFeRemessaGarantiaUiAction, emitirNFeRetornoConsertoUiAction, emitirNFeRetornoGarantiaUiAction, emitirNFeVendaAction } from "@/src/actions/fiscal_emission_actions";
-import { getEntryInvoiceWithItemsAction, getNFeInvoiceWithItemsAction, searchProducts, type ParsedNFeItem } from "@/src/actions/fiscal_db";
+import { auditarNFeAssistidaComIaAction } from "@/src/actions/fiscal_ai_audit";
+import { emitirNFeAssistidaUiAction, emitirNFeBonificacaoDoacaoUiAction, emitirNFeDevolucaoAction, emitirNFeRemessaConsertoUiAction, emitirNFeRemessaGarantiaUiAction, emitirNFeRetornoConsertoUiAction, emitirNFeRetornoGarantiaUiAction, emitirNFeTransferenciaUiAction, emitirNFeVendaAction } from "@/src/actions/fiscal_emission_actions";
+import { getEntryInvoiceWithItemsAction, getNFeInvoiceWithItemsAction, searchCloneableNFeInvoicesAction, searchProducts, type ParsedNFeItem } from "@/src/actions/fiscal_db";
 
 type OperationGroup = "sale" | "return" | "shipment" | "transfer" | "bonus" | "advanced";
 type StepId = "operation" | "participant" | "items" | "transport" | "review";
@@ -94,6 +96,12 @@ type EntryInvoiceSummary = {
     chave_acesso: string | null;
     direction?: string | null;
     payload_json?: any;
+};
+
+type CloneInvoiceSummary = EntryInvoiceSummary & {
+    serie?: string | number | null;
+    status?: string | null;
+    environment?: "production" | "homologation" | string | null;
 };
 
 type ReturnItemState = ParsedNFeItem & {
@@ -194,6 +202,12 @@ function isValidDoc(value: string) {
     return clean.length === 11 || clean.length === 14;
 }
 
+function cnpjBase(value: string) {
+    const clean = digits(value);
+    if (clean.length !== 14) return "";
+    return clean.slice(0, 8);
+}
+
 function normalizeAddress(raw: any) {
     return {
         cep: raw?.cep || "",
@@ -225,6 +239,30 @@ function participantFromNFeDest(dest: any): Participant {
     };
 }
 
+function toArray<T>(value: T | T[] | undefined | null): T[] {
+    if (!value) return [];
+    return Array.isArray(value) ? value : [value];
+}
+
+function cloneItemFromDet(det: any): DraftItem {
+    const prod = det?.prod || {};
+    const icms = det?.imposto?.ICMS || {};
+    const icmsKey = Object.keys(icms)[0] || "";
+    const icmsPayload = icmsKey ? (icms[icmsKey] || {}) : {};
+    return {
+        id: crypto.randomUUID(),
+        codigo: String(prod.cProd || ""),
+        descricao: String(prod.xProd || ""),
+        ncm: String(prod.NCM || ""),
+        unidade: String(prod.uCom || "UN"),
+        quantidade: Number(prod.qCom || 1),
+        valor_unitario: Number(prod.vUnCom || 0),
+        origem: String(icmsPayload.orig ?? "0"),
+        cfop: String(prod.CFOP || ""),
+        csosn: String(icmsPayload.CSOSN || icmsPayload.CST || "102"),
+    };
+}
+
 function money(value: number) {
     return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -234,7 +272,6 @@ function getGuidedCfop(operation: OperationGroup, purpose: string, isInterstate:
 
     if (operation === "sale") return `${prefix}102`;
     if (operation === "return") return `${prefix}202`;
-    if (operation === "transfer") return `${prefix}152`;
     if (operation === "bonus") return `${prefix}910`;
 
     if (operation === "shipment") {
@@ -248,21 +285,26 @@ function getGuidedCfop(operation: OperationGroup, purpose: string, isInterstate:
         if (purpose === "Retorno de industrializacao") return `${prefix}902`;
     }
 
+    if (operation === "transfer") {
+        if (purpose === "Retorno de deposito") return `${prefix}153`;
+        return `${prefix}152`;
+    }
+
     return "";
 }
 
 function getOperationRuleStatus(operation: OperationGroup, purpose: string) {
     if (operation === "transfer") {
         return {
-            title: "Transferencia ainda bloqueada para emissao",
-            detail: "A sugestao atual considera mercadoria adquirida de terceiros (5152/6152). Antes de transmitir, sera necessario validar filial/deposito, titularidade, estoque e regra de ICMS.",
+            title: "Transferencia com emissao MVP",
+            detail: "Emissao liberada para transferencia entre filiais/depositos com CFOP guiado. Cenarios especiais devem ser alinhados com o contador.",
         };
     }
 
     if (operation === "bonus") {
         return {
-            title: "Bonificacao/Doacao ainda bloqueada para emissao",
-            detail: "A sugestao atual usa CFOP 5910/6910, mas a saida gratuita pode exigir base de calculo, observacoes e tratamento tributario proprio.",
+            title: "Bonificacao/Doacao com emissao MVP",
+            detail: "Emissao liberada para Bonificacao, Brinde e Doacao com CFOP guiado. Regras especiais permanecem sob validacao contabil.",
         };
     }
 
@@ -316,12 +358,19 @@ export default function NFeCompletaPage() {
     const [operation, setOperation] = useState<OperationGroup>("sale");
     const [purpose, setPurpose] = useState("Venda comum");
     const [environment, setEnvironment] = useState<"homologation" | "production">("homologation");
+    const [advancedNature, setAdvancedNature] = useState("");
+    const [advancedTpNF, setAdvancedTpNF] = useState<"0" | "1">("1");
+    const [advancedFinNFe, setAdvancedFinNFe] = useState<"1" | "2" | "3" | "4">("1");
 
     const [companyUf, setCompanyUf] = useState("");
+    const [companyCnpjBase, setCompanyCnpjBase] = useState("");
     const [participantMode, setParticipantMode] = useState<"search" | "manual">("search");
     const [participantSearch, setParticipantSearch] = useState("");
+    const [participantSearchLocked, setParticipantSearchLocked] = useState(false);
     const [clientResults, setClientResults] = useState<ClientResult[]>([]);
     const [searchingClients, setSearchingClients] = useState(false);
+    const [savingParticipantClient, setSavingParticipantClient] = useState(false);
+    const [participantClientFeedback, setParticipantClientFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
     const [participant, setParticipant] = useState<Participant>(emptyParticipant);
     const [loadingCep, setLoadingCep] = useState(false);
 
@@ -330,6 +379,8 @@ export default function NFeCompletaPage() {
     const [legacyGuaranteeInvoices, setLegacyGuaranteeInvoices] = useState<EntryInvoiceSummary[]>([]);
     const [entrySearch, setEntrySearch] = useState("");
     const [originQuickFilter, setOriginQuickFilter] = useState<"recent" | "all">("recent");
+    const [originSelectorExpanded, setOriginSelectorExpanded] = useState(false);
+    const [originSearchStarted, setOriginSearchStarted] = useState(false);
     const [loadingEntryInvoices, setLoadingEntryInvoices] = useState(false);
     const [selectedEntryInvoice, setSelectedEntryInvoice] = useState<EntryInvoiceSummary | null>(null);
     const [returnItems, setReturnItems] = useState<ReturnItemState[]>([]);
@@ -344,6 +395,12 @@ export default function NFeCompletaPage() {
     const [infAdFisco, setInfAdFisco] = useState("");
     const [aiAudit, setAiAudit] = useState<string | null>(null);
     const [emitting, setEmitting] = useState(false);
+    const [cloneModalOpen, setCloneModalOpen] = useState(false);
+    const [cloneSearch, setCloneSearch] = useState("");
+    const [cloneStatus, setCloneStatus] = useState<"authorized" | "error" | "rejected" | "all">("authorized");
+    const [cloneResults, setCloneResults] = useState<CloneInvoiceSummary[]>([]);
+    const [cloneLoading, setCloneLoading] = useState(false);
+    const [clonedFrom, setClonedFrom] = useState<CloneInvoiceSummary | null>(null);
 
     const currentOperation = OPERATIONS.find((item) => item.id === operation) || OPERATIONS[0];
     const stepIndex = STEPS.findIndex((item) => item.id === step);
@@ -353,18 +410,29 @@ export default function NFeCompletaPage() {
     const isRemessaGarantiaMvp = operation === "shipment" && purpose === "Remessa em garantia";
     const isRetornoConsertoMvp = operation === "shipment" && purpose === "Retorno de conserto";
     const isRetornoGarantiaMvp = operation === "shipment" && purpose === "Retorno de garantia";
-    const usesOriginItems = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp;
-    const isEmissionSupported = isVendaComumMvp || isRemessaConsertoMvp || isRemessaGarantiaMvp || isRetornoConsertoMvp || isRetornoGarantiaMvp;
+    const isRetornoDepositoMvp = operation === "transfer" && purpose === "Retorno de deposito";
+    const isTransferenciaMvp = operation === "transfer" && ["Transferencia entre filiais", "Transferencia para deposito", "Retorno de deposito"].includes(purpose);
+    const isBonusMvp = operation === "bonus" && ["Bonificacao", "Brinde", "Doacao"].includes(purpose);
+    const isSalePurposeUnavailable = operation === "sale" && purpose !== "Venda comum";
+    const isReturnPurposeUnavailable = operation === "return" && purpose !== "Devolucao de compra";
+    const usesOriginItems = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp;
+    const isEmissionSupported = isVendaComumMvp || isRemessaConsertoMvp || isRemessaGarantiaMvp || isRetornoConsertoMvp || isRetornoGarantiaMvp || isTransferenciaMvp || isBonusMvp;
     const destinationLabel = !participantUf || !companyUf
         ? "Aguardando endereco"
         : participantUf === companyUf
             ? "Operacao interna"
             : "Operacao interestadual";
     const totalItems = items.reduce((sum, item) => sum + item.quantidade * item.valor_unitario, 0);
-    const requiresReference = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp;
+    const requiresReference = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp;
     const selectedReturnItems = returnItems.filter((item) => item.selected && item.qtd_devolver > 0);
     const returnTotal = selectedReturnItems.reduce((sum, item) => sum + item.qtd_devolver * item.valor_unitario, 0);
     const displayTotal = usesOriginItems ? returnTotal : totalItems;
+    const isReferenceSelectionPending = requiresReference && !selectedEntryInvoice;
+    const shouldShowOriginSelector = requiresReference && !isReturnPurposeUnavailable;
+    const participantCnpjBase = cnpjBase(participant.cpf_cnpj);
+    const isTransferBetweenBranches = operation === "transfer" && purpose === "Transferencia entre filiais";
+    const isTransferDepositFlow = operation === "transfer" && (purpose === "Transferencia para deposito" || purpose === "Retorno de deposito");
+    const transferHasDifferentRoot = Boolean(companyCnpjBase && participantCnpjBase && companyCnpjBase !== participantCnpjBase);
 
     useEffect(() => {
         const loadCompany = async () => {
@@ -372,11 +440,12 @@ export default function NFeCompletaPage() {
 
             const { data } = await supabase
                 .from("company_settings")
-                .select("uf")
+                .select("uf, cnpj, cpf_cnpj")
                 .eq("organization_id", profile.organization_id)
                 .maybeSingle();
 
             setCompanyUf(String(data?.uf || "").toUpperCase());
+            setCompanyCnpjBase(cnpjBase(String(data?.cnpj || data?.cpf_cnpj || "")));
         };
 
         loadCompany();
@@ -386,6 +455,11 @@ export default function NFeCompletaPage() {
         const op = OPERATIONS.find((item) => item.id === operation);
         setPurpose(op?.purposes[0] || "");
         setAiAudit(null);
+        if (operation !== "advanced") {
+            setAdvancedNature("");
+            setAdvancedTpNF("1");
+            setAdvancedFinNFe("1");
+        }
     }, [operation]);
 
     useEffect(() => {
@@ -394,6 +468,8 @@ export default function NFeCompletaPage() {
         setReturnItems([]);
         setEntrySearch("");
         setOriginQuickFilter("recent");
+        setOriginSelectorExpanded(false);
+        setOriginSearchStarted(false);
         setLegacyGuaranteeInvoices([]);
     }, [operation, purpose]);
 
@@ -456,10 +532,23 @@ export default function NFeCompletaPage() {
                 const invoices = (data || []).filter((invoice: any) => {
                     const natOp = String(invoice.payload_json?.infNFe?.ide?.natOp || "").toUpperCase();
                     const infCpl = String(invoice.payload_json?.infNFe?.infAdic?.infCpl || "").toUpperCase();
-                    if (isRetornoGarantiaMvp) {
-                        return natOp.includes("REMESSA") && natOp.includes("GARANTIA");
+                    const text = `${natOp} ${infCpl}`;
+                    const isRemessa = natOp.includes("REMESSA");
+                    const isTransferencia = natOp.includes("TRANSFERENCIA");
+                    const hasGarantia = text.includes("GARANTIA");
+                    const hasConserto = text.includes("CONSERTO") || text.includes("REPARO");
+                    const hasDeposito = text.includes("DEPOSITO");
+
+                    if (isRetornoDepositoMvp) {
+                        return isTransferencia && hasDeposito && !natOp.includes("RETORNO");
                     }
-                    return natOp.includes("REMESSA") && natOp.includes("CONSERTO");
+
+                    if (!isRemessa) return false;
+
+                    if (isRetornoGarantiaMvp) {
+                        return hasGarantia;
+                    }
+                    return hasConserto && !hasGarantia;
                 });
 
                 if (isRetornoGarantiaMvp) {
@@ -480,10 +569,10 @@ export default function NFeCompletaPage() {
         };
 
         loadEntryInvoices();
-    }, [operation, purpose, requiresReference, environment, profile?.organization_id, supabase, isRetornoConsertoMvp, isRetornoGarantiaMvp]);
+    }, [operation, purpose, requiresReference, environment, profile?.organization_id, supabase, isRetornoConsertoMvp, isRetornoGarantiaMvp, isRetornoDepositoMvp]);
 
     useEffect(() => {
-        if (!profile?.organization_id || participantSearch.trim().length < 2) {
+        if (!profile?.organization_id || participantSearchLocked || participantSearch.trim().length < 2) {
             setClientResults([]);
             return;
         }
@@ -513,6 +602,35 @@ export default function NFeCompletaPage() {
             clearTimeout(timeout);
         };
     }, [participantSearch, profile?.organization_id, supabase]);
+
+    useEffect(() => {
+        if (!cloneModalOpen || !profile?.organization_id) return;
+
+        let cancelled = false;
+        const run = async () => {
+            setCloneLoading(true);
+            try {
+                const organizationId = profile.organization_id as string;
+                const data = await searchCloneableNFeInvoicesAction({
+                    organizationId,
+                    environment,
+                    query: cloneSearch,
+                    status: cloneStatus,
+                });
+                if (!cancelled) {
+                    setCloneResults((data || []) as CloneInvoiceSummary[]);
+                }
+            } finally {
+                if (!cancelled) setCloneLoading(false);
+            }
+        };
+
+        const timeout = setTimeout(run, 220);
+        return () => {
+            cancelled = true;
+            clearTimeout(timeout);
+        };
+    }, [cloneModalOpen, cloneSearch, cloneStatus, environment, profile?.organization_id]);
 
     const suggestedCfop = useMemo(() => {
         const isInterstate = participantUf && companyUf && participantUf !== companyUf;
@@ -569,8 +687,13 @@ export default function NFeCompletaPage() {
 
         if (!operation) issues.push("Escolha o tipo de operacao.");
         if (!purpose) issues.push("Escolha a finalidade especifica.");
-        if (!isEmissionSupported && operation !== "return") {
-            issues.push("Emissao real liberada apenas para Venda comum, Remessa para conserto, Remessa em garantia, Retorno de conserto e Retorno de garantia neste MVP.");
+        if (operation === "advanced") {
+            if (!advancedNature.trim()) issues.push("Informe a natureza da operacao no modo assistido.");
+            if (![ "0", "1" ].includes(advancedTpNF)) issues.push("Tipo da NF-e invalido no modo assistido.");
+            if (![ "1", "2", "3", "4" ].includes(advancedFinNFe)) issues.push("Finalidade da NF-e invalida no modo assistido.");
+        }
+        if (!isEmissionSupported && operation !== "return" && operation !== "advanced") {
+            issues.push("Emissao real indisponivel para a combinacao atual de operacao/finalidade.");
         }
         if (operation === "return") {
             if (purpose !== "Devolucao de compra") issues.push("Emissao real de devolucao liberada apenas para Devolucao de compra com NF-e de entrada importada.");
@@ -583,13 +706,18 @@ export default function NFeCompletaPage() {
             if (digits(referencedKey).length !== 44) issues.push("A remessa de origem precisa ter chave de acesso valida.");
             if (selectedReturnItems.length === 0) issues.push("Selecione ao menos um item da remessa para retornar.");
         }
+        if (isRetornoDepositoMvp) {
+            if (!selectedEntryInvoice) issues.push("Selecione uma NF-e de transferencia para deposito autorizada.");
+            if (digits(referencedKey).length !== 44) issues.push("A transferencia de origem precisa ter chave de acesso valida.");
+            if (selectedReturnItems.length === 0) issues.push("Selecione ao menos um item da transferencia para retornar.");
+        }
         if (operation !== "return") {
             if (!participant.nome.trim()) issues.push("Informe ou selecione o participante.");
             if (!isValidDoc(participant.cpf_cnpj)) issues.push("Informe CPF/CNPJ valido do participante.");
             if (!participant.logradouro || !participant.numero || !participant.bairro || !participant.cidade || !participant.uf || !participant.cep || !participant.codigo_municipio) {
                 issues.push("Complete o endereco do participante.");
             }
-            if (!isRetornoConsertoMvp && !isRetornoGarantiaMvp) {
+            if (!isRetornoConsertoMvp && !isRetornoGarantiaMvp && !isRetornoDepositoMvp) {
                 if (items.length === 0) issues.push("Adicione ao menos um item.");
                 items.forEach((item, index) => {
                     if (!item.descricao.trim()) issues.push(`Item ${index + 1}: informe a descricao.`);
@@ -605,8 +733,12 @@ export default function NFeCompletaPage() {
             issues.push("Informe transportadora com CPF/CNPJ valido ou use frete sem transporte.");
         }
 
+        if (isTransferBetweenBranches && transferHasDifferentRoot) {
+            issues.push("Transferencia entre filiais exige destinatario com a mesma raiz de CNPJ da empresa emitente.");
+        }
+
         return issues;
-    }, [operation, purpose, isEmissionSupported, isRetornoConsertoMvp, isRetornoGarantiaMvp, selectedEntryInvoice, referencedKey, selectedReturnItems.length, participant, items, modFrete, carrierName, carrierDoc]);
+    }, [operation, purpose, isEmissionSupported, isRetornoConsertoMvp, isRetornoGarantiaMvp, isRetornoDepositoMvp, selectedEntryInvoice, referencedKey, selectedReturnItems.length, participant, items, modFrete, carrierName, carrierDoc, isTransferBetweenBranches, transferHasDifferentRoot, advancedNature, advancedTpNF, advancedFinNFe]);
 
     const stepHasPending = (id: StepId) => {
         if (id === "operation") return !operation || !purpose || (requiresReference && (!selectedEntryInvoice || digits(referencedKey).length !== 44));
@@ -639,11 +771,14 @@ export default function NFeCompletaPage() {
             ...address,
         });
         setParticipantSearch(client.nome);
+        setParticipantSearchLocked(true);
+        setClientResults([]);
     };
 
     const selectEntryInvoice = async (invoice: EntryInvoiceSummary) => {
         setSelectedEntryInvoice(invoice);
         setReferencedKey(invoice.chave_acesso || "");
+        setOriginSelectorExpanded(false);
         setLoadingEntryItems(true);
 
         try {
@@ -656,7 +791,7 @@ export default function NFeCompletaPage() {
                 return;
             }
 
-            if (isRetornoConsertoMvp || isRetornoGarantiaMvp) {
+            if (isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) {
                 const dest = data.invoice?.payload_json?.infNFe?.dest;
                 if (dest) {
                     setParticipant(participantFromNFeDest(dest));
@@ -722,6 +857,71 @@ export default function NFeCompletaPage() {
         setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
     };
 
+    const handleSaveParticipantClient = async () => {
+        if (!profile?.organization_id) {
+            alert("Organizacao nao identificada. Recarregue a pagina e tente novamente.");
+            return;
+        }
+        if (!participant.nome.trim()) {
+            alert("Informe ao menos o nome do participante para salvar.");
+            return;
+        }
+        if (!isValidDoc(participant.cpf_cnpj)) {
+            alert("Informe CPF/CNPJ valido antes de salvar o cliente.");
+            return;
+        }
+
+        const cleanDoc = digits(participant.cpf_cnpj);
+        setSavingParticipantClient(true);
+        try {
+            const { data: existing, error: existingError } = await supabase
+                .from("clients")
+                .select("id")
+                .eq("organization_id", profile.organization_id)
+                .eq("cpf_cnpj", cleanDoc)
+                .maybeSingle();
+
+            if (existingError) throw existingError;
+            if (existing?.id) {
+                setParticipantClientFeedback({ type: "error", message: "Ja existe um cliente com este CPF/CNPJ." });
+                return;
+            }
+
+            const { error } = await supabase
+                .from("clients")
+                .insert({
+                    organization_id: profile.organization_id,
+                    nome: participant.nome.trim(),
+                    cpf_cnpj: cleanDoc,
+                    whatsapp: participant.telefone?.trim() || null,
+                    email: participant.email?.trim() || null,
+                    endereco: {
+                        cep: participant.cep || "",
+                        rua: participant.logradouro || "",
+                        logradouro: participant.logradouro || "",
+                        numero: participant.numero || "",
+                        bairro: participant.bairro || "",
+                        cidade: participant.cidade || "",
+                        uf: participant.uf || "",
+                        codigo_municipio: participant.codigo_municipio || "",
+                        inscricao_estadual: participant.inscricao_estadual || "",
+                    },
+                    public_token: crypto.randomUUID().replace(/-/g, ""),
+                });
+
+            if (error) throw error;
+            setParticipantClientFeedback({ type: "success", message: "Cliente salvo com sucesso." });
+            setParticipantMode("search");
+            setParticipantSearch(participant.nome.trim());
+            setParticipantSearchLocked(false);
+        } catch (error: any) {
+            setParticipantClientFeedback({ type: "error", message: error?.message || "Erro ao salvar cliente." });
+        } finally {
+            setSavingParticipantClient(false);
+            setTimeout(() => setParticipantClientFeedback(null), 3500);
+        }
+    };
+
     const selectProductForItem = (itemId: string, product: ProductResult) => {
         updateItem(itemId, {
             codigo: product.id,
@@ -734,13 +934,108 @@ export default function NFeCompletaPage() {
         setFocusedItemId(null);
     };
 
-    const runAiAuditMock = () => {
-        if (pending.length > 0) {
-            setAiAudit(`Auditoria simulada: existem ${pending.length} pendencia(s) bloqueante(s). Corrija antes de emitir.`);
+    const collectTemplateOverrideWarnings = () => {
+        const warnings: string[] = [];
+        const defaultCsosn = isVendaComumMvp ? "102" : "400";
+
+        if (operation === "advanced" || operation === "return") return warnings;
+
+        items.forEach((item, index) => {
+            if (item.cfop && suggestedCfop && item.cfop !== suggestedCfop) {
+                warnings.push(`Item ${index + 1}: CFOP alterado para ${item.cfop} (sugerido ${suggestedCfop}).`);
+            }
+            if ((item.origem || "0") !== "0") {
+                warnings.push(`Item ${index + 1}: origem alterada para ${item.origem}.`);
+            }
+            if ((item.csosn || defaultCsosn) !== defaultCsosn) {
+                warnings.push(`Item ${index + 1}: CSOSN/CST alterado para ${item.csosn}.`);
+            }
+        });
+
+        if (modFrete !== "9") {
+            warnings.push(`Modalidade de frete alterada para ${modFrete}.`);
+        }
+
+        return warnings;
+    };
+
+    const runAutoAiAuditForAdvanced = async () => {
+        const payload = {
+            ambiente: environment,
+            operacao: operation,
+            natureza: advancedNature,
+            tipo_nfe: advancedTpNF,
+            finalidade_nfe: advancedFinNFe,
+            classificacao_destino: destinationLabel,
+            participante: participant,
+            itens: items.map((item) => ({
+                codigo: item.codigo,
+                descricao: item.descricao,
+                ncm: item.ncm,
+                cfop: item.cfop,
+                origem: item.origem,
+                csosn: item.csosn,
+                quantidade: item.quantidade,
+                valor_unitario: item.valor_unitario,
+                valor_total: Number((item.quantidade * item.valor_unitario).toFixed(2)),
+            })),
+            transporte: {
+                modFrete,
+                carrierName,
+                carrierDoc,
+                volumes,
+            },
+            campos_tecnicos: {
+                suggestedCfop,
+                purpose,
+            },
+            observacoes: {
+                infCpl,
+                infAdFisco,
+            },
+            total: Number(totalItems.toFixed(2)),
+        };
+
+        const audit = await auditarNFeAssistidaComIaAction(payload);
+        if (!audit.success) {
+            setAiAudit(`Falha ao auditar com IA: ${audit.error || "erro desconhecido"}`);
+            return { ok: true, severe: false };
+        }
+
+        setAiAudit(audit.text || "Auditoria concluida.");
+        const severe = audit.audit?.status === "inconsistente";
+        if (severe) {
+            const proceed = confirm(
+                "A auditoria por IA encontrou inconsistencias provaveis.\n\n" +
+                "Revise o bloco 'Auditoria por IA' e confirme apenas se houve validacao com o contador.\n\n" +
+                "Deseja continuar mesmo assim?"
+            );
+            return { ok: proceed, severe: true };
+        }
+
+        return { ok: true, severe: false };
+    };
+
+    const applyCloneInvoice = async (invoice: CloneInvoiceSummary) => {
+        const data = await getNFeInvoiceWithItemsAction(invoice.id);
+        if (!data?.invoice?.payload_json?.infNFe) {
+            alert("Nao foi possivel ler os dados da NF-e selecionada para clonagem.");
             return;
         }
 
-        setAiAudit(`Auditoria simulada: rascunho coerente para "${purpose}" em ${destinationLabel.toLowerCase()}. A emissao ainda depende do motor fiscal final.`);
+        const infNFe = data.invoice.payload_json.infNFe;
+        const dest = infNFe.dest || {};
+        const detList = toArray<any>(infNFe.det);
+
+        setParticipant(participantFromNFeDest(dest));
+        setParticipantMode("manual");
+        setItems(detList.length > 0 ? detList.map((det) => cloneItemFromDet(det)) : [makeItem()]);
+        setModFrete(String(infNFe?.transp?.modFrete ?? "9"));
+        setInfCpl(String(infNFe?.infAdic?.infCpl || ""));
+        setAiAudit(null);
+        setClonedFrom(invoice);
+        setStep("review");
+        setCloneModalOpen(false);
     };
 
     const handleEmitirVendaComum = async () => {
@@ -1078,7 +1373,225 @@ export default function NFeCompletaPage() {
         }
     };
 
-    const handleEmitirNFe = () => {
+    const handleEmitirTransferencia = async () => {
+        if (!profile?.organization_id) return;
+        if (!isTransferenciaMvp) {
+            alert("Finalidade de transferencia ainda nao habilitada para emissao.");
+            return;
+        }
+        if (pending.length > 0) {
+            alert(`Corrija as pendencias antes de emitir:\n${pending.join("\n")}`);
+            return;
+        }
+
+        if (!confirm(`Emitir NF-e de ${purpose} em ${environment === "production" ? "PRODUCAO" : "HOMOLOGACAO"}?`)) return;
+        setEmitting(true);
+        try {
+            const transferItemsPayload = isRetornoDepositoMvp
+                ? selectedReturnItems.map((item, index) => ({
+                    codigo: item.codigo || `ITEM-${index + 1}`,
+                    descricao: item.descricao,
+                    ncm: digits(item.ncm),
+                    cfop: suggestedCfop,
+                    unidade: item.unidade || "UN",
+                    quantidade: item.qtd_devolver,
+                    valor_unitario: item.valor_unitario,
+                    valor_total: Number((item.qtd_devolver * item.valor_unitario).toFixed(2)),
+                }))
+                : items.map((item, index) => ({
+                    codigo: item.codigo || `ITEM-${index + 1}`,
+                    descricao: item.descricao,
+                    ncm: digits(item.ncm),
+                    cfop: suggestedCfop,
+                    unidade: item.unidade || "UN",
+                    quantidade: item.quantidade,
+                    valor_unitario: item.valor_unitario,
+                    valor_total: Number((item.quantidade * item.valor_unitario).toFixed(2)),
+                }));
+
+            const result = await emitirNFeTransferenciaUiAction({
+                organization_id: profile.organization_id,
+                cliente: {
+                    nome: participant.nome,
+                    cpf_cnpj: participant.cpf_cnpj,
+                    email: participant.email || undefined,
+                    telefone: participant.telefone || undefined,
+                    endereco: {
+                        cep: participant.cep,
+                        logradouro: participant.logradouro,
+                        numero: participant.numero,
+                        bairro: participant.bairro,
+                        cidade: participant.cidade,
+                        uf: participant.uf,
+                        codigo_municipio: participant.codigo_municipio,
+                        inscricao_estadual: participant.inscricao_estadual,
+                    },
+                },
+                itens: transferItemsPayload,
+                valor_total: Number((isRetornoDepositoMvp ? returnTotal : totalItems).toFixed(2)),
+                meio_pagamento: "90",
+                environment,
+                tipo_documento: "NFe",
+                observacao: infCpl,
+                modFrete,
+                finalidade_transferencia: purpose as "Transferencia entre filiais" | "Transferencia para deposito" | "Retorno de deposito",
+            });
+            if (result.success) {
+                alert(result.message || "NF-e de transferencia enviada.");
+                window.location.href = "/fiscal";
+            } else {
+                alert(`Erro ao emitir transferencia:\n${result.error || "Erro desconhecido"}`);
+            }
+        } finally {
+            setEmitting(false);
+        }
+    };
+
+    const handleEmitirBonificacaoDoacao = async () => {
+        if (!profile?.organization_id) return;
+        if (!isBonusMvp) {
+            alert("Finalidade de bonificacao/doacao ainda nao habilitada para emissao.");
+            return;
+        }
+        if (pending.length > 0) {
+            alert(`Corrija as pendencias antes de emitir:\n${pending.join("\n")}`);
+            return;
+        }
+
+        if (!confirm(`Emitir NF-e de ${purpose} em ${environment === "production" ? "PRODUCAO" : "HOMOLOGACAO"}?`)) return;
+        setEmitting(true);
+        try {
+            const result = await emitirNFeBonificacaoDoacaoUiAction({
+                organization_id: profile.organization_id,
+                cliente: {
+                    nome: participant.nome,
+                    cpf_cnpj: participant.cpf_cnpj,
+                    email: participant.email || undefined,
+                    telefone: participant.telefone || undefined,
+                    endereco: {
+                        cep: participant.cep,
+                        logradouro: participant.logradouro,
+                        numero: participant.numero,
+                        bairro: participant.bairro,
+                        cidade: participant.cidade,
+                        uf: participant.uf,
+                        codigo_municipio: participant.codigo_municipio,
+                        inscricao_estadual: participant.inscricao_estadual,
+                    },
+                },
+                itens: items.map((item, index) => ({
+                    codigo: item.codigo || `ITEM-${index + 1}`,
+                    descricao: item.descricao,
+                    ncm: digits(item.ncm),
+                    cfop: suggestedCfop,
+                    unidade: item.unidade || "UN",
+                    quantidade: item.quantidade,
+                    valor_unitario: item.valor_unitario,
+                    valor_total: Number((item.quantidade * item.valor_unitario).toFixed(2)),
+                })),
+                valor_total: Number(totalItems.toFixed(2)),
+                meio_pagamento: "90",
+                environment,
+                tipo_documento: "NFe",
+                observacao: infCpl,
+                modFrete,
+                finalidade_bonus: purpose as "Bonificacao" | "Brinde" | "Doacao",
+            });
+            if (result.success) {
+                alert(result.message || "NF-e de bonificacao/doacao enviada.");
+                window.location.href = "/fiscal";
+            } else {
+                alert(`Erro ao emitir bonificacao/doacao:\n${result.error || "Erro desconhecido"}`);
+            }
+        } finally {
+            setEmitting(false);
+        }
+    };
+
+    const handleEmitirAssistida = async () => {
+        if (!profile?.organization_id) return;
+        if (operation !== "advanced") return;
+        if (pending.length > 0) {
+            alert(`Corrija as pendencias antes de emitir:\n${pending.join("\n")}`);
+            return;
+        }
+
+        const confirmMessage =
+            `Emitir NF-e assistida em ${environment === "production" ? "PRODUCAO" : "HOMOLOGACAO"}?\n\n` +
+            `Natureza: ${advancedNature}\n` +
+            `Tipo NF-e: ${advancedTpNF === "1" ? "Saida" : "Entrada"}\n` +
+            `Finalidade: ${advancedFinNFe}\n` +
+            `Itens: ${items.length}\n` +
+            `Total: ${money(totalItems)}`;
+        if (!confirm(confirmMessage)) return;
+
+        setEmitting(true);
+        try {
+            const result = await emitirNFeAssistidaUiAction({
+                organization_id: profile.organization_id,
+                cliente: {
+                    nome: participant.nome,
+                    cpf_cnpj: participant.cpf_cnpj,
+                    email: participant.email || undefined,
+                    telefone: participant.telefone || undefined,
+                    endereco: {
+                        cep: participant.cep,
+                        logradouro: participant.logradouro,
+                        numero: participant.numero,
+                        bairro: participant.bairro,
+                        cidade: participant.cidade,
+                        uf: participant.uf,
+                        codigo_municipio: participant.codigo_municipio,
+                        inscricao_estadual: participant.inscricao_estadual,
+                    },
+                },
+                itens: items.map((item, index) => ({
+                    codigo: item.codigo || `ITEM-${index + 1}`,
+                    descricao: item.descricao,
+                    ncm: digits(item.ncm),
+                    cfop: item.cfop,
+                    unidade: item.unidade || "UN",
+                    quantidade: item.quantidade,
+                    valor_unitario: item.valor_unitario,
+                    valor_total: Number((item.quantidade * item.valor_unitario).toFixed(2)),
+                    csosn: item.csosn,
+                    origem: item.origem,
+                })),
+                valor_total: Number(totalItems.toFixed(2)),
+                meio_pagamento: "90",
+                environment,
+                tipo_documento: "NFe",
+                observacao: infCpl,
+                modFrete,
+                natureza_operacao: advancedNature,
+                tipo_nfe: Number(advancedTpNF) as 0 | 1,
+                finalidade_nfe: Number(advancedFinNFe) as 1 | 2 | 3 | 4,
+            });
+
+            if (result.success) {
+                alert(result.message || "NF-e assistida enviada.");
+                window.location.href = "/fiscal";
+            } else {
+                alert(`Erro ao emitir assistida:\n${result.error || "Erro desconhecido"}`);
+            }
+        } finally {
+            setEmitting(false);
+        }
+    };
+
+    const handleEmitirNFe = async () => {
+        if (operation !== "advanced") {
+            const warnings = collectTemplateOverrideWarnings();
+            if (warnings.length > 0) {
+                const proceed = confirm(
+                    "Existem parametros tecnicos alterados na pre-emissao:\n\n" +
+                    warnings.map((item) => `- ${item}`).join("\n") +
+                    "\n\nConfirme apenas se esses ajustes foram revisados com o contador.\n\nDeseja emitir mesmo assim?"
+                );
+                if (!proceed) return;
+            }
+        }
+
         if (operation === "return") {
             handleEmitirDevolucao();
             return;
@@ -1094,11 +1607,32 @@ export default function NFeCompletaPage() {
             return;
         }
 
+        if (isTransferenciaMvp) {
+            handleEmitirTransferencia();
+            return;
+        }
+
+        if (isBonusMvp) {
+            handleEmitirBonificacaoDoacao();
+            return;
+        }
+
+        if (operation === "advanced") {
+            const audit = await runAutoAiAuditForAdvanced();
+            if (!audit.ok) return;
+            handleEmitirAssistida();
+            return;
+        }
+
         handleEmitirVendaComum();
     };
 
     const fieldClass = "w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-medium text-stone-800 outline-none transition focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20";
     const labelClass = "ml-1 text-[10px] font-black uppercase text-stone-400";
+    const participantFieldClass = "w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-900 outline-none transition placeholder:text-stone-500 focus:border-[#1A1A1A] focus:ring-2 focus:ring-[#1A1A1A]/15";
+    const participantLabelClass = "ml-1 text-[10px] font-black uppercase text-stone-600";
+    const itemFieldClass = "w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-900 outline-none transition placeholder:text-stone-500 focus:border-[#1A1A1A] focus:ring-2 focus:ring-[#1A1A1A]/15";
+    const itemLabelClass = "ml-1 text-[10px] font-black uppercase text-stone-600";
     const previewItems: DraftItem[] = usesOriginItems
         ? selectedReturnItems.map((item, index) => ({
             id: `${item.codigo}-${index}`,
@@ -1116,7 +1650,7 @@ export default function NFeCompletaPage() {
 
     return (
         <div className="mx-auto max-w-7xl space-y-5 pb-32">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-3">
                 <div className="flex items-center gap-3">
                     <Link href="/fiscal">
                         <button className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-stone-600 shadow-sm transition hover:bg-stone-50">
@@ -1129,21 +1663,36 @@ export default function NFeCompletaPage() {
                     </div>
                 </div>
 
-                <div className="flex w-fit items-center gap-1 rounded-xl border border-stone-200 bg-white p-1 shadow-sm">
-                    <button
-                        type="button"
-                        onClick={() => setEnvironment("homologation")}
-                        className={`rounded-lg px-4 py-2 text-xs font-black transition ${environment === "homologation" ? "bg-yellow-100 text-yellow-700" : "text-stone-400 hover:text-stone-700"}`}
-                    >
-                        Homologacao
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setEnvironment("production")}
-                        className={`rounded-lg px-4 py-2 text-xs font-black transition ${environment === "production" ? "bg-green-100 text-green-700" : "text-stone-400 hover:text-stone-700"}`}
-                    >
-                        Producao
-                    </button>
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-[260px_1fr_320px] lg:items-center">
+                    <div className="hidden lg:block" />
+
+                    <div className="flex justify-start lg:justify-end">
+                        <button
+                            type="button"
+                            onClick={() => setCloneModalOpen(true)}
+                            className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-black text-stone-700 shadow-sm transition hover:bg-stone-50"
+                        >
+                            <Copy size={14} />
+                            Clonar nota
+                        </button>
+                    </div>
+
+                    <div className="flex w-fit items-center gap-1 rounded-xl border border-stone-200 bg-white p-1 shadow-sm lg:justify-self-end">
+                        <button
+                            type="button"
+                            onClick={() => setEnvironment("homologation")}
+                            className={`rounded-lg px-4 py-2 text-xs font-black transition ${environment === "homologation" ? "bg-yellow-100 text-yellow-700" : "text-stone-400 hover:text-stone-700"}`}
+                        >
+                            Homologacao
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setEnvironment("production")}
+                            className={`rounded-lg px-4 py-2 text-xs font-black transition ${environment === "production" ? "bg-green-100 text-green-700" : "text-stone-400 hover:text-stone-700"}`}
+                        >
+                            Producao
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1153,20 +1702,37 @@ export default function NFeCompletaPage() {
                         {STEPS.map((item, index) => {
                             const active = item.id === step;
                             const done = index < stepIndex;
+                            const next = index === stepIndex + 1;
+                            const cloneUnlocked = Boolean(clonedFrom);
+                            const unlocked = cloneUnlocked || active || done || next;
                             const blocked = stepHasPending(item.id);
 
                             return (
                                 <button
                                     key={item.id}
                                     type="button"
-                                    onClick={() => setStep(item.id)}
-                                    className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition last:mb-0 ${active ? "bg-[#1A1A1A] text-[#FACC15]" : "text-stone-600 hover:bg-stone-50"}`}
+                                    onClick={() => {
+                                        if (!unlocked) return;
+                                        setStep(item.id);
+                                    }}
+                                    disabled={!unlocked}
+                                    className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition last:mb-0 ${active
+                                        ? "bg-[#1A1A1A] text-[#FACC15]"
+                                        : unlocked
+                                            ? "text-stone-900 hover:bg-stone-50"
+                                            : "cursor-not-allowed text-stone-400 opacity-55"}`}
                                 >
-                                    <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${active ? "bg-[#FACC15] text-[#1A1A1A]" : done ? "bg-green-100 text-green-700" : "bg-stone-100 text-stone-400"}`}>
+                                    <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${active
+                                        ? "bg-[#FACC15] text-[#1A1A1A]"
+                                        : done
+                                            ? "bg-stone-900 text-white"
+                                            : next
+                                                ? "bg-stone-900 text-white"
+                                                : "bg-stone-100 text-stone-400"}`}>
                                         {done ? <CheckCircle size={14} /> : index + 1}
                                     </span>
                                     <span className="flex-1 text-sm font-black">{item.label}</span>
-                                    {blocked && <AlertCircle size={14} className={active ? "text-[#FACC15]" : "text-red-400"} />}
+                                    {blocked && unlocked && <AlertCircle size={14} className={active ? "text-[#FACC15]" : "text-red-400"} />}
                                 </button>
                             );
                         })}
@@ -1198,6 +1764,12 @@ export default function NFeCompletaPage() {
                 </aside>
 
                 <main className="min-h-[640px] rounded-2xl border border-stone-100 bg-white p-5 shadow-sm">
+                    {clonedFrom && (
+                        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-3">
+                            <p className="text-sm font-black text-blue-800">Rascunho clonado da NF {clonedFrom.numero || "-"}.</p>
+                            <p className="mt-1 text-xs font-medium text-blue-700">Revise os campos e valide novamente antes de emitir.</p>
+                        </div>
+                    )}
                     {step === "operation" && (
                         <section className="space-y-5">
                             <div>
@@ -1231,106 +1803,196 @@ export default function NFeCompletaPage() {
                                 })}
                             </div>
 
-                            <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
-                                <label className={labelClass}>Finalidade especifica</label>
-                                <select value={purpose} onChange={(e) => setPurpose(e.target.value)} className={fieldClass}>
-                                    {currentOperation.purposes.map((item) => (
-                                        <option key={item} value={item}>{item}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            {operation !== "advanced" && (
+                                <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
+                                    <label className={labelClass}>Finalidade especifica</label>
+                                    <select value={purpose} onChange={(e) => setPurpose(e.target.value)} className={fieldClass}>
+                                        {currentOperation.purposes.map((item) => (
+                                            <option key={item} value={item}>{item}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
 
-                            {requiresReference && (
-                                <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
-                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            {operation === "advanced" && (
+                                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                                    <p className="text-sm font-black text-blue-800">Pra fazer nota aqui e fundamental ter o auxilio do contador.</p>
+                                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                                        <div className="md:col-span-3">
+                                            <label className={labelClass}>Natureza da operacao</label>
+                                            <input
+                                                value={advancedNature}
+                                                onChange={(e) => setAdvancedNature(e.target.value)}
+                                                className={fieldClass}
+                                                placeholder="Ex: REMESSA PARA DEMONSTRACAO"
+                                            />
+                                        </div>
                                         <div>
-                                            <p className="font-black text-orange-800">
-                                                {(isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "Remessa de origem autorizada" : "Nota de origem importada"}
-                                            </p>
-                                            <p className="mt-1 text-sm font-medium text-orange-700">
-                                                {(isRetornoConsertoMvp || isRetornoGarantiaMvp)
-                                                    ? `O retorno usa uma NF-e de remessa para ${isRetornoGarantiaMvp ? "garantia" : "conserto"} autorizada para referenciar a chave e carregar os itens.`
-                                                    : "A devolucao usa a NF-e de entrada importada para referenciar a chave e espelhar os impostos no backend aprovado."}
-                                            </p>
+                                            <label className={labelClass}>Tipo NF-e</label>
+                                            <select value={advancedTpNF} onChange={(e) => setAdvancedTpNF(e.target.value as "0" | "1")} className={fieldClass}>
+                                                <option value="1">1 - Saida</option>
+                                                <option value="0">0 - Entrada</option>
+                                            </select>
                                         </div>
+                                        <div>
+                                            <label className={labelClass}>Finalidade NF-e</label>
+                                            <select value={advancedFinNFe} onChange={(e) => setAdvancedFinNFe(e.target.value as "1" | "2" | "3" | "4")} className={fieldClass}>
+                                                <option value="1">1 - Normal</option>
+                                                <option value="2">2 - Complementar</option>
+                                                <option value="3">3 - Ajuste</option>
+                                                <option value="4">4 - Devolucao/Retorno</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {shouldShowOriginSelector && (
+                                <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+                                    <div className="flex flex-col gap-3">
                                         {loadingEntryInvoices && <Loader2 size={18} className="animate-spin text-orange-500" />}
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setOriginSelectorExpanded((current) => !current)}
+                                            className="flex w-full items-center justify-between rounded-xl border border-orange-200 bg-white px-3 py-3 text-left text-sm font-black text-orange-800 transition hover:bg-orange-50"
+                                        >
+                                            <span>{selectedEntryInvoice ? "Trocar nota de origem" : "Escolha a nota de origem"}</span>
+                                            <ChevronRight size={16} className={`transition ${originSelectorExpanded ? "rotate-90" : ""}`} />
+                                        </button>
                                     </div>
 
-                                    <div className="mt-4">
-                                        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                                            <div className="flex-1">
-                                                <label className="ml-1 text-[10px] font-black uppercase text-orange-500">
-                                                    {(isRetornoConsertoMvp || isRetornoGarantiaMvp) ? `Buscar remessa para ${isRetornoGarantiaMvp ? "garantia" : "conserto"}` : "Buscar NF-e de entrada"}
-                                                </label>
-                                                <input
-                                                    value={entrySearch}
-                                                    onChange={(e) => {
-                                                        setEntrySearch(e.target.value);
-                                                        if (e.target.value.trim()) setOriginQuickFilter("all");
-                                                    }}
-                                                    className="mt-1 w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
-                                                    placeholder={(isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "Cliente, CPF/CNPJ, numero ou chave" : "Fornecedor, CNPJ, numero ou chave"}
-                                                />
+                                    {originSelectorExpanded && (
+                                        <div className="mt-4 space-y-3">
+                                            <p className="text-sm font-medium text-orange-700">
+                                                Para continuar escolha a nota em que chegou a(s) peca(s) a ser(em) devolvida(s).
+                                            </p>
+
+                                            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                                                <div className="flex-1">
+                                                    <label className="ml-1 text-[10px] font-black uppercase text-orange-500">
+                                                        {(isRetornoConsertoMvp || isRetornoGarantiaMvp)
+                                                            ? `Buscar remessa para ${isRetornoGarantiaMvp ? "garantia" : "conserto"}`
+                                                            : isRetornoDepositoMvp
+                                                                ? "Buscar transferencia para deposito"
+                                                                : "Buscar NF-e de entrada"}
+                                                    </label>
+                                                    <input
+                                                        value={entrySearch}
+                                                        onChange={(e) => {
+                                                            setEntrySearch(e.target.value);
+                                                            if (e.target.value.trim()) {
+                                                                setOriginQuickFilter("all");
+                                                                setOriginSearchStarted(true);
+                                                            }
+                                                        }}
+                                                        className="mt-1 w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
+                                                        placeholder={(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? "Cliente, CPF/CNPJ, numero ou chave" : "Fornecedor, CNPJ, numero ou chave"}
+                                                    />
+                                                </div>
+
+                                                <div className="flex w-fit gap-1 rounded-xl border border-orange-200 bg-orange-100 p-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setOriginQuickFilter("recent");
+                                                            setOriginSearchStarted(true);
+                                                        }}
+                                                        className={`rounded-lg px-3 py-2 text-xs font-black transition ${originQuickFilter === "recent" ? "bg-white text-orange-800 shadow-sm" : "text-orange-600"}`}
+                                                    >
+                                                        Ultimas 10
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setOriginQuickFilter("all");
+                                                            setOriginSearchStarted(true);
+                                                        }}
+                                                        className={`rounded-lg px-3 py-2 text-xs font-black transition ${originQuickFilter === "all" ? "bg-white text-orange-800 shadow-sm" : "text-orange-600"}`}
+                                                    >
+                                                        Todas
+                                                    </button>
+                                                </div>
                                             </div>
 
-                                            <div className="flex w-fit gap-1 rounded-xl border border-orange-200 bg-orange-100 p-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setOriginQuickFilter("recent")}
-                                                    className={`rounded-lg px-3 py-2 text-xs font-black transition ${originQuickFilter === "recent" ? "bg-white text-orange-800 shadow-sm" : "text-orange-600"}`}
-                                                >
-                                                    Ultimas 10
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setOriginQuickFilter("all")}
-                                                    className={`rounded-lg px-3 py-2 text-xs font-black transition ${originQuickFilter === "all" ? "bg-white text-orange-800 shadow-sm" : "text-orange-600"}`}
-                                                >
-                                                    Todas
-                                                </button>
+                                            {!originSearchStarted ? (
+                                                <p className="rounded-xl bg-white/70 p-3 text-sm font-medium text-orange-700">
+                                                    Escolha um filtro ou use a busca para listar as notas.
+                                                </p>
+                                            ) : (
+                                                <>
+                                                    <p className="text-xs font-bold text-orange-700">
+                                                        Mostrando {filteredEntryInvoices.length} de {entryInvoices.length} {(isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "remessa(s) autorizada(s)" : isRetornoDepositoMvp ? "transferencia(s) autorizada(s)" : "nota(s) encontrada(s)"}.
+                                                    </p>
+
+                                                    <div className="max-h-72 space-y-2 overflow-y-auto">
+                                                        {filteredEntryInvoices.map((invoice) => {
+                                                            const selected = selectedEntryInvoice?.id === invoice.id;
+                                                            const emittedAt = invoice.data_emissao ? new Date(invoice.data_emissao).toLocaleDateString("pt-BR") : "sem data";
+                                                            return (
+                                                                <button
+                                                                    key={invoice.id}
+                                                                    type="button"
+                                                                    onClick={() => selectEntryInvoice(invoice)}
+                                                                    className={`w-full rounded-xl border p-3 text-left transition ${selected ? "border-orange-400 bg-white shadow-sm" : "border-orange-100 bg-white/70 hover:border-orange-300"}`}
+                                                                >
+                                                                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                                                        <div>
+                                                                            <p className="font-black text-[#1A1A1A]">
+                                                                                NF {invoice.numero || "-"} | {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? (invoice.destinatario_nome || "Destinatario sem nome") : (invoice.emitente_nome || "Fornecedor sem nome")}
+                                                                            </p>
+                                                                            <p className="mt-1 text-xs font-medium text-stone-500">
+                                                                                {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? (invoice.destinatario_cnpj || "CNPJ pendente") : (invoice.emitente_cnpj || "CNPJ pendente")} | {invoice.chave_acesso || "chave pendente"}
+                                                                            </p>
+                                                                            <p className="mt-1 text-[10px] font-black uppercase text-orange-500">
+                                                                                Emitida em {emittedAt}
+                                                                            </p>
+                                                                        </div>
+                                                                        <p className="text-sm font-black text-[#1A1A1A]">{money(Number(invoice.valor_total || 0))}</p>
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {!loadingEntryInvoices && filteredEntryInvoices.length === 0 && (
+                                                            <p className="rounded-xl bg-white/70 p-3 text-sm font-medium text-orange-700">
+                                                                {(isRetornoConsertoMvp || isRetornoGarantiaMvp)
+                                                                    ? `Nenhuma remessa para ${isRetornoGarantiaMvp ? "garantia" : "conserto"} autorizada encontrada neste ambiente.`
+                                                                    : isRetornoDepositoMvp
+                                                                        ? "Nenhuma transferencia para deposito autorizada encontrada neste ambiente."
+                                                                        : "Nenhuma NF-e de entrada encontrada."}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {!originSelectorExpanded && selectedEntryInvoice && (
+                                        <div className="mt-4 rounded-xl border border-orange-200 bg-white p-3">
+                                            <p className="text-[10px] font-black uppercase text-orange-500">Nota selecionada</p>
+                                            <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                                <div>
+                                                    <p className="font-black text-[#1A1A1A]">
+                                                        NF {selectedEntryInvoice.numero || "-"} | {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp)
+                                                            ? (selectedEntryInvoice.destinatario_nome || "Destinatario sem nome")
+                                                            : (selectedEntryInvoice.emitente_nome || "Fornecedor sem nome")}
+                                                    </p>
+                                                    <p className="mt-1 text-xs font-medium text-stone-500">
+                                                        {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp)
+                                                            ? (selectedEntryInvoice.destinatario_cnpj || "CNPJ pendente")
+                                                            : (selectedEntryInvoice.emitente_cnpj || "CNPJ pendente")} | {selectedEntryInvoice.chave_acesso || "chave pendente"}
+                                                    </p>
+                                                    <p className="mt-1 text-[10px] font-black uppercase text-orange-500">
+                                                        Emitida em {selectedEntryInvoice.data_emissao ? new Date(selectedEntryInvoice.data_emissao).toLocaleDateString("pt-BR") : "sem data"}
+                                                    </p>
+                                                </div>
+                                                <p className="text-sm font-black text-[#1A1A1A]">{money(Number(selectedEntryInvoice.valor_total || 0))}</p>
                                             </div>
                                         </div>
-                                        <p className="mt-2 text-xs font-bold text-orange-700">
-                                            Mostrando {filteredEntryInvoices.length} de {entryInvoices.length} {(isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "remessa(s) autorizada(s)" : "nota(s) encontrada(s)"}.
-                                        </p>
-                                    </div>
+                                    )}
 
-                                    <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
-                                        {filteredEntryInvoices.map((invoice) => {
-                                            const selected = selectedEntryInvoice?.id === invoice.id;
-                                            const emittedAt = invoice.data_emissao ? new Date(invoice.data_emissao).toLocaleDateString("pt-BR") : "sem data";
-                                            return (
-                                                <button
-                                                    key={invoice.id}
-                                                    type="button"
-                                                    onClick={() => selectEntryInvoice(invoice)}
-                                                    className={`w-full rounded-xl border p-3 text-left transition ${selected ? "border-orange-400 bg-white shadow-sm" : "border-orange-100 bg-white/70 hover:border-orange-300"}`}
-                                                >
-                                                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                                                        <div>
-                                                            <p className="font-black text-[#1A1A1A]">
-                                                                NF {invoice.numero || "-"} | {(isRetornoConsertoMvp || isRetornoGarantiaMvp) ? (invoice.destinatario_nome || "Destinatario sem nome") : (invoice.emitente_nome || "Fornecedor sem nome")}
-                                                            </p>
-                                                            <p className="mt-1 text-xs font-medium text-stone-500">
-                                                                {(isRetornoConsertoMvp || isRetornoGarantiaMvp) ? (invoice.destinatario_cnpj || "CNPJ pendente") : (invoice.emitente_cnpj || "CNPJ pendente")} | {invoice.chave_acesso || "chave pendente"}
-                                                            </p>
-                                                            <p className="mt-1 text-[10px] font-black uppercase text-orange-500">
-                                                                Emitida em {emittedAt}
-                                                            </p>
-                                                        </div>
-                                                        <p className="text-sm font-black text-[#1A1A1A]">{money(Number(invoice.valor_total || 0))}</p>
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                        {!loadingEntryInvoices && filteredEntryInvoices.length === 0 && (
-                                            <p className="rounded-xl bg-white/70 p-3 text-sm font-medium text-orange-700">
-                                                {(isRetornoConsertoMvp || isRetornoGarantiaMvp) ? `Nenhuma remessa para ${isRetornoGarantiaMvp ? "garantia" : "conserto"} autorizada encontrada neste ambiente.` : "Nenhuma NF-e de entrada encontrada."}
-                                            </p>
-                                        )}
-                                    </div>
-
-                                    {isRetornoGarantiaMvp && legacyGuaranteeInvoices.length > 0 && (
+                                    {originSelectorExpanded && originSearchStarted && isRetornoGarantiaMvp && legacyGuaranteeInvoices.length > 0 && (
                                         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
                                             <p className="text-xs font-black uppercase text-amber-700">
                                                 Notas legadas (fora do padrao atual): {legacyGuaranteeInvoices.length}
@@ -1372,43 +2034,36 @@ export default function NFeCompletaPage() {
                                 </div>
                             )}
 
-                            {operation === "sale" && purpose !== "Venda comum" && (
+                            {isSalePurposeUnavailable && (
                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                                    <p className="font-black text-amber-800">Cenario ainda nao parametrizado</p>
+                                    <p className="font-black text-amber-800">Finalidade nao disponivel</p>
                                     <p className="mt-1 text-sm font-medium text-amber-700">
-                                        Por enquanto, a emissao real da nova tela esta liberada apenas para Venda comum. Esta finalidade fica disponivel como rascunho para evolucao fiscal posterior.
+                                        Para essa finalidade, use "Outra operacao" com a orientacao do seu contador.
                                     </p>
                                 </div>
                             )}
 
-                            {operation === "return" && purpose !== "Devolucao de compra" && (
+                            {isReturnPurposeUnavailable && (
                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                                    <p className="font-black text-amber-800">Cenario ainda nao parametrizado</p>
+                                    <p className="font-black text-amber-800">Finalidade nao disponivel</p>
                                     <p className="mt-1 text-sm font-medium text-amber-700">
-                                        A copia cirurgica do fluxo aprovado cobre a devolucao de compra baseada em NF-e de entrada importada. Devolucao de venda sera parametrizada depois.
+                                        Para essa finalidade, use "Outra operacao" com a orientacao do seu contador.
                                     </p>
                                 </div>
                             )}
 
-                            {operation === "shipment" && (
-                                <ShipmentGuidance
-                                    purpose={purpose}
-                                    cfop={suggestedCfop}
-                                    destinationLabel={destinationLabel}
-                                    canEmit={isRemessaConsertoMvp || isRemessaGarantiaMvp || isRetornoConsertoMvp}
-                                />
+                            {operation === "shipment" && !isRemessaConsertoMvp && !isRemessaGarantiaMvp && !isRetornoConsertoMvp && !isRetornoGarantiaMvp && (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                    <p className="font-black text-amber-800">Finalidade nao disponivel</p>
+                                    <p className="mt-1 text-sm font-medium text-amber-700">
+                                        Para essa finalidade, use "Outra operacao" com a orientacao do seu contador.
+                                    </p>
+                                </div>
                             )}
 
-                            {(operation === "transfer" || operation === "bonus") && (
-                                <BlockedOperationGuidance
-                                    operation={operation}
-                                    purpose={purpose}
-                                    cfop={suggestedCfop}
-                                    destinationLabel={destinationLabel}
-                                />
-                            )}
+                            {operation === "bonus" && null}
 
-                            {operation !== "sale" && operation !== "return" && !isRemessaConsertoMvp && !isRemessaGarantiaMvp && !isRetornoConsertoMvp && (
+                            {operation !== "sale" && operation !== "return" && operation !== "advanced" && operation !== "shipment" && !isTransferenciaMvp && !isBonusMvp && (
                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                                     <p className="font-black text-amber-800">Rascunho sem emissao real nesta fase</p>
                                     <p className="mt-1 text-sm font-medium text-amber-700">
@@ -1416,6 +2071,8 @@ export default function NFeCompletaPage() {
                                     </p>
                                 </div>
                             )}
+
+                            {operation === "advanced" && null}
                         </section>
                     )}
 
@@ -1445,28 +2102,37 @@ export default function NFeCompletaPage() {
                                         <button
                                             type="button"
                                             onClick={() => setParticipantMode("search")}
-                                            className={`rounded-lg px-3 py-2 text-xs font-black transition ${participantMode === "search" ? "bg-white text-[#1A1A1A] shadow-sm" : "text-stone-500"}`}
+                                            className={`rounded-lg px-3 py-2 text-xs font-black transition ${participantMode === "search" ? "bg-[#1A1A1A] text-[#FACC15] shadow-sm" : "text-stone-700 hover:bg-stone-200"}`}
                                         >
                                             Buscar cadastro
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => setParticipantMode("manual")}
-                                            className={`rounded-lg px-3 py-2 text-xs font-black transition ${participantMode === "manual" ? "bg-white text-[#1A1A1A] shadow-sm" : "text-stone-500"}`}
+                                            className={`rounded-lg px-3 py-2 text-xs font-black transition ${participantMode === "manual" ? "bg-[#1A1A1A] text-[#FACC15] shadow-sm" : "text-stone-700 hover:bg-stone-200"}`}
                                         >
                                             Novo participante
                                         </button>
                                     </div>
 
+                                    {participantClientFeedback && (
+                                        <div className={`rounded-xl border px-3 py-2 text-xs font-bold ${participantClientFeedback.type === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}>
+                                            {participantClientFeedback.message}
+                                        </div>
+                                    )}
+
                                     {participantMode === "search" && (
                                         <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
-                                            <label className={labelClass}>Buscar por nome, CPF/CNPJ ou telefone</label>
+                                            <label className={participantLabelClass}>Buscar por nome, CPF/CNPJ ou telefone</label>
                                             <div className="relative mt-1">
                                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={16} />
                                                 <input
                                                     value={participantSearch}
-                                                    onChange={(e) => setParticipantSearch(e.target.value)}
-                                                    className="w-full rounded-xl border border-stone-200 bg-white py-2 pl-10 pr-3 text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20"
+                                                    onChange={(e) => {
+                                                        setParticipantSearch(e.target.value);
+                                                        setParticipantSearchLocked(false);
+                                                    }}
+                                                    className={`${participantFieldClass} !border-amber-300 !bg-amber-100 py-2 pl-10 pr-3`}
                                                     placeholder="Digite ao menos 2 caracteres"
                                                 />
                                                 {searchingClients && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-stone-400" size={16} />}
@@ -1487,17 +2153,36 @@ export default function NFeCompletaPage() {
                                                     ))}
                                                 </div>
                                             )}
+
+                                            {!searchingClients && participantSearch.trim().length >= 2 && clientResults.length === 0 && !participantSearchLocked && (
+                                                <p className="mt-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-600">
+                                                    Nenhum cliente encontrado.
+                                                </p>
+                                            )}
                                         </div>
                                     )}
 
                                     <ParticipantForm
                                         participant={participant}
                                         setParticipant={setParticipant}
-                                        fieldClass={fieldClass}
-                                        labelClass={labelClass}
+                                        fieldClass={participantFieldClass}
+                                        labelClass={participantLabelClass}
                                         loadingCep={loadingCep}
                                         buscaCep={buscaCepParticipante}
                                     />
+
+                                    {participantMode === "manual" && (
+                                        <div className="flex justify-end">
+                                            <button
+                                                type="button"
+                                                onClick={handleSaveParticipantClient}
+                                                disabled={savingParticipantClient}
+                                                className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-xs font-black text-stone-800 transition hover:border-stone-400 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                                {savingParticipantClient ? "Salvando..." : "Salvar cliente"}
+                                            </button>
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </section>
@@ -1531,7 +2216,7 @@ export default function NFeCompletaPage() {
                                     loading={loadingEntryItems}
                                     toggleItem={toggleReturnItem}
                                     updateQty={updateReturnQty}
-                                    mode={(isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "retorno" : "devolucao"}
+                                    mode={(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? "retorno" : "devolucao"}
                                 />
                             ) : (
                             <div className="space-y-3">
@@ -1551,14 +2236,14 @@ export default function NFeCompletaPage() {
 
                                         <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
                                             <div className="xl:col-span-12">
-                                                <label className={labelClass}>Descricao</label>
+                                                <label className={itemLabelClass}>Descricao</label>
                                                 <div className="relative">
                                                     <input
                                                         value={item.descricao}
                                                         onChange={(e) => updateItem(item.id, { descricao: e.target.value, codigo: item.codigo && item.descricao !== e.target.value ? "" : item.codigo })}
                                                         onFocus={() => setFocusedItemId(item.id)}
                                                         onBlur={() => setTimeout(() => setFocusedItemId(null), 180)}
-                                                        className={fieldClass}
+                                                        className={`${itemFieldClass} !border-amber-300 !bg-amber-100`}
                                                         placeholder="Buscar peca do estoque..."
                                                     />
                                                     {focusedItemId === item.id && (
@@ -1573,44 +2258,44 @@ export default function NFeCompletaPage() {
                                             </div>
 
                                             <div className="xl:col-span-3">
-                                                <label className={labelClass}>NCM</label>
-                                                <input value={item.ncm} onChange={(e) => updateItem(item.id, { ncm: digits(e.target.value).slice(0, 8) })} className={fieldClass} />
+                                                <label className={itemLabelClass}>NCM</label>
+                                                <input value={item.ncm} onChange={(e) => updateItem(item.id, { ncm: digits(e.target.value).slice(0, 8) })} className={itemFieldClass} />
                                             </div>
 
                                             <div className="xl:col-span-3">
-                                                <label className={labelClass}>CFOP</label>
+                                                <label className={itemLabelClass}>CFOP</label>
                                                 <input
                                                     value={item.cfop}
                                                     onChange={(e) => updateItem(item.id, { cfop: digits(e.target.value).slice(0, 4) })}
                                                     readOnly={operation !== "advanced"}
-                                                    className={`${fieldClass} ${operation !== "advanced" ? "bg-stone-100 text-stone-500" : ""}`}
+                                                    className={`${itemFieldClass} ${operation !== "advanced" ? "bg-stone-100 text-stone-500" : ""}`}
                                                 />
                                             </div>
 
                                             <div className="xl:col-span-2">
-                                                <label className={labelClass}>UN</label>
-                                                <input value={item.unidade} onChange={(e) => updateItem(item.id, { unidade: e.target.value.toUpperCase().slice(0, 6) })} className={fieldClass} />
+                                                <label className={itemLabelClass}>UN</label>
+                                                <input value={item.unidade} onChange={(e) => updateItem(item.id, { unidade: e.target.value.toUpperCase().slice(0, 6) })} className={itemFieldClass} />
                                             </div>
 
                                             <div className="xl:col-span-2">
-                                                <label className={labelClass}>Qtd</label>
-                                                <input type="number" value={item.quantidade} onChange={(e) => updateItem(item.id, { quantidade: Number(e.target.value) })} className={fieldClass} />
+                                                <label className={itemLabelClass}>Qtd</label>
+                                                <input type="number" value={item.quantidade} onChange={(e) => updateItem(item.id, { quantidade: Number(e.target.value) })} className={itemFieldClass} />
                                             </div>
 
                                             <div className="xl:col-span-2">
-                                                <label className={labelClass}>Valor</label>
-                                                <input type="number" step="0.01" value={item.valor_unitario} onChange={(e) => updateItem(item.id, { valor_unitario: Number(e.target.value) })} className={fieldClass} />
+                                                <label className={itemLabelClass}>Valor</label>
+                                                <input type="number" step="0.01" value={item.valor_unitario} onChange={(e) => updateItem(item.id, { valor_unitario: Number(e.target.value) })} className={itemFieldClass} />
                                             </div>
                                         </div>
 
                                         <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-12">
                                             <div className="xl:col-span-3">
-                                                <label className={labelClass}>CSOSN/CST</label>
-                                                <input value={item.csosn} onChange={(e) => updateItem(item.id, { csosn: e.target.value })} className={fieldClass} />
+                                                <label className={itemLabelClass}>CSOSN/CST</label>
+                                                <input value={item.csosn} onChange={(e) => updateItem(item.id, { csosn: e.target.value })} className={itemFieldClass} />
                                             </div>
                                             <div className="xl:col-span-5">
-                                                <label className={labelClass}>Origem</label>
-                                                <select value={item.origem} onChange={(e) => updateItem(item.id, { origem: e.target.value })} className={fieldClass}>
+                                                <label className={itemLabelClass}>Origem</label>
+                                                <select value={item.origem} onChange={(e) => updateItem(item.id, { origem: e.target.value })} className={itemFieldClass}>
                                                     <option value="0">0 - Nacional</option>
                                                     <option value="1">1 - Estrangeira direta</option>
                                                     <option value="2">2 - Estrangeira mercado interno</option>
@@ -1688,13 +2373,11 @@ export default function NFeCompletaPage() {
                                             : "Confira o rascunho. Esta finalidade ainda nao transmite NF-e."}
                                     </p>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={runAiAuditMock}
-                                    className="flex w-fit items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2 text-xs font-black text-stone-700 shadow-sm transition hover:border-[#FACC15]"
-                                >
-                                    <ShieldCheck size={16} /> Auditar com IA
-                                </button>
+                                {operation === "advanced" && (
+                                    <span className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700">
+                                        IA sera executada automaticamente ao emitir
+                                    </span>
+                                )}
                             </div>
 
                             {pending.length > 0 ? (
@@ -1726,7 +2409,7 @@ export default function NFeCompletaPage() {
                                     selectedItems={selectedReturnItems}
                                     total={returnTotal}
                                     environment={environment}
-                                    mode={(isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "retorno" : "devolucao"}
+                                    mode={(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? "retorno" : "devolucao"}
                                 />
                             )}
 
@@ -1741,16 +2424,7 @@ export default function NFeCompletaPage() {
                                 />
                             )}
 
-                            {(operation === "transfer" || operation === "bonus") && (
-                                <BlockedOperationTechnicalPreview
-                                    operation={operation}
-                                    purpose={purpose}
-                                    cfop={suggestedCfop}
-                                    destinationLabel={destinationLabel}
-                                    items={items}
-                                    total={totalItems}
-                                />
-                            )}
+                            {operation === "bonus" && null}
 
                             <DanfePreview
                                 operation={currentOperation.title}
@@ -1779,7 +2453,8 @@ export default function NFeCompletaPage() {
                             <button
                                 type="button"
                                 onClick={goNext}
-                                className="flex items-center gap-2 rounded-xl bg-[#1A1A1A] px-4 py-2 text-sm font-black text-[#FACC15] transition hover:bg-black"
+                                disabled={step === "operation" && (isSalePurposeUnavailable || isReferenceSelectionPending)}
+                                className="flex items-center gap-2 rounded-xl bg-[#1A1A1A] px-4 py-2 text-sm font-black text-[#FACC15] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
                             >
                                 Proximo <ChevronRight size={16} />
                             </button>
@@ -1791,7 +2466,7 @@ export default function NFeCompletaPage() {
                                 className="flex items-center gap-2 rounded-xl bg-[#FACC15] px-4 py-2 text-sm font-black text-[#1A1A1A] transition hover:bg-yellow-300 disabled:opacity-40"
                             >
                                 {emitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                                {emitting ? "Emitindo..." : operation === "return" ? "Emitir NF-e de Devolucao" : isVendaComumMvp ? "Emitir NF-e de Venda" : (isRemessaConsertoMvp || isRemessaGarantiaMvp) ? "Emitir NF-e de Remessa" : (isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "Emitir NF-e de Retorno" : "Emissao indisponivel"}
+                                {emitting ? "Emitindo..." : operation === "return" ? "Emitir NF-e de Devolucao" : isVendaComumMvp ? "Emitir NF-e de Venda" : (isRemessaConsertoMvp || isRemessaGarantiaMvp) ? "Emitir NF-e de Remessa" : (isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "Emitir NF-e de Retorno" : isTransferenciaMvp ? "Emitir NF-e de Transferencia" : isBonusMvp ? "Emitir NF-e de Bonificacao/Doacao" : operation === "advanced" ? "Emitir NF-e assistida" : "Emissao indisponivel"}
                             </button>
                         )}
                     </div>
@@ -1821,7 +2496,109 @@ export default function NFeCompletaPage() {
                             <p>CFOP sugerido: <strong>{suggestedCfop || "Modo avancado"}</strong></p>
                         </div>
                     </div>
+
+                    {isTransferDepositFlow && transferHasDifferentRoot && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                            <p className="text-sm font-black text-amber-800">Alerta para deposito</p>
+                            <p className="mt-2 text-xs font-medium text-amber-700">
+                                CNPJ do destinatario com raiz diferente do emitente. Em deposito de terceiro pode ser valido, mas confirme com o contador antes de emitir.
+                            </p>
+                        </div>
+                    )}
                 </aside>
+            </div>
+            {cloneModalOpen && (
+                <CloneInvoiceModal
+                    environment={environment}
+                    query={cloneSearch}
+                    setQuery={setCloneSearch}
+                    status={cloneStatus}
+                    setStatus={setCloneStatus}
+                    invoices={cloneResults}
+                    loading={cloneLoading}
+                    onClose={() => setCloneModalOpen(false)}
+                    onSelect={applyCloneInvoice}
+                />
+            )}
+        </div>
+    );
+}
+
+function CloneInvoiceModal({
+    environment,
+    query,
+    setQuery,
+    status,
+    setStatus,
+    invoices,
+    loading,
+    onClose,
+    onSelect,
+}: {
+    environment: "production" | "homologation";
+    query: string;
+    setQuery: Dispatch<SetStateAction<string>>;
+    status: "authorized" | "error" | "rejected" | "all";
+    setStatus: Dispatch<SetStateAction<"authorized" | "error" | "rejected" | "all">>;
+    invoices: CloneInvoiceSummary[];
+    loading: boolean;
+    onClose: () => void;
+    onSelect: (invoice: CloneInvoiceSummary) => void;
+}) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="max-h-[86vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between gap-3 border-b border-stone-100 p-4">
+                    <div>
+                        <p className="text-lg font-black text-[#1A1A1A]">Clonar NF-e</p>
+                        <p className="text-xs font-bold text-stone-500">{environment === "production" ? "Producao" : "Homologacao"}</p>
+                    </div>
+                    <button type="button" onClick={onClose} className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-black text-stone-600">Fechar</button>
+                </div>
+                <div className="grid grid-cols-1 gap-3 border-b border-stone-100 p-4 md:grid-cols-[1fr_180px]">
+                    <input
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm font-bold outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20"
+                        placeholder="Numero, cliente, documento ou chave"
+                    />
+                    <select
+                        value={status}
+                        onChange={(event) => setStatus(event.target.value as "authorized" | "error" | "rejected" | "all")}
+                        className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-bold text-stone-700 outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20"
+                    >
+                        <option value="authorized">Autorizadas</option>
+                        <option value="rejected">Rejeitadas</option>
+                        <option value="error">Com erro</option>
+                        <option value="all">Todas</option>
+                    </select>
+                </div>
+                <div className="max-h-[56vh] overflow-y-auto p-4">
+                    {loading ? (
+                        <div className="flex items-center gap-2 rounded-xl bg-stone-50 p-4 text-sm font-bold text-stone-500"><Loader2 size={16} className="animate-spin" /> Buscando notas...</div>
+                    ) : invoices.length === 0 ? (
+                        <div className="rounded-xl bg-stone-50 p-4 text-sm font-bold text-stone-500">Nenhuma NF-e encontrada para os filtros atuais.</div>
+                    ) : (
+                        <div className="space-y-2">
+                            {invoices.map((invoice) => (
+                                <button key={invoice.id} type="button" onClick={() => onSelect(invoice)} className="w-full rounded-xl border border-stone-200 bg-white p-3 text-left transition hover:border-[#FACC15] hover:bg-yellow-50/40">
+                                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <p className="font-black text-[#1A1A1A]">NF {invoice.numero || "-"} {invoice.serie ? `Serie ${invoice.serie}` : ""}</p>
+                                            <p className="mt-1 text-xs font-bold text-stone-500">{invoice.destinatario_nome || "Destinatario sem nome"} | {invoice.destinatario_cnpj || "Documento pendente"}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm font-black text-[#1A1A1A]">{money(Number(invoice.valor_total || 0))}</p>
+                                            <p className="mt-1 text-[11px] font-bold text-stone-500">
+                                                {invoice.data_emissao ? new Date(invoice.data_emissao).toLocaleDateString("pt-BR") : "Data nao informada"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -1843,6 +2620,7 @@ function ParticipantForm({
     buscaCep: () => Promise<void>;
 }) {
     const patch = (data: Partial<Participant>) => setParticipant((current) => ({ ...current, ...data }));
+    const numeroInputId = "nfe-participant-numero";
 
     return (
         <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
@@ -1864,7 +2642,7 @@ function ParticipantForm({
                     <label className={labelClass}>IE</label>
                     <input value={participant.inscricao_estadual} onChange={(e) => patch({ inscricao_estadual: e.target.value, ind_ie_dest: e.target.value ? "1" : "9" })} className={fieldClass} />
                 </div>
-                <div>
+                <div className="md:col-span-2">
                     <label className={labelClass}>Indicador IE</label>
                     <select value={participant.ind_ie_dest} onChange={(e) => patch({ ind_ie_dest: e.target.value as Participant["ind_ie_dest"] })} className={fieldClass}>
                         <option value="1">Contribuinte</option>
@@ -1872,7 +2650,7 @@ function ParticipantForm({
                         <option value="9">Nao contribuinte</option>
                     </select>
                 </div>
-                <div>
+                <div className="md:col-span-2">
                     <label className={labelClass}>Email</label>
                     <input value={participant.email} onChange={(e) => patch({ email: e.target.value })} className={fieldClass} />
                 </div>
@@ -1883,8 +2661,20 @@ function ParticipantForm({
                 <div>
                     <label className={labelClass}>CEP</label>
                     <div className="relative">
-                        <input value={participant.cep} onChange={(e) => patch({ cep: e.target.value })} onBlur={buscaCep} className={`${fieldClass} pr-9`} />
-                        <button type="button" onClick={buscaCep} className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400">
+                        <input
+                            value={participant.cep}
+                            onChange={(e) => patch({ cep: e.target.value })}
+                            onBlur={async () => {
+                                const numeroAntes = (participant.numero || "").trim();
+                                await buscaCep();
+                                if (!numeroAntes) {
+                                    const numeroInput = document.getElementById(numeroInputId) as HTMLInputElement | null;
+                                    numeroInput?.focus();
+                                }
+                            }}
+                            className={`${fieldClass} pr-9`}
+                        />
+                        <button type="button" tabIndex={-1} onClick={buscaCep} className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400">
                             {loadingCep ? <Loader2 size={14} className="animate-spin" /> : <MapPin size={14} />}
                         </button>
                     </div>
@@ -1895,7 +2685,7 @@ function ParticipantForm({
                 </div>
                 <div>
                     <label className={labelClass}>Numero</label>
-                    <input value={participant.numero} onChange={(e) => patch({ numero: e.target.value })} className={fieldClass} />
+                    <input id={numeroInputId} value={participant.numero} onChange={(e) => patch({ numero: e.target.value })} className={fieldClass} />
                 </div>
                 <div>
                     <label className={labelClass}>Bairro</label>

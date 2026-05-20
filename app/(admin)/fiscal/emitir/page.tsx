@@ -354,6 +354,16 @@ export default function EmitirNotaPage() {
 
         setClienteDoc(os.clients?.cpf_cnpj || "");
 
+        setClienteEndereco({
+            cep: "",
+            logradouro: "",
+            numero: "",
+            bairro: "",
+            cidade: "",
+            uf: "",
+            codigo_municipio: ""
+        });
+
 
 
         // Buscar endereço completo do cliente

@@ -156,17 +156,18 @@ export async function buildClosingZip(
 
     const { data: inutilizacoes } = await supabase
         .from("fiscal_inutilizations")
-        .select("environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
+        .select("environment, model, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
         .eq("organization_id", organizationId)
-        .eq("model", "NFCe")
+        .in("model", ["NFCe", "NFe"])
         .eq("environment", "production")
         .eq("year", year)
         .order("created_at", { ascending: false });
 
     const inutilRows = [
-        ["AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
+        ["MODELO", "AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
         ...((inutilizacoes || []) as any[]).map(i => [
-            i.environment === "production" ? "producao" : "homologacao",
+            i.model || "NFCe",
+                i.environment === "production" ? "producao" : "homologacao",
             String(i.year),
             String(i.serie),
             String(i.numero_inicial),
@@ -177,13 +178,13 @@ export async function buildClosingZip(
             (i.justificativa || "").replace(/\r?\n/g, " "),
         ])
     ];
-    root.file("Inutilizacoes_NFCe.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
+    root.file("Inutilizacoes_Fiscais.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
 
     if (inutilizacoes && inutilizacoes.length > 0) {
         const inutilFolder = root.folder("Inutilizacoes_Comprovantes");
         for (const i of inutilizacoes as any[]) {
             inutilFolder?.file(
-                `NFCe_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`,
+                `${i.model || "NFCe"}_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`,
                 JSON.stringify(i.response_json || {}, null, 2)
             );
         }

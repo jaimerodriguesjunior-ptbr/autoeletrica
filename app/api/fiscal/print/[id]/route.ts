@@ -82,7 +82,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
             if (invoice.xml_url) {
                 const xmlResponse = await fetch(invoice.xml_url);
                 if (xmlResponse.ok) {
-                    return new NextResponse(await xmlResponse.text(), {
+                    const xmlContent = await xmlResponse.text();
+                    await supabase
+                        .from("fiscal_invoices")
+                        .update({ xml_content: xmlContent })
+                        .eq("id", invoice.id);
+
+                    return new NextResponse(xmlContent, {
                         headers: {
                             "Content-Type": "application/xml; charset=utf-8",
                             "Content-Disposition": xmlDisposition,
@@ -133,7 +139,16 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
                 return NextResponse.json({ error: "Falha ao obter XML da NuvemFiscal" }, { status: xmlResponse.status });
             }
 
-            return new NextResponse(await xmlResponse.text(), {
+            const xmlContent = await xmlResponse.text();
+            await supabase
+                .from("fiscal_invoices")
+                .update({
+                    xml_content: xmlContent,
+                    xml_url: invoice.xml_url || xmlUrl,
+                })
+                .eq("id", invoice.id);
+
+            return new NextResponse(xmlContent, {
                 headers: {
                     "Content-Type": "application/xml; charset=utf-8",
                     "Content-Disposition": xmlDisposition,

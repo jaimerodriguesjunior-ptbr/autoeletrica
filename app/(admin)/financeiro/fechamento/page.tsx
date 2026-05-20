@@ -22,7 +22,7 @@ import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getClosingLog } from "@/src/actions/closing_log";
-import { inutilizarNumeracaoNFCe, listarInutilizacoesNFCe } from "@/src/actions/fiscal_emission";
+import { inutilizarNumeracaoFiscal, listarInutilizacoesFiscais } from "@/src/actions/fiscal_emission";
 
 type ClosingData = {
     faturamento: {
@@ -52,6 +52,7 @@ type ClosingData = {
 type InutilizacaoItem = {
     id: number;
     environment: "production" | "homologation";
+    model: "NFCe" | "NFe";
     year: number;
     serie: number;
     numero_inicial: number;
@@ -131,6 +132,7 @@ export default function FechamentoMensal() {
     const [exporting, setExporting] = useState(false);
     const [sendingEmail, setSendingEmail] = useState(false);
     const [invalidating, setInvalidating] = useState(false);
+    const [invalidateModel, setInvalidateModel] = useState<"NFCe" | "NFe">("NFCe");
     const [invalidateEnvironment, setInvalidateEnvironment] = useState<"production" | "homologation">("production");
     const [invalidateSerie, setInvalidateSerie] = useState(2);
     const [invalidateStart, setInvalidateStart] = useState("");
@@ -144,23 +146,24 @@ export default function FechamentoMensal() {
 
     const refreshInutilizacoes = useCallback(async () => {
         if (!profile?.organization_id) return;
-        const res = await listarInutilizacoesNFCe({
+        const res = await listarInutilizacoesFiscais({
             organizationId: profile.organization_id,
+            model: invalidateModel,
             year,
             environment: invalidateEnvironment,
         });
         if (res.success) setInutilizacoes((res.data as InutilizacaoItem[]) || []);
-    }, [profile?.organization_id, year, invalidateEnvironment]);
+    }, [profile?.organization_id, year, invalidateEnvironment, invalidateModel]);
 
     const downloadInutilizacaoJson = (item: InutilizacaoItem) => {
         const blob = new Blob([JSON.stringify(item.response_json || {}, null, 2)], { type: "application/json;charset=utf-8" });
-        saveAs(blob, `Inutilizacao_NFCe_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.json`);
+        saveAs(blob, `Inutilizacao_${item.model || "NFCe"}_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.json`);
     };
 
     const downloadInutilizacaoPdf = (item: InutilizacaoItem) => {
         const doc = new jsPDF();
         doc.setFontSize(14);
-        doc.text("Comprovante de Inutilizacao de Numeracao NFC-e", 14, 18);
+        doc.text(`Comprovante de Inutilizacao de Numeracao ${item.model || "NFCe"}`, 14, 18);
         doc.setFontSize(10);
         doc.text(`Empresa ID: ${profile?.organization_id || "-"}`, 14, 28);
         doc.text(`Ambiente: ${item.environment === "production" ? "Producao" : "Homologacao"}`, 14, 34);
@@ -180,7 +183,7 @@ export default function FechamentoMensal() {
             styles: { fontSize: 9 },
             headStyles: { fillColor: [28, 25, 23] },
         });
-        doc.save(`Comprovante_Inutilizacao_NFCe_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.pdf`);
+        doc.save(`Comprovante_Inutilizacao_${item.model || "NFCe"}_S${item.serie}_${item.numero_inicial}-${item.numero_final}_${item.year}.pdf`);
     };
 
     const handleInvalidateNumbers = async () => {
@@ -201,12 +204,13 @@ export default function FechamentoMensal() {
         }
 
         const envLabel = invalidateEnvironment === "production" ? "producao" : "homologacao";
-        if (!confirm(`Confirmar inutilizacao NFC-e serie ${invalidateSerie}, faixa ${start} a ${end}, ano ${year}, em ${envLabel}?`)) return;
+        if (!confirm(`Confirmar inutilizacao ${invalidateModel} serie ${invalidateSerie}, faixa ${start} a ${end}, ano ${year}, em ${envLabel}?`)) return;
 
         setInvalidating(true);
         try {
-            const res = await inutilizarNumeracaoNFCe({
+            const res = await inutilizarNumeracaoFiscal({
                 organizationId: profile.organization_id,
+                model: invalidateModel,
                 year,
                 serie: invalidateSerie,
                 numeroInicial: start,
@@ -333,16 +337,17 @@ export default function FechamentoMensal() {
 
         const { data: inutilizacoesZip } = await supabase
             .from("fiscal_inutilizations")
-            .select("environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
+            .select("environment, model, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
             .eq("organization_id", profile.organization_id)
-            .eq("model", "NFCe")
+            .in("model", ["NFCe", "NFe"])
             .eq("environment", "production")
             .eq("year", year)
             .order("created_at", { ascending: false });
 
         const inutilRows = [
-            ["AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
+            ["MODELO", "AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
             ...((inutilizacoesZip || []) as any[]).map(i => [
+                i.model || "NFCe",
                 i.environment === "production" ? "producao" : "homologacao",
                 String(i.year),
                 String(i.serie),
@@ -354,13 +359,13 @@ export default function FechamentoMensal() {
                 (i.justificativa || "").replace(/\r?\n/g, " "),
             ])
         ];
-        root.file("Inutilizacoes_NFCe.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
+        root.file("Inutilizacoes_Fiscais.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
 
         if (inutilizacoesZip && inutilizacoesZip.length > 0) {
             const inutilFolder = root.folder("Inutilizacoes_Comprovantes");
             for (const i of inutilizacoesZip as any[]) {
                 inutilFolder?.file(
-                    `NFCe_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`,
+                    `${i.model || "NFCe"}_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`,
                     JSON.stringify(i.response_json || {}, null, 2)
                 );
             }
@@ -520,17 +525,18 @@ export default function FechamentoMensal() {
 
             const { data: inutilizacoesZip } = await supabase
                 .from("fiscal_inutilizations")
-                .select("environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
+                .select("environment, model, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
                 .eq("organization_id", profile.organization_id)
-                .eq("model", "NFCe")
+                .in("model", ["NFCe", "NFe"])
                 .eq("environment", "production")
                 .eq("year", year)
                 .order("created_at", { ascending: false });
 
             const inutilRows = [
-                ["AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
+                ["MODELO", "AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
                 ...((inutilizacoesZip || []) as any[]).map(i => [
-                    i.environment === "production" ? "producao" : "homologacao",
+                    i.model || "NFCe",
+                i.environment === "production" ? "producao" : "homologacao",
                     String(i.year),
                     String(i.serie),
                     String(i.numero_inicial),
@@ -541,13 +547,13 @@ export default function FechamentoMensal() {
                     (i.justificativa || "").replace(/\r?\n/g, " "),
                 ])
             ];
-            root.file("Inutilizacoes_NFCe.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
+            root.file("Inutilizacoes_Fiscais.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
 
             if (inutilizacoesZip && inutilizacoesZip.length > 0) {
                 const inutilFolder = root.folder("Inutilizacoes_Comprovantes");
                 for (const i of inutilizacoesZip as any[]) {
                     inutilFolder?.file(
-                        `NFCe_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`,
+                        `${i.model || "NFCe"}_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`,
                         JSON.stringify(i.response_json || {}, null, 2)
                     );
                 }
@@ -723,12 +729,24 @@ export default function FechamentoMensal() {
 
             <div className="bg-white border border-stone-200 rounded-lg shadow-sm p-4 mb-6">
                 <div className="flex flex-col gap-1 mb-3">
-                    <h2 className="text-sm font-bold text-stone-900">Inutilizacao de Numeracao NFC-e</h2>
+                    <h2 className="text-sm font-bold text-stone-900">Inutilizacao de Numeracao Fiscal</h2>
                     <p className="text-xs text-stone-500">
                         Envia a solicitacao para a Nuvem Fiscal e guarda o comprovante para o ZIP do contador.
                     </p>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                    <select
+                        value={invalidateModel}
+                        onChange={(e) => {
+                            const nextModel = e.target.value as "NFCe" | "NFe";
+                            setInvalidateModel(nextModel);
+                            setInvalidateSerie(nextModel === "NFe" ? 1 : 2);
+                        }}
+                        className="border border-stone-300 rounded-md px-3 py-2 text-sm bg-white"
+                    >
+                        <option value="NFCe">NFC-e</option>
+                        <option value="NFe">NF-e</option>
+                    </select>
                     <select
                         value={invalidateEnvironment}
                         onChange={(e) => setInvalidateEnvironment(e.target.value as "production" | "homologation")}
@@ -779,17 +797,17 @@ export default function FechamentoMensal() {
                 />
                 <div className="mt-4 border-t border-stone-100 pt-3">
                     <p className="text-xs font-bold text-stone-700 mb-2">
-                        Comprovantes salvos ({invalidateEnvironment === "production" ? "producao" : "homologacao"})
+                        Comprovantes salvos de {invalidateModel} ({invalidateEnvironment === "production" ? "producao" : "homologacao"})
                     </p>
                     {inutilizacoes.length === 0 ? (
-                        <p className="text-xs text-stone-500">Nenhuma inutilizacao salva para {year} neste ambiente.</p>
+                        <p className="text-xs text-stone-500">Nenhuma inutilizacao salva para {invalidateModel} em {year} neste ambiente.</p>
                     ) : (
                         <div className="space-y-2">
                             {inutilizacoes.map((item) => (
                                 <div key={item.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-stone-200 px-3 py-2">
                                     <div>
                                         <p className="text-sm font-semibold text-stone-800">
-                                            Serie {item.serie} - {item.numero_inicial} a {item.numero_final}
+                                            {item.model || "NFCe"} serie {item.serie} - {item.numero_inicial} a {item.numero_final}
                                         </p>
                                         <p className="text-xs text-stone-500">
                                             Protocolo: {item.protocol || "-"} - Status: {item.status || "-"} - {new Date(item.created_at).toLocaleString("pt-BR")}

@@ -1,400 +1,446 @@
-# Plano Completo de Implementacao - NF-e (Modelo 55)
+﻿# Plano Completo de Implementacao - NF-e (Modelo 55)
 
 ## Objetivo
-Criar uma pagina completa de emissao de NF-e (modelo 55), separada dos fluxos rapidos ja existentes, capaz de conduzir o usuario pelas operacoes fiscais mais comuns com seguranca, validacao e revisao antes da transmissao.
+Criar uma pagina completa de emissao de NF-e (modelo 55), separada dos fluxos rapidos ja existentes, capaz de conduzir o usuario pelas operacoes fiscais mais comuns com seguranca, validacao, revisao tecnica e transmissao controlada.
 
-Este documento define a arquitetura de produto, UI, regras, dados e fases para retomar a implementacao em qualquer contexto.
+A ideia do produto e ter dois tipos de experiencia:
+- fluxos simplificados/templates para operacoes comuns, com regras rigidas e pouco atrito para o usuario;
+- operacao assistida para casos fora do padrao, com campos tecnicos livres, validacao estrutural e apoio de IA/contador antes de qualquer emissao real.
 
 ## Estado Atual
 - Ja existe emissao de NFC-e e NFS-e no fluxo fiscal atual.
 - Ja existe NF-e rapida de venda no fluxo atual de emissao avulsa/baseada em OS.
 - Ja existe NF-e de devolucao a partir de NF-e importada.
 - Ja existe integracao com Nuvem Fiscal, webhook, armazenamento de XML/PDF e proxy de impressao.
-- NF-e rapida de venda foi validada em homologacao no MVP fiscal simplificado.
+- NF-e rapida de venda foi validada em homologacao para venda interna e interestadual.
+- A nova pagina completa `/fiscal/nfe` ja existe e emite os principais templates implementados.
 
-## Validacao em Homologacao (MVP Atual)
-- NFS-e somente servico: validada em homologacao.
-- NFC-e de produto: validada em homologacao.
-- NF-e rapida PR -> PR: validada em homologacao com CFOP 5102.
-- NF-e rapida PR -> outro estado: validada em homologacao com CFOP 6102.
-- NF-e completa `/fiscal/nfe` para Venda comum: validada em homologacao reaproveitando o backend da NF-e rapida.
-- Remessa para conserto na pagina completa: implementada para emissao real, com CFOP 5915/6915 conforme UF do participante, CSOSN 400, sem cobranca/pagamento (`tPag 90`) e observacao fiscal propria.
-- Remessa em garantia na pagina completa: implementada para emissao real reaproveitando a base de remessa sem cobranca, com CFOP 5915/6915 conforme UF do participante, CSOSN 400 e observacao fiscal propria de garantia.
-- Retorno de conserto na pagina completa: implementado para emissao real, com selecao de uma NF-e de remessa para conserto autorizada, referencia da chave original, itens carregados do XML, CFOP 5916/6916, CSOSN 400 e sem cobranca/pagamento (`tPag 90`).
-- Retorno de garantia na pagina completa: implementado para emissao real, com selecao de uma NF-e de remessa em garantia autorizada, referencia da chave original, itens carregados da origem, CFOP 5916/6916, CSOSN 400 e sem cobranca/pagamento (`tPag 90`).
-- Rastreio de NF-e emitida: lista fiscal filtra por ambiente, mostra chave de acesso, indica disponibilidade de XML e separa download de DANFE/PDF e XML.
-- Demais Remessa/Retorno na pagina completa: implementadas como rascunho guiado, com CFOP sugerido por finalidade e emissao bloqueada ate parametrizacao fiscal.
-- Transferencia na pagina completa: implementada como rascunho guiado, com CFOP 5152/6152 sugerido e emissao bloqueada ate parametrizacao fiscal.
-- Bonificacao/Brinde/Doacao na pagina completa: implementada como rascunho guiado, com CFOP 5910/6910 sugerido e emissao bloqueada ate parametrizacao fiscal.
-- ICMS e IPI zerados no MVP: comportamento considerado coerente para venda comum de empresa Simples Nacional usando CSOSN 102, sem ST, sem permissao de credito e sem regra especifica de IPI.
+## Fluxos de Emissao de NF-e
 
-Observacoes:
-- O MVP atual nao cobre automaticamente ST, FCP, DIFAL, beneficio fiscal, CSOSN 101/201/202/500/900 ou cenarios industriais/equiparados.
-- CPF/CNPJ valido do destinatario e obrigatorio para NF-e; CEP ou documento incompleto deve bloquear antes da transmissao.
-- NFS-e nao deve depender de Inscricao Estadual; exigencia de IE fica restrita aos documentos de produto (NFC-e/NF-e).
-- Na pagina completa, `Venda comum`, `Devolucao de compra` baseada em NF-e importada, `Remessa para conserto`, `Remessa em garantia`, `Retorno de conserto` e `Retorno de garantia` estao liberadas para emissao real nesta fase.
-- Em Remessa/Retorno, `Remessa para conserto`, `Remessa em garantia`, `Retorno de conserto` e `Retorno de garantia` transmitem; as demais sugestoes de CFOP sao auxiliares de UX e nao liberam transmissao sem regra fiscal validada.
-- Em Transferencia e Bonificacao/Brinde/Doacao, as sugestoes de CFOP sao auxiliares de UX e nao liberam transmissao sem regra fiscal validada.
-
-## Tres Fluxos de Emissao de NF-e
-
-### 1) NF-e Rapida de Venda (ja implementada)
+### 1) NF-e Rapida de Venda
 Local:
-- fluxo atual de emissao fiscal avulsa/baseada em OS
+- fluxo atual de emissao fiscal avulsa/baseada em OS.
 
 Caracteristicas:
-- hardcoded para venda comum de produtos
-- voltada ao dia a dia operacional
-- usa regras rigidas de venda
-- CFOP automatico:
-  - 5102 para venda interna
-  - 6102 para venda interestadual
-- dentro/fora do estado calculado pelo endereco do destinatario
-- validada em homologacao
+- hardcoded para venda comum de produtos;
+- voltada ao dia a dia operacional;
+- usa regras rigidas de venda;
+- CFOP automatico: `5102` para venda interna e `6102` para venda interestadual;
+- dentro/fora do estado calculado pelo endereco do destinatario;
+- bloqueio de duplicidade apenas contra outra NF-e da mesma OS, sem bloquear NFC-e.
 
 Nao e objetivo deste fluxo:
-- cobrir devolucao, remessa, transferencia, bonificacao ou operacoes complexas
-- substituir a pagina completa de NF-e
+- cobrir devolucao, remessa, transferencia, bonificacao ou operacoes complexas;
+- substituir a pagina completa de NF-e.
 
-### 2) NF-e de Devolucao por Nota Importada (ja existente)
+### 2) NF-e de Devolucao por Nota Importada
 Local:
-- tela fiscal atual, dentro do fluxo/card de NF-e importada
+- tela fiscal atual, dentro do fluxo/card de NF-e importada.
 
 Caracteristicas:
-- hardcoded para devolucao baseada em XML/NF-e de entrada
-- usa referencia da chave de acesso da nota original
-- deve permanecer isolada e funcional
+- hardcoded para devolucao baseada em XML/NF-e de entrada;
+- usa referencia da chave de acesso da nota original;
+- espelha impostos/taxas da nota de origem conforme o fluxo ja validado;
+- deve permanecer isolada e funcional.
 
 Regra de seguranca:
-- nao alterar este fluxo durante a criacao da nova pagina completa, salvo correcao pontual explicitamente validada.
+- nao alterar este fluxo salvo correcao pontual explicitamente validada.
 
-### 3) Pagina Completa de Emissao de NF-e (nova)
-Local sugerido:
-- `/fiscal/nfe`
+### 3) Pagina Completa de Emissao de NF-e
+Local:
+- `/fiscal/nfe`.
 
 Caracteristicas:
-- fluxo livre/guiado para emitir NF-e em operacoes comuns e avancadas
-- nao substitui a NF-e rapida de venda
-- nao substitui a NF-e de devolucao por nota importada
-- deve permitir maior controle fiscal, revisao e auditoria
-- venda comum ja emite em homologacao usando o backend validado da NF-e rapida
-- devolucao de compra usa a mesma acao backend aprovada em producao no fluxo de NF-e importada
-- remessa para conserto ja possui acao backend propria para transmissao e foi validada em homologacao
-- retorno de conserto ja possui acao backend propria para transmissao, pendente de validacao em homologacao
+- fluxo guiado para operacoes comuns;
+- fluxo assistido para operacao livre orientada pelo contador;
+- nao substitui a NF-e rapida de venda;
+- nao substitui a NF-e de devolucao por nota importada;
+- permite revisao tecnica antes da emissao;
+- exige validacao do rascunho antes de transmitir;
+- mostra previa estilo DANFE, mas as edicoes sao feitas nos formularios e revalidadas antes da emissao.
+- permite clonar uma NF-e existente apenas como pre-preenchimento da UI, sem copiar numero, chave, protocolo ou status.
 
-Esta e a proxima grande implementacao.
+## Operacoes da Pagina Completa
 
-## Operacoes da Nova Pagina Completa
-Criar uma UI guiada para os 5 grupos mais comuns:
-- Venda (interna e interestadual)
-- Devolucao de venda/compra
-- Remessa/retorno para conserto, garantia, demonstracao ou industrializacao
-- Transferencia entre filiais/depositos
-- Bonificacao, brinde ou doacao
+### Venda
+Status:
+- implementada com emissao real.
 
-Tambem deve existir uma opcao:
-- Outra operacao / avancado
+Regras principais:
+- CFOP automatico `5102`/`6102` conforme UF do destinatario;
+- natureza padrao `VENDA DE MERCADORIA`;
+- usa CSOSN padrao `102` para empresa Simples Nacional;
+- permite parametros tecnicos controlados por item quando orientado pelo contador.
 
-No modo avancado, o usuario pode selecionar CFOP fora dos fluxos comuns, mas com validacoes minimas, bloqueios e auditoria.
+### Devolucao de Compra
+Status:
+- implementada chamando o backend de devolucao ja aprovado no fluxo de NF-e importada.
+
+Regras principais:
+- exige NF-e de origem importada/autorizada;
+- exige chave de acesso valida;
+- carrega itens da origem;
+- emite com finalidade de devolucao (`finNFe=4`);
+- preserva a logica cirurgica do fluxo ja validado.
+
+### Remessa/Retorno para Conserto
+Status:
+- remessa para conserto implementada com emissao real;
+- retorno de conserto implementado com emissao real.
+
+Regras principais:
+- remessa usa CFOP `5915`/`6915` conforme UF;
+- retorno usa NF-e de remessa autorizada como origem;
+- retorno referencia a chave da remessa original;
+- itens do retorno sao carregados da nota de origem;
+- sem cobranca/pagamento (`tPag=90`);
+- CSOSN padrao `400`.
+
+### Remessa/Retorno em Garantia
+Status:
+- remessa em garantia implementada com emissao real;
+- retorno de garantia implementado com emissao real.
+
+Regras principais:
+- remessa usa CFOP `5915`/`6915` conforme UF, com natureza e observacao de garantia;
+- retorno usa NF-e de remessa em garantia autorizada como origem;
+- retorno referencia a chave da remessa original;
+- itens do retorno sao carregados da nota de origem;
+- sem cobranca/pagamento (`tPag=90`);
+- CSOSN padrao `400`.
+
+### Transferencia
+Status:
+- implementada com emissao real para os cenarios parametrizados.
+
+Finalidades atuais:
+- transferencia entre filiais;
+- transferencia para deposito;
+- retorno de deposito.
+
+Regras principais:
+- CFOP sugerido/travado conforme finalidade e UF;
+- `Transferencia entre filiais` usa `5152/6152`; `Retorno de deposito` usa `5153/6153`;
+- transferencia entre filiais exige mesma raiz de CNPJ entre emitente e destinatario;
+- quando a finalidade for de deposito e a raiz do CNPJ for diferente, a UI mostra alerta para conferencia contabil;
+- sem cobranca/pagamento (`tPag=90`);
+- CSOSN padrao `400`.
+
+### Bonificacao, Brinde e Doacao
+Status:
+- implementadas com emissao real para os cenarios parametrizados.
+
+Regras principais:
+- CFOP `5910`/`6910` conforme UF;
+- natureza ajustada conforme finalidade;
+- sem cobranca/pagamento (`tPag=90`);
+- CSOSN padrao `400`;
+- observacao fiscal/comercial gerada pelo template e revisavel.
+
+### Outra Operacao Assistida
+Status:
+- implementada como operacao livre assistida.
+
+Regras principais:
+- usuario informa natureza da operacao, CFOP, finalidade, entrada/saida e parametros fiscais com orientacao do contador;
+- motor interno faz validacao estrutural;
+- IA roda automaticamente no momento de emissao da operacao assistida (sem botao dedicado);
+- IA nao transmite nota, nao decide sozinha e nao substitui contador;
+- emissao real fica controlada: exige confirmacao de revisao do contador e fica limitada a homologacao nesta fase.
 
 ## Principios de UI
 - O usuario escolhe a natureza de negocio primeiro; CFOP aparece como consequencia tecnica.
-- O sistema nao deve perguntar "dentro ou fora do estado"; deve calcular pelo endereco do destinatario.
-- Para operacoes guiadas, CFOP nao deve ser digitavel livremente.
-- Se houver mais de um CFOP possivel, mostrar apenas opcoes compativeis com o contexto.
-- Operacoes fora dos 5 grupos entram pelo modo avancado.
-- Emissao so ocorre apos checklist fiscal completo.
-- Regras fiscais devem ser explicitas, auditaveis e bloqueantes quando o cenario nao estiver coberto.
-- A UI deve evitar linguagem fiscal desnecessaria no inicio do fluxo e expor os detalhes tecnicos na revisao.
+- O sistema nao pergunta dentro/fora do estado; calcula pela UF do participante.
+- Para operacoes guiadas, CFOP fica rigido/travado conforme template.
+- Operacoes fora dos templates entram em `Outra operacao assistida`.
+- A emissao so ocorre depois de validacao tecnica.
+- Campos tecnicos alterados geram aviso antes da transmissao.
+- A previa estilo DANFE e somente visual; edicoes acontecem nos campos do formulario.
+- A IA aparece como auditoria assistiva apenas na operacao livre, chamada junto da validacao.
+- Clonar nota e atalho de preenchimento, nao reaproveitamento automatico de emissao.
 
-## Wizard da Nova Pagina Completa
+## Clonagem de NF-e
+Status:
+- implementada na pagina completa de NF-e como pre-preenchimento conservador.
+- reativada apos regressao de UI (texto/fluxo) para manter botao e modal de clonagem operacionais.
 
-### Etapa 1 - Tipo de Operacao
+Regras:
+- botao `Clonar nota` abre modal com filtros por ambiente, status e busca por numero/cliente/documento/chave;
+- cards de clonagem mostram resumo fiscal rapido por nota (itens, CFOP, origem/CSOSN/CST, IPI, PIS e COFINS) para acelerar os testes;
+- ao selecionar uma nota, a UI e preenchida com participante, itens, transporte, pagamento, totais, observacoes e parametros fiscais disponiveis no payload;
+- numero, serie da emissao original, chave de acesso, protocolo, status e datas oficiais nao sao reaproveitados para a nova emissao;
+- o rascunho clonado sempre exige nova validacao antes de emitir;
+- devolucao/retorno clonados ainda exigem origem fiscal e por isso nao sao clonados automaticamente nesta fase.
+
+## Wizard da Pagina Completa
+
+### Etapa 1 - Operacao
 Opcoes:
-- Venda
-- Devolucao
-- Remessa/Retorno
-- Transferencia
-- Bonificacao/Brinde/Doacao
-- Outra operacao (avancado)
+- Venda;
+- Devolucao;
+- Remessa/Retorno;
+- Transferencia;
+- Bonificacao/Brinde/Doacao;
+- Outra operacao assistida.
 
-### Etapa 2 - Finalidade Especifica
-Exemplos:
-- Venda comum
-- Devolucao de compra
-- Devolucao de venda
-- Remessa para conserto
-- Retorno de conserto
-- Remessa em garantia
-- Retorno de garantia
-- Remessa para demonstracao
-- Retorno de demonstracao
-- Transferencia entre filiais
-- Bonificacao
-- Brinde
-- Doacao
+### Etapa 2 - Participante/Origem
+Para operacoes comuns:
+- buscar cliente/participante cadastrado;
+- preencher endereco completo;
+- validar CPF/CNPJ (com digito verificador), UF, CEP e codigo de municipio.
 
-### Etapa 3 - Participantes
+Para devolucao/retorno:
+- selecionar NF-e de origem;
+- carregar chave de acesso;
+- carregar itens da origem.
+
+### Etapa 3 - Itens
+Campos principais:
+- produto/peca do banco;
+- descricao;
+- NCM;
+- CFOP;
+- unidade;
+- quantidade;
+- valor unitario;
+- valor total;
+- origem fiscal;
+- CSOSN/CST.
+
+Campos de tributacao controlada:
+- cBenef;
+- IPI CST;
+- IPI cEnq;
+- IPI base;
+- IPI aliquota;
+- IPI valor;
+- PIS CST/base/aliquota/valor;
+- COFINS CST/base/aliquota/valor.
+
+Regras:
+- NCM valido e obrigatorio;
+- valores fiscais negativos bloqueiam;
+- alteracoes tecnicas relevantes geram alerta antes da emissao.
+
+### Etapa 4 - Transporte, Pagamento e Totais
 Campos:
-- destinatario/remetente
-- CPF/CNPJ
-- IE / indicador de contribuinte
-- endereco completo
-- email
-- telefone
+- `modFrete`;
+- transportadora quando aplicavel;
+- placa/UF do veiculo quando aplicavel;
+- volumes;
+- forma de pagamento;
+- indicador de presenca;
+- intermediador quando aplicavel;
+- frete;
+- seguro;
+- desconto;
+- outras despesas.
 
 Regras:
-- endereco completo e obrigatorio para NF-e
-- UF do destinatario define operacao interna/interestadual/exterior
-- documento invalido bloqueia antes da transmissao
+- frete, seguro, desconto e outras despesas entram no total da NF-e;
+- valores adicionais sao distribuidos proporcionalmente nos itens;
+- operacoes sem cobranca usam `tPag=90` e `vPag=0`;
+- venda comum usa valor final da nota no pagamento.
+- transportadora com `modFrete` diferente de `9` exige CPF/CNPJ valido (nao apenas tamanho).
 
-### Etapa 4 - Itens
-Campos por item:
-- produto
-- descricao
-- NCM
-- CFOP sugerido/validado
-- CSOSN/CST
-- unidade
-- quantidade
-- valor unitario
-- valor total
-- origem
-- informacoes fiscais complementares quando aplicavel
+### Etapa 5 - Revisao Fiscal
+Mostra:
+- natureza da operacao;
+- finalidade especifica;
+- classificacao interna/interestadual;
+- CFOP por item;
+- CSOSN/CST por item;
+- totais;
+- pendencias bloqueantes;
+- alerta de parametros tecnicos alterados;
+- auditoria por IA quando for operacao assistida.
 
-Regras:
-- NCM valido e obrigatorio
-- tributacao calculada por item
-- regras nao cobertas bloqueiam emissao com mensagem clara
+Acoes:
+- `Validar NF-e`;
+- depois da validacao, `Emitir NF-e` ou `Emitir NF-e assistida` conforme caso.
 
-### Etapa 5 - Transporte/Frete
-Campos:
-- `modFrete` (0/1/2/3/4/9)
-- transportadora quando aplicavel
-- CNPJ/CPF
-- razao social
-- IE
-- endereco
-- veiculo
-- volumes
+## Motor Fiscal Atual
 
-### Etapa 6 - Observacoes
-Campos:
-- observacoes comerciais (`infCpl`)
-- observacoes fiscais (`infAdFisco`)
+### Regime Tributario
+- O motor novo de NF-e esta liberado apenas para empresas do Simples Nacional (`CRT=1`).
+- Se a empresa estiver em Regime Normal, a emissao e bloqueada porque exigiria CST/ICMS proprio (`ICMS00`, `ICMS20`, `ICMS40`, etc.).
 
-Regras:
-- textos podem ser sugeridos por regra fiscal, mas devem ser revisaveis
-- observacoes obrigatorias por cenario devem bloquear se ausentes
+### ICMS
+- Venda comum usa `ICMSSN102` por padrao.
+- Remessa, retorno, transferencia, bonificacao, brinde e doacao usam CSOSN padrao `400` quando nao ha tributacao destacada.
+- Devolucao reaproveita a logica do fluxo ja aprovado e pode usar `ICMSSN900` quando espelha ICMS da origem.
 
-### Etapa 7 - Revisao Fiscal
-Mostrar:
-- natureza da operacao
-- finalidade especifica
-- interna/interestadual/exterior calculado
-- CFOP final por item
-- CSOSN/CST por item
-- totais
-- pendencias bloqueantes
-- alertas nao bloqueantes
-- limites do MVP quando aplicavel
+### IPI
+- O motor diferencia IPI tributado e nao tributado.
+- CSTs tributados suportados geram `IPITrib`.
+- CSTs nao tributados/suspensos suportados geram `IPINT`.
+- `cEnq` foi exposto no item e enviado no payload; padrao `999` quando nao preenchido.
 
-Botao:
-- `Auditar com IA`
+### PIS/COFINS
+- Campos controlados por item.
+- Padrao atual usa CST `99` com base/aliquota/valor zerados quando nao informado.
 
-### Etapa 8 - Previa Estilo DANFE
-Objetivo:
-- permitir conferencia visual fiel ao DANFE antes da emissao
+### Totais
+- `vFrete`, `vSeg`, `vDesc` e `vOutro` entram no `ICMSTot`.
+- `vNF` considera: produtos + frete + seguro + outras despesas + IPI - desconto.
+- Frete/seguro/desconto/outras despesas sao rateados proporcionalmente nos itens.
 
-Regra:
-- a previa e somente uma representacao visual do rascunho
-- edicoes acontecem em formulario/painel de campos, nao dentro do PDF
-- ao salvar campo, backend persiste e revalida
-- a previa e atualizada a partir dos dados persistidos
-- o PDF final e gerado apenas no fim, com dados validados
+### Numeracao e Serie
+- NF-e usa sequencia atomica no banco via RPC `get_next_nfe_number`.
+- A tabela `nfe_sequences` controla numero por empresa, serie e ambiente.
+- A serie padrao de NF-e fica em `company_settings.nfe_serie`.
+- A tela de configuracoes da empresa permite editar a serie padrao da NF-e.
 
-### Etapa 9 - Emissao
-Botao:
-- `Emitir NF-e`
+### Responsavel Tecnico
+- NF-e e NFC-e usam o mesmo resolvedor de responsavel tecnico.
+- O RT deve representar a software house responsavel, atualmente Mente Binaria, e nao a empresa emitente.
+- A resolucao prioriza campos da empresa (`rt_cnpj`, `responsavel_tecnico_cnpj`, `rt_contato`, `rt_email`, `rt_fone`) e depois variaveis `.env` (`NFE_RT_CNPJ`, `NFE_RT_CONTATO`, `NFE_RT_EMAIL`, `NFE_RT_FONE`).
+- `idCSRT` e `CSRT` continuam sendo enviados quando configurados para o ambiente.
 
-Regras:
-- habilitado apenas sem pendencias bloqueantes
-- confirmar ambiente (homologacao/producao)
-- registrar payload, resultado e eventos de auditoria
-
-## Tributacao e Motor de Regras
-Implementar matriz de regras por cenario:
-- tipo de operacao
-- finalidade especifica
-- UF origem x UF destino
-- contribuinte x nao contribuinte
-- Simples Nacional x outros regimes
-- NCM
-- CFOP
-- CSOSN/CST
-- ST/FCP/DIFAL/IPI/PIS/COFINS quando aplicavel
-
-No inicio, criar versao "MVP fiscal seguro":
-- cenarios suportados explicitamente
-- cenarios nao suportados bloqueiam emissao
-- bloqueio deve dizer qual regra falta parametrizar
-
-## Auditoria por IA
-Implementar assistente de auditoria antes da emissao:
-- botao `Auditar com IA` na revisao fiscal
-- IA le rascunho da NF-e + regras fiscais internas + cadastro do emitente/destinatario
-- IA nao transmite nota
-- IA nao decide emissao
-- IA nao preenche automaticamente a nota nesta fase
-
-Saida esperada:
-- `Erros bloqueantes`
-- `Alertas`
-- `Sem inconsistencias relevantes`
-
-Cada apontamento deve trazer:
-- motivo
-- campo afetado
-- acao sugerida
+## Inutilizacao
+- A tela de fechamento/financeiro permite inutilizar numeracao fiscal para `NFCe` e `NFe`.
+- A inutilizacao usa endpoint adequado conforme modelo (`nfce` ou `nfe`).
+- O historico e os comprovantes registram o modelo fiscal.
+- O ZIP/fechamento inclui inutilizacoes de NFC-e e NF-e.
 
 ## XML, PDF e Distribuicao
-Para NF-e autorizada:
-- XML `procNFe` salvo localmente
-- PDF (DANFE) acessivel
-- download de XML e PDF no painel
-- envio por email com XML anexo
-- log de envio e falha
+Status atual:
+- lista fiscal separa PDF/DANFE e XML;
+- lista fiscal filtra por ambiente;
+- XML autorizado pode ser baixado pela tela fiscal;
+- quando XML ainda nao esta salvo, a atualizacao automatica tenta buscar e persistir o XML das notas visiveis em homologacao e producao;
+- download manual de XML tambem persiste `xml_content` quando possivel e atualiza a tela apos o clique;
+- o indicador azul de XML depende de `xml_content` salvo no banco, nao apenas de `xml_url`.
 
-## Modelo de Dados (Evolucao)
+Ainda desejavel:
+- envio de DANFE/XML por email direto pela tela;
+- log de envio de email;
+- acao de compartilhar por WhatsApp com resumo e anexos, se fizer sentido no produto.
 
-### Tabela `fiscal_invoices` (aproveitar existente)
-Adicionar/confirmar campos:
-- `operation_type` (`sale`, `return`, `shipment`, `transfer`, `bonus`, `donation`, etc.)
-- `operation_group`
-- `operation_purpose`
-- `validation_errors` (json/text)
-- `email_sent_at`
-- `email_sent_to`
-- `email_status`
-- `email_error`
-- `transport_payload` (json)
-- `tax_snapshot` (json)
-- `ai_audit_snapshot` (json)
+## Auditoria por IA
+Status atual:
+- IA nao e usada para emitir nota;
+- IA nao preenche nota automaticamente;
+- IA e usada na validacao da `Outra operacao assistida`;
+- o botao manual `Auditar com IA` foi removido do fluxo principal;
+- ao clicar em `Validar NF-e`, o motor interno valida primeiro e, se for operacao assistida, chama a IA em seguida;
+- a resposta da IA e formatada em linguagem de usuario, com resumo, pontos encontrados, sugestoes e perguntas para o contador;
+- existe texto copiavel para enviar ao contador.
 
-### Tabela de regras fiscais (nova)
-Sugestao: `fiscal_tax_rules`
-- organizacao
-- tipo_operacao
-- finalidade
-- uf_origem
-- uf_destino
-- contribuinte_destino (bool/null)
-- ncm/faixa/natureza
-- cfop
-- csosn/cst
-- parametros de ICMS/IPI/PIS/COFINS
-- flags: st/fcp/difal
-- prioridade
-- ativo
-- vigencia_inicio
-- vigencia_fim
+Papel correto da IA:
+- apontar incoerencias semanticas, como natureza de operacao incompatavel com CFOP;
+- sugerir perguntas para o contador;
+- explicar se o rascunho parece coerente para a finalidade declarada;
+- nunca substituir validacao oficial da SEFAZ, regra fiscal parametrizada ou revisao do contador.
+- documentos (CPF/CNPJ) e campos estruturais sao validados de forma deterministica pelo sistema antes do envio.
 
-### Tabela de auditoria (nova)
-Sugestao: `fiscal_invoice_events`
-- invoice_id
-- evento (`draft_created`, `validated`, `ai_audited`, `emitted`, `authorized`, `rejected`, `emailed`)
-- payload/resposta
-- created_at
+## Migracoes Relacionadas
+- `migration_nfe_sequence.sql`: cria controle atomico de numeracao NF-e por empresa/serie/ambiente e RPC `get_next_nfe_number`.
+- `migration_company_settings_nfe_serie.sql`: adiciona `company_settings.nfe_serie` com padrao `1` e constraint positiva.
 
-## Arquitetura de Codigo
+## Validacoes Tecnicas Rodadas
+- `npx tsc --noEmit`: passou.
+- `npm run lint`: passou.
+- `npm run build`: passou apos limpar cache `.next` corrompido.
 
-### Services / Server Actions
-- `criarRascunhoNFe(payload)`
-- `atualizarRascunhoNFe(invoiceId, patch)`
-- `validarRascunhoNFe(invoiceId)` (nao transmite)
-- `calcularTributosNFe(payload, regras)`
-- `montarPayloadNFe(payload, contextoFiscal)`
-- `auditarNFeComIA(invoiceId)`
-- `emitirNFeCompleta(invoiceId)`
-- `enviarNFeEmail(invoiceId, destinatarios)`
+Avisos nao bloqueantes:
+- `baseline-browser-mapping` desatualizado;
+- `caniuse-lite`/Browserslist desatualizado.
 
-### UI
-- nova rota `/fiscal/nfe`
-- stepper com validacoes por etapa
-- selecao guiada de operacao
-- painel de pendencias
-- revisao fiscal
-- botao `Auditar com IA`
-- previa estilo DANFE
-- botao final `Emitir NF-e`
+## Checklist de Teste em Homologacao
 
-### Webhook / Polling
-- reusar webhook atual da Nuvem Fiscal
-- garantir update de XML/PDF/status para NF-e completa
+### Venda Comum
+- [ ] Emitir venda simples sem frete/desconto/adicionais.
+- [ ] Confirmar CFOP `5102` para participante do mesmo estado.
+- [ ] Confirmar CFOP `6102` para participante de outro estado.
+- [ ] Confirmar XML salvo automaticamente na lista fiscal.
+- [ ] Confirmar DANFE/PDF baixavel.
 
-## Fases de Implementacao
+### Venda com Frete
+- [ ] Informar frete no transporte.
+- [ ] Validar que `vFrete` aparece no total da NF-e.
+- [ ] Validar que o total da nota soma produtos + frete.
+- [ ] Confirmar autorizacao em homologacao.
 
-### Fase 1 - Estrutura da Nova Pagina
-- Criar rota `/fiscal/nfe`
-- Criar layout/stepper da emissao completa
-- Implementar selecao dos 5 grupos de operacao + modo avancado
-- Criar rascunho local/estado inicial sem transmissao
+### Venda com Desconto
+- [ ] Informar desconto.
+- [ ] Validar que `vDesc` aparece no total da NF-e.
+- [ ] Validar que o total da nota subtrai o desconto.
+- [ ] Confirmar autorizacao em homologacao.
 
-### Fase 2 - Dados Base e Validacoes Estruturais
-- Participantes
-- Endereco completo
-- Itens com NCM
-- Calculo interno/interestadual pelo endereco
-- Checklist de pendencias bloqueantes
+### Venda com IPI Tributado
+- [ ] Preencher IPI CST tributado, exemplo `99`.
+- [ ] Preencher IPI base, aliquota, valor e cEnq.
+- [ ] Validar que a nota autoriza.
+- [ ] Conferir no XML se saiu `IPITrib`.
 
-### Fase 3 - Regras Fiscais MVP
-- Mapear cenarios suportados
-- Sugerir/travar CFOP por cenario guiado
-- Bloquear cenarios nao cobertos
-- Registrar `tax_snapshot`
+### Venda com IPI Nao Tributado/Suspenso
+- [ ] Preencher CST de IPI nao tributado/suspenso, exemplo orientado pelo contador.
+- [ ] Validar que a nota autoriza sem base/aliquota indevida.
+- [ ] Conferir no XML se saiu `IPINT`.
 
-### Fase 4 - Transporte e Observacoes
-- Implementar bloco de transporte/frete
-- Implementar observacoes comerciais/fiscais
-- Validar campos obrigatorios por operacao
+### Clonagem de NF-e
+- [ ] Abrir `Clonar nota` na pagina completa de NF-e.
+- [ ] Filtrar por ambiente, status e busca textual.
+- [ ] Selecionar uma NF-e existente e confirmar que a UI foi preenchida como rascunho.
+- [ ] Confirmar que numero, serie original, chave, protocolo, status e autorizacao nao foram reaproveitados.
+- [ ] Validar novamente antes de qualquer tentativa de emissao.
+- [ ] Confirmar que devolucao/retorno continuam exigindo origem fiscal especifica.
 
-### Fase 5 - Revisao + Previa DANFE
-- Tela de revisao fiscal
-- Previa estilo DANFE baseada em dados persistidos/validados
-- Edicao fora do PDF com revalidacao no backend
+### Remessa e Retorno em Garantia
+- [ ] Emitir remessa em garantia.
+- [ ] Confirmar que aparece na lista de origens do retorno de garantia.
+- [ ] Emitir retorno de garantia referenciando a remessa.
+- [ ] Confirmar chave referenciada no DANFE/XML.
+- [ ] Confirmar itens carregados da origem.
 
-### Fase 6 - Auditoria por IA
-- Implementar `Auditar com IA`
-- Persistir resultado em evento/snapshot
-- Mostrar erros, alertas e mensagem de consistencia
+### Remessa e Retorno para Conserto
+- [ ] Emitir remessa para conserto.
+- [ ] Confirmar que aparece na lista de origens do retorno de conserto.
+- [ ] Emitir retorno de conserto referenciando a remessa.
+- [ ] Confirmar chave referenciada no DANFE/XML.
 
-### Fase 7 - Emissao Completa
-- Montar payload final
-- Integrar `infRespTec` com RT/CSRT correto
-- Emitir em homologacao
-- Salvar XML/PDF/status
+### Transferencia
+- [ ] Testar transferencia entre filiais com mesma raiz de CNPJ.
+- [ ] Confirmar bloqueio quando a raiz de CNPJ for diferente.
+- [ ] Testar transferencia para deposito.
+- [ ] Testar retorno de deposito.
+- [ ] Confirmar que a tela nao exibe mensagem de operacao bloqueada quando a finalidade de transferencia estiver habilitada no MVP.
 
-### Fase 8 - Endurecimento
-- Testes automatizados
-- Monitoramento de rejeicoes por codigo
-- Auditoria de eventos
-- Envio de XML/PDF por email
+### Bonificacao, Brinde e Doacao
+- [ ] Emitir bonificacao.
+- [ ] Emitir brinde.
+- [ ] Emitir doacao.
+- [ ] Conferir natureza da operacao e CFOP no DANFE/XML.
+- [ ] Confirmar que a tela nao exibe mensagem de operacao bloqueada quando a finalidade estiver habilitada no MVP.
 
-## Checklist de Producao
-- [ ] Fluxos hardcoded atuais preservados
-- [ ] NF-e rapida de venda sem regressao
-- [ ] NF-e de devolucao por nota importada sem regressao
-- [ ] Nova pagina `/fiscal/nfe` criada
-- [ ] 5 grupos de operacao implementados na UI
-- [ ] Modo avancado implementado com bloqueios
-- [ ] Regras fiscais documentadas por cenario suportado
-- [ ] Emissao em homologacao sem rejeicoes nos cenarios MVP
-- [ ] XML autorizado armazenado e baixavel
-- [ ] PDF/DANFE acessivel
-- [ ] Email com XML funcionando e rastreado
-- [ ] Revisao fiscal obrigatoria antes de emitir
-- [ ] Auditoria por IA ativa antes da emissao
-- [ ] Logs de auditoria completos
+### Outra Operacao Assistida
+- [ ] Criar rascunho de remessa para demonstracao com CFOP incorreto propositalmente.
+- [ ] Clicar em `Validar NF-e`.
+- [ ] Confirmar que a IA aponta incoerencia entre natureza e CFOP.
+- [ ] Corrigir CFOP conforme orientacao do contador.
+- [ ] Validar novamente.
+- [ ] Confirmar que a emissao assistida exige revisao do contador e fica restrita a homologacao.
+
+### Inutilizacao NF-e
+- [ ] Inutilizar uma faixa de NF-e em homologacao.
+- [ ] Confirmar registro na tela de fechamento.
+- [ ] Baixar comprovante JSON/PDF.
+- [ ] Confirmar que o modelo aparece como `NFe`, nao `NFCe`.
+
+## Checklist Antes de Producao
+- [ ] Fluxos hardcoded atuais preservados.
+- [ ] NF-e rapida de venda sem regressao.
+- [ ] NF-e de devolucao por nota importada sem regressao.
+- [ ] NFC-e e NFS-e sem regressao.
+- [ ] Migrations aplicadas em producao com conferencia de dados.
+- [ ] Serie NF-e configurada por empresa.
+- [ ] Sequencia NF-e inicial conferida por empresa/serie/ambiente.
+- [ ] Testes de homologacao acima executados.
+- [ ] XML autorizado armazenado e baixavel.
+- [ ] PDF/DANFE acessivel.
+- [ ] Operacao assistida limitada conforme politica decidida.
+- [ ] Contador validou os templates fiscais que serao usados em producao.
 
 ## Riscos e Mitigacao
 
@@ -402,16 +448,19 @@ Risco: regressao na NF-e rapida de venda.
 Mitigacao: manter fluxo atual isolado e testar NFC-e/NFS-e/NF-e rapida antes de publicar.
 
 Risco: regressao na NF-e de devolucao.
-Mitigacao: nao alterar tela/handler atual de devolucao durante a criacao da nova pagina.
+Mitigacao: preservar handler aprovado e testar com NF-e de entrada real em ambiente apropriado.
 
 Risco: regras fiscais incompletas.
-Mitigacao: bloquear emissao fora dos cenarios suportados, com mensagens claras.
+Mitigacao: bloquear emissao fora dos cenarios suportados ou mover para operacao assistida em homologacao.
 
-Risco: usuario escolher CFOP incorreto no modo avancado.
-Mitigacao: limitar escolhas por entrada/saida, UF, finalidade e registrar justificativa/auditoria.
+Risco: usuario escolher CFOP incorreto no modo assistido.
+Mitigacao: motor interno valida estrutura, IA aponta incoerencias semanticas e emissao exige revisao do contador.
 
-Risco: credenciais RT/CSRT inconsistentes por ambiente.
-Mitigacao: validacao explicita por ambiente e teste de emissao controlado.
+Risco: numeracao incorreta em producao.
+Mitigacao: usar sequencia atomica, configurar serie por empresa e conferir ultimo numero antes de liberar.
+
+Risco: Regime Normal tentar emitir no motor do Simples Nacional.
+Mitigacao: bloqueio explicito para CRT diferente de `1` ate implementar CST/ICMS de Regime Normal.
 
 ## Proximo Passo Recomendado
-Parametrizar a devolucao na nova pagina completa reaproveitando o fluxo ja validado de NF-e de entrada: selecionar nota importada, carregar itens da origem e espelhar impostos/taxas proporcionalmente.
+Executar o checklist de homologacao, priorizando venda simples, venda com frete/desconto, venda com IPI, remessa/retorno em garantia, operacao assistida e inutilizacao de NF-e.

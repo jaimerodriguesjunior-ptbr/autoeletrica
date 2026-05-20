@@ -287,6 +287,50 @@ export async function getNFeInvoiceWithItemsAction(invoiceId: string) {
     return getNFeInvoiceWithItems(invoiceId);
 }
 
+export async function searchCloneableNFeInvoicesAction(params: {
+    organizationId: string;
+    environment: "production" | "homologation";
+    query?: string;
+    status?: "authorized" | "error" | "rejected" | "all";
+}) {
+    "use server";
+    const supabase = createClient();
+    const term = (params.query || "").trim();
+
+    let query = supabase
+        .from("fiscal_invoices")
+        .select("id, numero, serie, status, environment, destinatario_nome, destinatario_cnpj, valor_total, data_emissao, chave_acesso, payload_json")
+        .eq("organization_id", params.organizationId)
+        .eq("tipo_documento", "NFe")
+        .eq("direction", "output")
+        .eq("environment", params.environment)
+        .order("data_emissao", { ascending: false })
+        .limit(30);
+
+    if (params.status && params.status !== "all") {
+        query = query.eq("status", params.status);
+    }
+
+    if (term) {
+        const clean = term.replace(/\D/g, "");
+        query = query.or([
+            `numero.ilike.%${term}%`,
+            `destinatario_nome.ilike.%${term}%`,
+            `destinatario_cnpj.ilike.%${clean || term}%`,
+            `chave_acesso.ilike.%${clean || term}%`,
+        ].join(","));
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.error("Erro ao buscar NF-e para clonagem:", error);
+        return [];
+    }
+
+    return data || [];
+}
+
 export async function backfillEntryInvoicesChave(organizationId: string) {
     const supabase = createClient();
 

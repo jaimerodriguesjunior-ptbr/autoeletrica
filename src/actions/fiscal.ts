@@ -11,6 +11,7 @@ type CompanyData = {
     inscricao_estadual: string;
     inscricao_municipal: string;
     regime_tributario: string;
+    nfe_serie?: number;
     logradouro: string;
     numero: string;
     complemento?: string;
@@ -103,6 +104,7 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
             inscricao_estadual: data.inscricao_estadual,
             inscricao_municipal: data.inscricao_municipal,
             regime_tributario: data.regime_tributario,
+            nfe_serie: Number(data.nfe_serie || 1),
             logradouro: data.logradouro,
             numero: data.numero,
             complemento: data.complemento,

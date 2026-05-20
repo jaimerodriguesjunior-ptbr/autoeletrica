@@ -57,44 +57,91 @@ export default function FiscalDashboard() {
 
     const isEntryInvoice = (invoice: Invoice) => invoice.direction === "entry";
     const isOutputInvoice = (invoice: Invoice) => !isEntryInvoice(invoice);
+    const normalizedType = (invoice: Invoice) => String(invoice.tipo_documento || "").trim();
+    const supportsFiscalXml = (invoice: Invoice) => ["NFe", "NFCe", "NFSe"].includes(normalizedType(invoice));
     const displayType = (invoice: Invoice) => {
-        if (isEntryInvoice(invoice) && invoice.tipo_documento === "NFe") return "NFe Entrada";
-        return invoice.tipo_documento;
+        if (isEntryInvoice(invoice) && normalizedType(invoice) === "NFe") return "NFe Entrada";
+        return normalizedType(invoice);
     };
     const displayDate = (invoice: Invoice) => invoice.data_emissao || invoice.created_at;
-    const hasXml = (invoice: Invoice) => Boolean(invoice.xml_content || invoice.xml_url);
+    const hasSavedXml = (invoice: Invoice) => Boolean(invoice.xml_content);
+
+    const getVisibleInvoicesSnapshot = () => {
+        const current = invoicesRef.current;
+        const dateFiltered = current.filter((inv) => {
+            const invoiceDate = new Date(displayDate(inv));
+            let matchesDate = true;
+            if (startDate) {
+                matchesDate = invoiceDate >= new Date(startDate + "T00:00:00");
+            }
+            if (endDate && matchesDate) {
+                matchesDate = invoiceDate <= new Date(endDate + "T23:59:59");
+            }
+            const matchesEnvironment = !inv.environment || inv.environment === environment;
+            return matchesDate && matchesEnvironment;
+        });
+
+        return dateFiltered.filter((inv) => {
+            const matchesSearch =
+                !searchTerm ||
+                (inv.numero || "").includes(searchTerm) ||
+                (inv.chave_acesso || "").includes(searchTerm.replace(/\D/g, "")) ||
+                (inv.status || "").includes(searchTerm) ||
+                displayType(inv).toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesStatus = statusFilter === "all" || inv.status === statusFilter;
+            return matchesSearch && matchesStatus;
+        });
+    };
 
     useEffect(() => {
         const checkForUpdates = async () => {
-            const processingInvoices = invoicesRef.current.filter(
+            const visibleInvoices = getVisibleInvoicesSnapshot();
+            const processingInvoices = visibleInvoices.filter(
                 (inv) => isOutputInvoice(inv) && inv.status === "processing"
             );
-            if (processingInvoices.length === 0) return;
+            const authorizedWithoutXml = visibleInvoices.filter(
+                (inv) => isOutputInvoice(inv) && inv.status === "authorized" && supportsFiscalXml(inv) && !hasSavedXml(inv)
+            ).slice(0, 3);
+
+            if (processingInvoices.length === 0 && authorizedWithoutXml.length === 0) return;
 
             let updated = false;
             for (const inv of processingInvoices) {
-                if (["NFSe", "NFCe", "NFe"].includes(inv.tipo_documento)) {
+                if (supportsFiscalXml(inv)) {
                     const res = await consultarNFSe(inv.id);
                     if (res.success && res.status !== "processing") {
                         updated = true;
                     }
                 }
             }
+
+            for (const inv of authorizedWithoutXml) {
+                const res = await consultarNFSe(inv.id);
+                if (res.success) {
+                    updated = true;
+                }
+            }
+
             if (updated) {
                 fetchInvoices();
             }
         };
 
         const getInterval = () => {
-            const processingInvoices = invoicesRef.current.filter(
+            const visibleInvoices = getVisibleInvoicesSnapshot();
+            const processingInvoices = visibleInvoices.filter(
                 (inv) => isOutputInvoice(inv) && inv.status === "processing"
             );
-            if (processingInvoices.length === 0) return null;
+            const authorizedWithoutXml = visibleInvoices.some(
+                (inv) => isOutputInvoice(inv) && inv.status === "authorized" && supportsFiscalXml(inv) && !hasSavedXml(inv)
+            );
+            if (processingInvoices.length === 0 && !authorizedWithoutXml) return null;
 
             const hasRecent = processingInvoices.some((inv) => {
                 const created = new Date(inv.created_at).getTime();
                 return (Date.now() - created) < 60000;
             });
+            if (processingInvoices.length === 0 && authorizedWithoutXml) return 30000;
             return hasRecent ? 5000 : 30000;
         };
 
@@ -102,10 +149,11 @@ export default function FiscalDashboard() {
         if (!intervalMs) return;
 
         console.log(`[Smart Polling] Intervalo: ${intervalMs}ms`);
+        checkForUpdates();
         const intervalId = setInterval(checkForUpdates, intervalMs);
 
         return () => clearInterval(intervalId);
-    }, [invoices.filter((inv) => inv.status === "processing").length]);
+    }, [invoices, environment, startDate, endDate, searchTerm, statusFilter]);
 
     useEffect(() => {
         if (profile?.organization_id) {
@@ -191,6 +239,16 @@ export default function FiscalDashboard() {
         } catch (e) {
             alert("Erro ao consultar.");
         }
+    };
+
+    const handleDownloadXml = (invoiceId: string) => {
+        window.open(`/api/fiscal/print/${invoiceId}?download=true&format=xml`, "_blank", "noopener,noreferrer");
+
+        setTimeout(() => {
+            consultarNFSe(invoiceId)
+                .then(() => fetchInvoices())
+                .catch((error) => console.warn("[Fiscal] Nao foi possivel atualizar XML apos download.", error));
+        }, 1500);
     };
 
     const handleCancelar = async (invoiceId: string) => {
@@ -422,9 +480,9 @@ export default function FiscalDashboard() {
                                                     <p className="text-[10px] text-stone-600 font-mono select-all bg-stone-100 p-1 rounded w-fit">{inv.chave_acesso}</p>
                                                 </div>
                                             )}
-                                            {isOutputInvoice(inv) && inv.status === "authorized" && ["NFe", "NFCe", "NFSe"].includes(inv.tipo_documento) && (
-                                                <p className={`mt-1 text-[10px] font-bold ${hasXml(inv) ? "text-green-600" : "text-amber-600"}`}>
-                                                    {hasXml(inv) ? "XML disponivel" : "XML ainda nao salvo. Use atualizar."}
+                                            {isOutputInvoice(inv) && inv.status === "authorized" && supportsFiscalXml(inv) && (
+                                                <p className={`mt-1 text-[10px] font-bold ${hasSavedXml(inv) ? "text-green-600" : "text-amber-600"}`}>
+                                                    {hasSavedXml(inv) ? "XML disponivel no banco" : "XML ainda nao salvo. Use atualizar."}
                                                 </p>
                                             )}
                                         </td>
@@ -456,23 +514,22 @@ export default function FiscalDashboard() {
                                                         href={`/api/fiscal/print/${inv.id}?download=true`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="p-2 bg-stone-50 hover:bg-stone-100 rounded-lg transition text-stone-600"
+                                                        className="flex items-center gap-1 rounded-lg bg-stone-50 px-2 py-2 text-xs font-black text-stone-600 transition hover:bg-stone-100"
                                                         title={isEntryInvoice(inv) ? "Baixar XML da nota de entrada" : "Baixar DANFE/PDF"}
                                                     >
-                                                        <Download size={16} />
+                                                        <Download size={14} /> {isEntryInvoice(inv) ? "XML" : "PDF"}
                                                     </a>
                                                 )}
 
-                                                {isOutputInvoice(inv) && (inv.status === "authorized" || inv.status === "cancelled") && ["NFe", "NFCe", "NFSe"].includes(inv.tipo_documento) && (
-                                                    <a
-                                                        href={`/api/fiscal/print/${inv.id}?download=true&format=xml`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className={`p-2 rounded-lg transition ${hasXml(inv) ? "bg-blue-50 text-blue-600 hover:bg-blue-100" : "bg-amber-50 text-amber-600 hover:bg-amber-100"}`}
-                                                        title={hasXml(inv) ? "Baixar XML" : "Tentar baixar XML da NuvemFiscal"}
+                                                {isOutputInvoice(inv) && (inv.status === "authorized" || inv.status === "cancelled") && supportsFiscalXml(inv) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDownloadXml(inv.id)}
+                                                        className={`flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-black transition ${hasSavedXml(inv) ? "bg-blue-50 text-blue-600 hover:bg-blue-100" : "bg-amber-50 text-amber-600 hover:bg-amber-100"}`}
+                                                        title={hasSavedXml(inv) ? "Baixar XML" : "Tentar baixar XML da NuvemFiscal e salvar no banco"}
                                                     >
-                                                        <FileText size={16} />
-                                                    </a>
+                                                        <FileText size={14} /> XML
+                                                    </button>
                                                 )}
 
                                                 {isOutputInvoice(inv) && inv.status === "authorized" && (
@@ -495,7 +552,7 @@ export default function FiscalDashboard() {
                                                     </button>
                                                 )}
 
-                                                {isOutputInvoice(inv) && (inv.status === "processing" || inv.status === "error" || (inv.status === "authorized" && !hasXml(inv))) && ["NFSe", "NFCe", "NFe"].includes(inv.tipo_documento) && (
+                                                {isOutputInvoice(inv) && (inv.status === "processing" || inv.status === "error" || (inv.status === "authorized" && !hasSavedXml(inv))) && supportsFiscalXml(inv) && (
                                                     <button
                                                         onClick={() => handleRefreshStatus(inv.id)}
                                                         className={`p-2 rounded-lg transition ${inv.status === "error" ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-blue-50 text-blue-600 hover:bg-blue-100"}`}

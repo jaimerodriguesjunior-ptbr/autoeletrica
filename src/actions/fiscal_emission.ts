@@ -50,6 +50,38 @@ type EmissionPayload = {
 
         valor_total: number;
 
+        origem?: string;
+
+        csosn?: string;
+
+        cbenef?: string;
+
+        ipi_cst?: string;
+
+        ipi_cenq?: string;
+
+        ipi_base?: number;
+
+        ipi_aliquota?: number;
+
+        ipi_valor?: number;
+
+        pis_cst?: string;
+
+        pis_base?: number;
+
+        pis_aliquota?: number;
+
+        pis_valor?: number;
+
+        cofins_cst?: string;
+
+        cofins_base?: number;
+
+        cofins_aliquota?: number;
+
+        cofins_valor?: number;
+
         codigo_servico?: string;
 
         aliquota_iss?: number;
@@ -58,17 +90,136 @@ type EmissionPayload = {
 
     valor_total: number;
 
+    valor_frete?: number;
+
+    valor_seguro?: number;
+
+    valor_desconto?: number;
+
+    valor_outras_despesas?: number;
+
     meio_pagamento: string; // '01' Dinheiro, '03' Cartão Crédito, etc.
 
     environment?: 'production' | 'homologation';
 
     tipo_documento?: "NFCe" | "NFe";
 
+    natureza_operacao?: string;
+
+    tipo_nfe?: 0 | 1;
+
+    finalidade_nfe?: 1 | 2 | 3 | 4;
+
+    ind_pres?: number;
+
+    ind_intermed?: 0 | 1;
+
+    ind_final?: 0 | 1;
+
+    inf_ad_fisco?: string;
+
+    intermediador?: {
+
+        cnpj?: string;
+
+        id_cadastro?: string;
+
+    };
+
+    transporte?: {
+
+        nome?: string;
+
+        cpf_cnpj?: string;
+
+        ie?: string;
+
+        endereco?: string;
+
+        municipio?: string;
+
+        uf?: string;
+
+        placa?: string;
+
+        placa_uf?: string;
+
+        rntc?: string;
+
+        volumes?: {
+
+            quantidade?: number;
+
+            especie?: string;
+
+            marca?: string;
+
+            numeracao?: string;
+
+            peso_liquido?: number;
+
+            peso_bruto?: number;
+
+        };
+
+    };
+
+    entrega?: any;
+
+    retirada?: any;
+
 };
 
 function normalizeDocument(value?: string | null) {
     const normalized = value?.replace(/\D/g, "") || "";
     return normalized || null;
+}
+
+function isRepeatedDigits(value: string) {
+    return /^(\d)\1+$/.test(value);
+}
+
+function isValidCpf(value?: string | null) {
+    const clean = normalizeDocument(value) || "";
+    if (clean.length !== 11 || isRepeatedDigits(clean)) return false;
+
+    const calcCheck = (base: string, factor: number) => {
+        let total = 0;
+        for (const char of base) {
+            total += Number(char) * factor--;
+        }
+        const rest = (total * 10) % 11;
+        return rest === 10 ? 0 : rest;
+    };
+
+    const d1 = calcCheck(clean.slice(0, 9), 10);
+    const d2 = calcCheck(clean.slice(0, 10), 11);
+    return d1 === Number(clean[9]) && d2 === Number(clean[10]);
+}
+
+function isValidCnpj(value?: string | null) {
+    const clean = normalizeDocument(value) || "";
+    if (clean.length !== 14 || isRepeatedDigits(clean)) return false;
+
+    const calcCheck = (base: string, factors: number[]) => {
+        let total = 0;
+        for (let i = 0; i < base.length; i++) {
+            total += Number(base[i]) * factors[i];
+        }
+        const rest = total % 11;
+        return rest < 2 ? 0 : 11 - rest;
+    };
+
+    const d1 = calcCheck(clean.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    const d2 = calcCheck(clean.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    return d1 === Number(clean[12]) && d2 === Number(clean[13]);
+}
+
+function isValidBrazilianDocument(value?: string | null) {
+    const clean = normalizeDocument(value) || "";
+    if (clean.length === 11) return isValidCpf(clean);
+    if (clean.length === 14) return isValidCnpj(clean);
+    return false;
 }
 
 function toMoneyNumber(value: unknown, fallback = 0) {
@@ -127,7 +278,7 @@ function buildOutputInvoiceSnapshot(
     return {
         direction: "output",
         data_emissao: issuedAt,
-        valor_total: payload.valor_total,
+        valor_total: getNFeValorNota(payload, payload.valor_total),
         emitente_nome: company.razao_social || company.nome_fantasia || null,
         emitente_cnpj: normalizeDocument(company.cnpj || company.cpf_cnpj),
         destinatario_nome: payload.cliente.nome || null,
@@ -181,6 +332,270 @@ async function ensureNoActiveInvoiceForWorkOrder(
     return `Ja existe ${tipoDocumento} ${environment === "production" ? "de producao" : "de homologacao"} para esta OS.`;
 }
 
+function buildAdvancedInfAdic(payload: EmissionPayload, fallbackInfCpl: string) {
+    const infCpl = (payload as any).observacao?.trim() || fallbackInfCpl;
+    const infAdFisco = payload.inf_ad_fisco?.trim();
+    return {
+        infCpl,
+        ...(infAdFisco ? { infAdFisco } : {}),
+    };
+}
+
+function buildIntermediador(payload: EmissionPayload) {
+    if (payload.ind_intermed !== 1) return undefined;
+    const cnpj = normalizeDocument(payload.intermediador?.cnpj);
+    const idCadIntTran = payload.intermediador?.id_cadastro?.trim();
+    if (!cnpj || !idCadIntTran) return undefined;
+    if (!isValidCnpj(cnpj)) {
+        throw new Error("CNPJ do intermediador invalido.");
+    }
+    return { CNPJ: cnpj, idCadIntTran };
+}
+
+function buildNFeDetPag(payload: EmissionPayload, valorTotal: number, fallback = "90") {
+    const tPag = payload.meio_pagamento || fallback;
+    return [{ tPag, vPag: tPag === "90" ? 0 : valorTotal }];
+}
+
+function buildNFeSemPagamento() {
+    return [{ tPag: "90", vPag: 0 }];
+}
+
+function buildNFeTransp(payload: EmissionPayload) {
+    const modFrete = Number((payload as any).modFrete || "9");
+    const transporte = payload.transporte || {};
+    const transportDoc = normalizeDocument(transporte.cpf_cnpj);
+    const vol = transporte.volumes;
+
+    if (modFrete !== 9 && !isValidBrazilianDocument(transportDoc)) {
+        throw new Error("CPF/CNPJ da transportadora invalido.");
+    }
+
+    return {
+        modFrete,
+        ...(modFrete !== 9 && (transporte.nome || transportDoc) ? {
+            transporta: {
+                CNPJ: transportDoc && transportDoc.length === 14 ? transportDoc : undefined,
+                CPF: transportDoc && transportDoc.length === 11 ? transportDoc : undefined,
+                xNome: transporte.nome || undefined,
+                IE: transporte.ie ? String(transporte.ie).replace(/\D/g, "") : undefined,
+                xEnder: transporte.endereco || undefined,
+                xMun: transporte.municipio || undefined,
+                UF: transporte.uf || undefined,
+            },
+        } : {}),
+        ...(modFrete !== 9 && transporte.placa ? {
+            veicTransp: {
+                placa: String(transporte.placa).replace(/[^A-Za-z0-9]/g, "").toUpperCase(),
+                UF: String(transporte.placa_uf || "").toUpperCase() || undefined,
+                RNTC: transporte.rntc || undefined,
+            },
+        } : {}),
+        ...(modFrete !== 9 && vol && (vol.quantidade || vol.especie || vol.marca || vol.numeracao || vol.peso_liquido || vol.peso_bruto) ? {
+            vol: [{
+                qVol: vol.quantidade,
+                esp: vol.especie || undefined,
+                marca: vol.marca || undefined,
+                nVol: vol.numeracao || undefined,
+                pesoL: vol.peso_liquido,
+                pesoB: vol.peso_bruto,
+            }],
+        } : {}),
+    };
+}
+
+function buildNFeEnderecoAux(address: any) {
+    if (!address) return undefined;
+    const doc = normalizeDocument(address.cpf_cnpj);
+    const codigoMunicipio = String(address.codigo_municipio || address.codigo_municipio_ibge || "").replace(/\D/g, "");
+    const uf = String(address.uf || "").toUpperCase();
+
+    if (!doc || !codigoMunicipio || !address.logradouro || !address.numero || !address.bairro || !address.cidade || !uf || !address.cep) {
+        return undefined;
+    }
+
+    if (!isValidBrazilianDocument(doc)) {
+        throw new Error("CPF/CNPJ invalido no endereco auxiliar (entrega/retirada).");
+    }
+
+    const ie = String(address.ie || address.inscricao_estadual || "").replace(/\D/g, "");
+    return {
+        CNPJ: doc.length === 14 ? doc : undefined,
+        CPF: doc.length === 11 ? doc : undefined,
+        xNome: address.nome || undefined,
+        xLgr: address.logradouro,
+        nro: String(address.numero),
+        xCpl: address.complemento || undefined,
+        xBairro: address.bairro,
+        cMun: Number(codigoMunicipio),
+        xMun: address.cidade,
+        UF: uf,
+        CEP: String(address.cep).replace(/\D/g, ""),
+        cPais: "1058",
+        xPais: "BRASIL",
+        ...(ie ? { IE: ie } : {}),
+    };
+}
+
+function buildNFeEntregaRetirada(payload: EmissionPayload) {
+    const entrega = buildNFeEnderecoAux(payload.entrega);
+    const retirada = buildNFeEnderecoAux(payload.retirada);
+    return {
+        ...(entrega ? { entrega } : {}),
+        ...(retirada ? { retirada } : {}),
+    };
+}
+
+const IPI_TRIBUTADO_CSTS = new Set(["00", "49", "50", "99"]);
+const IPI_NAO_TRIBUTADO_CSTS = new Set(["01", "02", "03", "04", "05", "51", "52", "53", "54", "55"]);
+
+function normalizeTwoDigitTaxCode(value?: string | null) {
+    const clean = String(value || "").replace(/\D/g, "");
+    if (!clean) return "";
+    return clean.padStart(2, "0").slice(-2);
+}
+
+function getCompanyCrt(company: { regime_tributario?: string | number | null }) {
+    return Number(company.regime_tributario || "1");
+}
+
+function assertNFeSimplesNacional(company: { regime_tributario?: string | number | null }) {
+    const crt = getCompanyCrt(company);
+    if (crt !== 1) {
+        throw new Error("Emissao de NF-e por este motor esta liberada apenas para empresas do Simples Nacional (CRT 1). Para Regime Normal, o ICMS precisa de CST e regras proprias.");
+    }
+}
+
+function getCompanyNFeSerie(company: { nfe_serie?: string | number | null }) {
+    const serie = Number(company.nfe_serie || 1);
+    return Number.isInteger(serie) && serie > 0 ? serie : 1;
+}
+
+function buildNFeItemIpi(item: EmissionPayload["itens"][number]) {
+    const ipiValor = toMoneyNumber(item.ipi_valor);
+    const ipiBase = toMoneyNumber(item.ipi_base);
+    const ipiAliquota = toMoneyNumber(item.ipi_aliquota);
+    const shouldSendIpi = Boolean(item.ipi_cst?.trim()) || ipiValor > 0 || ipiBase > 0 || ipiAliquota > 0;
+
+    if (!shouldSendIpi) {
+        return undefined;
+    }
+
+    const cst = normalizeTwoDigitTaxCode(item.ipi_cst) || "99";
+    const cleanCEnq = String(item.ipi_cenq || "").replace(/\D/g, "");
+    const cEnq = cleanCEnq ? cleanCEnq.padStart(3, "0").slice(-3) : "999";
+    if (IPI_NAO_TRIBUTADO_CSTS.has(cst)) {
+        return {
+            cEnq,
+            IPINT: { CST: cst },
+        };
+    }
+
+    if (!IPI_TRIBUTADO_CSTS.has(cst)) {
+        throw new Error(`CST de IPI invalido ou nao suportado: ${cst}. Use um CST tributado (00, 49, 50, 99) ou nao tributado (01-05, 51-55).`);
+    }
+
+    return {
+        cEnq,
+        IPITrib: {
+            CST: cst,
+            vBC: ipiBase,
+            pIPI: ipiAliquota,
+            vIPI: ipiValor,
+        },
+    };
+}
+
+function buildNFeItemImposto(item: EmissionPayload["itens"][number], fallbackCsosn: string) {
+    const ipi = buildNFeItemIpi(item);
+
+    return {
+        ICMS: {
+            ICMSSN102: {
+                orig: Number(item.origem ?? 0),
+                CSOSN: item.csosn?.trim() || fallbackCsosn,
+            },
+        },
+        PIS: {
+            PISOutr: {
+                CST: item.pis_cst?.trim() || "99",
+                vBC: toMoneyNumber(item.pis_base),
+                pPIS: toMoneyNumber(item.pis_aliquota),
+                vPIS: toMoneyNumber(item.pis_valor),
+            },
+        },
+        COFINS: {
+            COFINSOutr: {
+                CST: item.cofins_cst?.trim() || "99",
+                vBC: toMoneyNumber(item.cofins_base),
+                pCOFINS: toMoneyNumber(item.cofins_aliquota),
+                vCOFINS: toMoneyNumber(item.cofins_valor),
+            },
+        },
+        ...(ipi ? { IPI: ipi } : {}),
+    };
+}
+
+function getNFeValorNota(payload: EmissionPayload, valorProdutos: number) {
+    const vIPI = toMoneyNumber(payload.itens.reduce((sum, item) => sum + toMoneyNumber(item.ipi_valor), 0));
+    const vFrete = toMoneyNumber(payload.valor_frete);
+    const vSeg = toMoneyNumber(payload.valor_seguro);
+    const vDesc = toMoneyNumber(payload.valor_desconto);
+    const vOutro = toMoneyNumber(payload.valor_outras_despesas);
+    return toMoneyNumber(valorProdutos + vFrete + vSeg + vOutro + vIPI - vDesc);
+}
+
+function distributeNFeTotalValue(total: number, payload: EmissionPayload, valorProdutos: number) {
+    const value = toMoneyNumber(total);
+    if (value <= 0 || valorProdutos <= 0 || payload.itens.length === 0) {
+        return payload.itens.map(() => 0);
+    }
+
+    let allocated = 0;
+    return payload.itens.map((item, index) => {
+        if (index === payload.itens.length - 1) {
+            return toMoneyNumber(value - allocated);
+        }
+
+        const itemValue = toMoneyNumber(item.valor_total);
+        const share = toMoneyNumber((value * itemValue) / valorProdutos);
+        allocated = toMoneyNumber(allocated + share);
+        return share;
+    });
+}
+
+function buildNFeItemTotalAdjustments(payload: EmissionPayload, itemIndex: number, valorProdutos: number) {
+    const frete = distributeNFeTotalValue(toMoneyNumber(payload.valor_frete), payload, valorProdutos)[itemIndex] || 0;
+    const seguro = distributeNFeTotalValue(toMoneyNumber(payload.valor_seguro), payload, valorProdutos)[itemIndex] || 0;
+    const desconto = distributeNFeTotalValue(toMoneyNumber(payload.valor_desconto), payload, valorProdutos)[itemIndex] || 0;
+    const outras = distributeNFeTotalValue(toMoneyNumber(payload.valor_outras_despesas), payload, valorProdutos)[itemIndex] || 0;
+
+    return {
+        ...(frete > 0 ? { vFrete: frete } : {}),
+        ...(seguro > 0 ? { vSeg: seguro } : {}),
+        ...(desconto > 0 ? { vDesc: desconto } : {}),
+        ...(outras > 0 ? { vOutro: outras } : {}),
+    };
+}
+
+function buildNFeIcmsTot(payload: EmissionPayload, valorProdutos: number) {
+    const vIPI = toMoneyNumber(payload.itens.reduce((sum, item) => sum + toMoneyNumber(item.ipi_valor), 0));
+    const vPIS = toMoneyNumber(payload.itens.reduce((sum, item) => sum + toMoneyNumber(item.pis_valor), 0));
+    const vCOFINS = toMoneyNumber(payload.itens.reduce((sum, item) => sum + toMoneyNumber(item.cofins_valor), 0));
+    const vFrete = toMoneyNumber(payload.valor_frete);
+    const vSeg = toMoneyNumber(payload.valor_seguro);
+    const vDesc = toMoneyNumber(payload.valor_desconto);
+    const vOutro = toMoneyNumber(payload.valor_outras_despesas);
+
+    return {
+        vBC: 0, vICMS: 0, vICMSDeson: 0, vFCP: 0,
+        vBCST: 0, vST: 0, vFCPST: 0, vFCPSTRet: 0,
+        vProd: valorProdutos, vFrete, vSeg, vDesc,
+        vII: 0, vIPI, vIPIDevol: 0, vPIS,
+        vCOFINS, vOutro, vNF: getNFeValorNota(payload, valorProdutos),
+    };
+}
+
 function getNFeVendaCFOP(_itemCfop: string | undefined, isSameState: boolean) {
     return isSameState ? "5102" : "6102";
 }
@@ -197,6 +612,10 @@ function buildNFeDest(cliente: EmissionPayload["cliente"]) {
     }
 
     if (cleanDoc.length !== 11 && cleanDoc.length !== 14) {
+        throw new Error("CPF/CNPJ do destinatario invalido para emitir NF-e.");
+    }
+
+    if (!isValidBrazilianDocument(cleanDoc)) {
         throw new Error("CPF/CNPJ do destinatario invalido para emitir NF-e.");
     }
 
@@ -236,21 +655,21 @@ function buildNFeDest(cliente: EmissionPayload["cliente"]) {
 async function getNextNFeNumber(
     supabase: any,
     organizationId: string,
-    environment: "production" | "homologation"
+    environment: "production" | "homologation",
+    serie: number
 ) {
-    const { data: lastNFe } = await supabase
-        .from("fiscal_invoices")
-        .select("numero")
-        .eq("organization_id", organizationId)
-        .eq("tipo_documento", "NFe")
-        .eq("direction", "output")
-        .eq("environment", environment)
-        .not("numero", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    const { data: nextNumber, error } = await supabase.rpc("get_next_nfe_number", {
+        p_org_id: organizationId,
+        p_serie: serie,
+        p_environment: environment,
+    });
 
-    return lastNFe?.numero ? parseInt(lastNFe.numero, 10) + 1 : 1;
+    if (error || !nextNumber) {
+        console.error("Erro ao obter numeracao NFe:", error);
+        throw new Error("Nao foi possivel obter a numeracao sequencial para a NF-e. Execute a migration_nfe_sequence.sql antes de emitir novas NF-e.");
+    }
+
+    return Number(nextNumber);
 }
 
 function buildNFeInfRespTec(company: any, cnpjEmit: string, environment: "production" | "homologation") {
@@ -299,53 +718,6 @@ function buildNFeInfRespTec(company: any, cnpjEmit: string, environment: "produc
         ...(idCSRT && CSRT ? { idCSRT: Number(idCSRT), CSRT } : {}),
     };
 }
-
-function buildNFeInfRespTecVenda(company: any, cnpjEmit: string, environment: "production" | "homologation") {
-    const isProduction = environment === "production";
-    const rtCnpj = String(
-        company.rt_cnpj ||
-        company.responsavel_tecnico_cnpj ||
-        process.env.NFE_RT_CNPJ ||
-        "65667543000102"
-    ).replace(/\D/g, "");
-    const rtContato = String(
-        company.rt_contato ||
-        company.responsavel_tecnico_nome ||
-        process.env.NFE_RT_CONTATO ||
-        "Jaime Rodrigues Jr"
-    ).trim();
-    const rtEmail = String(
-        company.rt_email ||
-        process.env.NFE_RT_EMAIL ||
-        company.email_contato ||
-        "jaimerodriguesjunior@outlook.com"
-    ).trim();
-    const rtFone = String(
-        company.rt_fone ||
-        process.env.NFE_RT_FONE ||
-        company.telefone ||
-        "0000000000"
-    ).replace(/\D/g, "");
-    const idCSRT = String(
-        (isProduction ? company.csrt_id_production : company.csrt_id_homologation) ||
-        (isProduction ? process.env.NFE_CSRT_ID_PRODUCTION : process.env.NFE_CSRT_ID_HOMOLOGATION) ||
-        ""
-    ).replace(/\D/g, "");
-    const CSRT =
-        (isProduction ? company.csrt_token_production : company.csrt_token_homologation) ||
-        (isProduction ? process.env.NFE_CSRT_TOKEN_PRODUCTION : process.env.NFE_CSRT_TOKEN_HOMOLOGATION) ||
-        "";
-
-    return {
-        CNPJ: rtCnpj || cnpjEmit,
-        xContato: (rtContato || (company.razao_social ? company.razao_social.substring(0, 60) : "Responsavel Tecnico")).substring(0, 60),
-        email: rtEmail || "email@exemplo.com",
-        fone: rtFone || "0000000000",
-        ...(idCSRT && CSRT ? { idCSRT: Number(idCSRT), CSRT } : {}),
-    };
-}
-
-
 
 export async function emitirNFCe(payload: EmissionPayload) {
 
@@ -704,12 +1076,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                         }
                     ]
                 },
-                infRespTec: {
-                    CNPJ: company.cnpj.replace(/\D/g, ""),
-                    xContato: company.razao_social ? company.razao_social.substring(0, 60) : "Responsavel Tecnico",
-                    email: company.email_contato || "email@exemplo.com",
-                    fone: company.telefone ? company.telefone.replace(/\D/g, "") : "0000000000"
-                }
+                infRespTec: buildNFeInfRespTec(company, company.cnpj.replace(/\D/g, ""), env)
 
             }
 
@@ -975,6 +1342,7 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
         if (!company) {
             throw new Error("Configuracoes da empresa nao encontradas.");
         }
+        assertNFeSimplesNacional(company);
 
         const cnpjEmit = normalizeDocument(company.cnpj || company.cpf_cnpj);
         if (!cnpjEmit) {
@@ -999,7 +1367,8 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
         const destinatarioUF = String(payload.cliente.endereco?.uf || "").trim().toUpperCase();
         const emitenteUF = String(company.uf || "").trim().toUpperCase();
         const mesmoEstado = !destinatarioUF || destinatarioUF === emitenteUF;
-        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env);
+        const nfeSerie = getCompanyNFeSerie(company);
+        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
         const valorTotal = toMoneyNumber(payload.valor_total);
 
@@ -1011,7 +1380,7 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                     cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
                     natOp: "VENDA DE MERCADORIA",
                     mod: 55,
-                    serie: 1,
+                    serie: nfeSerie,
                     nNF: nfeNumber,
                     dhEmi,
                     tpNF: 1,
@@ -1021,8 +1390,9 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                     tpEmis: 1,
                     tpAmb: env === "production" ? 1 : 2,
                     finNFe: 1,
-                    indFinal: 1,
-                    indPres: 1,
+                    indFinal: payload.ind_final ?? 1,
+                    indPres: payload.ind_pres ?? 1,
+                    indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
                     verProc: "AutoEletrica 1.0",
                 },
@@ -1046,6 +1416,7 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                     CRT: Number(company.regime_tributario || "1"),
                 },
                 dest,
+                ...buildNFeEntregaRetirada(payload),
                 det: payload.itens.map((item, index) => ({
                     nItem: index + 1,
                     prod: {
@@ -1054,48 +1425,28 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                         xProd: item.descricao,
                         NCM: item.ncm || "00000000",
                         CFOP: getNFeVendaCFOP(item.cfop, mesmoEstado),
+                        cBenef: item.cbenef?.trim() || undefined,
                         uCom: item.unidade || "UN",
                         qCom: item.quantidade,
                         vUnCom: toMoneyNumber(item.valor_unitario),
                         vProd: toMoneyNumber(item.valor_total),
+                        ...buildNFeItemTotalAdjustments(payload, index, valorTotal),
                         cEANTrib: "SEM GTIN",
                         uTrib: item.unidade || "UN",
                         qTrib: item.quantidade,
                         vUnTrib: toMoneyNumber(item.valor_unitario),
                         indTot: 1,
                     },
-                    imposto: {
-                        ICMS: {
-                            ICMSSN102: {
-                                orig: 0,
-                                CSOSN: "102",
-                            },
-                        },
-                        PIS: {
-                            PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 },
-                        },
-                        COFINS: {
-                            COFINSOutr: { CST: "99", vBC: 0, pCOFINS: 0, vCOFINS: 0 },
-                        },
-                    },
+                    imposto: buildNFeItemImposto(item, "102"),
                 })),
                 total: {
-                    ICMSTot: {
-                        vBC: 0, vICMS: 0, vICMSDeson: 0, vFCP: 0,
-                        vBCST: 0, vST: 0, vFCPST: 0, vFCPSTRet: 0,
-                        vProd: valorTotal, vFrete: 0, vSeg: 0, vDesc: 0,
-                        vII: 0, vIPI: 0, vIPIDevol: 0, vPIS: 0,
-                        vCOFINS: 0, vOutro: 0, vNF: valorTotal,
-                    },
+                    ICMSTot: buildNFeIcmsTot(payload, valorTotal),
                 },
-                transp: { modFrete: 9 },
-                pag: {
-                    detPag: [{
-                        tPag: payload.meio_pagamento || "01",
-                        vPag: valorTotal,
-                    }],
-                },
-                infRespTec: buildNFeInfRespTecVenda(company, cnpjEmit, env),
+                transp: buildNFeTransp(payload),
+                pag: { detPag: buildNFeDetPag(payload, getNFeValorNota(payload, valorTotal), "01") },
+                infAdic: buildAdvancedInfAdic(payload, "VENDA DE MERCADORIA."),
+                ...(buildIntermediador(payload) ? { infIntermed: buildIntermediador(payload) } : {}),
+                infRespTec: buildNFeInfRespTec(company, cnpjEmit, env),
             },
         };
 
@@ -1219,13 +1570,15 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
 async function tryFetchXmlByUuid(
     token: string,
     baseUrl: string,
-    tipoDocumento: "NFCe" | "NFe",
+    tipoDocumento: "NFCe" | "NFe" | "NFSe",
     uuid?: string | null
 ) {
     if (!uuid) return null;
 
     try {
-        const endpointType = tipoDocumento === "NFCe" ? "nfce" : "nfe";
+        const endpointType = tipoDocumento === "NFCe" ? "nfce"
+            : tipoDocumento === "NFe" ? "nfe"
+                : "nfse";
         const response = await fetch(`${baseUrl}/${endpointType}/${uuid}/xml`, {
             method: "GET",
             headers: {
@@ -1266,6 +1619,7 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
         if (!company) {
             throw new Error("Configuracoes da empresa nao encontradas.");
         }
+        assertNFeSimplesNacional(company);
 
         const cnpjEmit = normalizeDocument(company.cnpj || company.cpf_cnpj);
         if (!cnpjEmit) {
@@ -1291,7 +1645,8 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
         const emitenteUF = String(company.uf || "").trim().toUpperCase();
         const mesmoEstado = !destinatarioUF || destinatarioUF === emitenteUF;
         const cfopRemessa = mesmoEstado ? "5915" : "6915";
-        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env);
+        const nfeSerie = getCompanyNFeSerie(company);
+        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
         const valorTotal = toMoneyNumber(payload.valor_total);
         const observacaoPadrao = "REMESSA DE MERCADORIA/BEM PARA CONSERTO OU REPARO. SEM INCIDENCIA DE COBRANCA.";
@@ -1304,7 +1659,7 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
                     cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
                     natOp: "REMESSA PARA CONSERTO",
                     mod: 55,
-                    serie: 1,
+                    serie: nfeSerie,
                     nNF: nfeNumber,
                     dhEmi,
                     tpNF: 1,
@@ -1314,9 +1669,9 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
                     tpEmis: 1,
                     tpAmb: env === "production" ? 1 : 2,
                     finNFe: 1,
-                    indFinal: dest.indIEDest === 9 ? 1 : 0,
-                    indPres: 9,
-                    indIntermed: 0,
+                    indFinal: payload.ind_final ?? (dest.indIEDest === 9 ? 1 : 0),
+                    indPres: payload.ind_pres ?? 9,
+                    indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
                     verProc: "AutoEletrica 1.0",
                 },
@@ -1340,6 +1695,7 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
                     CRT: Number(company.regime_tributario || "1"),
                 },
                 dest,
+                ...buildNFeEntregaRetirada(payload),
                 det: payload.itens.map((item, index) => ({
                     nItem: index + 1,
                     prod: {
@@ -1348,51 +1704,28 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
                         xProd: item.descricao,
                         NCM: item.ncm || "00000000",
                         CFOP: cfopRemessa,
+                        cBenef: item.cbenef?.trim() || undefined,
                         uCom: item.unidade || "UN",
                         qCom: item.quantidade,
                         vUnCom: toMoneyNumber(item.valor_unitario),
                         vProd: toMoneyNumber(item.valor_total),
+                        ...buildNFeItemTotalAdjustments(payload, index, valorTotal),
                         cEANTrib: "SEM GTIN",
                         uTrib: item.unidade || "UN",
                         qTrib: item.quantidade,
                         vUnTrib: toMoneyNumber(item.valor_unitario),
                         indTot: 1,
                     },
-                    imposto: {
-                        ICMS: {
-                            ICMSSN102: {
-                                orig: 0,
-                                CSOSN: "400",
-                            },
-                        },
-                        PIS: {
-                            PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 },
-                        },
-                        COFINS: {
-                            COFINSOutr: { CST: "99", vBC: 0, pCOFINS: 0, vCOFINS: 0 },
-                        },
-                    },
+                    imposto: buildNFeItemImposto(item, "400"),
                 })),
                 total: {
-                    ICMSTot: {
-                        vBC: 0, vICMS: 0, vICMSDeson: 0, vFCP: 0,
-                        vBCST: 0, vST: 0, vFCPST: 0, vFCPSTRet: 0,
-                        vProd: valorTotal, vFrete: 0, vSeg: 0, vDesc: 0,
-                        vII: 0, vIPI: 0, vIPIDevol: 0, vPIS: 0,
-                        vCOFINS: 0, vOutro: 0, vNF: valorTotal,
-                    },
+                    ICMSTot: buildNFeIcmsTot(payload, valorTotal),
                 },
-                transp: { modFrete: Number(payload.modFrete || "9") },
-                pag: {
-                    detPag: [{
-                        tPag: "90",
-                        vPag: 0,
-                    }],
-                },
-                infAdic: {
-                    infCpl: payload.observacao?.trim() || observacaoPadrao,
-                },
-                infRespTec: buildNFeInfRespTecVenda(company, cnpjEmit, env),
+                transp: buildNFeTransp(payload),
+                pag: { detPag: buildNFeSemPagamento() },
+                infAdic: buildAdvancedInfAdic(payload, observacaoPadrao),
+                ...(buildIntermediador(payload) ? { infIntermed: buildIntermediador(payload) } : {}),
+                infRespTec: buildNFeInfRespTec(company, cnpjEmit, env),
             },
         };
 
@@ -1544,6 +1877,7 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
         if (!company) {
             throw new Error("Configuracoes da empresa nao encontradas.");
         }
+        assertNFeSimplesNacional(company);
 
         const cnpjEmit = normalizeDocument(company.cnpj || company.cpf_cnpj);
         if (!cnpjEmit) {
@@ -1569,7 +1903,8 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
         const emitenteUF = String(company.uf || "").trim().toUpperCase();
         const mesmoEstado = !destinatarioUF || destinatarioUF === emitenteUF;
         const cfopRemessa = mesmoEstado ? "5915" : "6915";
-        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env);
+        const nfeSerie = getCompanyNFeSerie(company);
+        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
         const valorTotal = toMoneyNumber(payload.valor_total);
         const observacaoPadrao = "REMESSA DE MERCADORIA/BEM EM GARANTIA. SEM INCIDENCIA DE COBRANCA.";
@@ -1582,7 +1917,7 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
                     cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
                     natOp: "REMESSA EM GARANTIA",
                     mod: 55,
-                    serie: 1,
+                    serie: nfeSerie,
                     nNF: nfeNumber,
                     dhEmi,
                     tpNF: 1,
@@ -1592,9 +1927,9 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
                     tpEmis: 1,
                     tpAmb: env === "production" ? 1 : 2,
                     finNFe: 1,
-                    indFinal: dest.indIEDest === 9 ? 1 : 0,
-                    indPres: 9,
-                    indIntermed: 0,
+                    indFinal: payload.ind_final ?? (dest.indIEDest === 9 ? 1 : 0),
+                    indPres: payload.ind_pres ?? 9,
+                    indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
                     verProc: "AutoEletrica 1.0",
                 },
@@ -1618,6 +1953,7 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
                     CRT: Number(company.regime_tributario || "1"),
                 },
                 dest,
+                ...buildNFeEntregaRetirada(payload),
                 det: payload.itens.map((item, index) => ({
                     nItem: index + 1,
                     prod: {
@@ -1626,51 +1962,28 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
                         xProd: item.descricao,
                         NCM: item.ncm || "00000000",
                         CFOP: cfopRemessa,
+                        cBenef: item.cbenef?.trim() || undefined,
                         uCom: item.unidade || "UN",
                         qCom: item.quantidade,
                         vUnCom: toMoneyNumber(item.valor_unitario),
                         vProd: toMoneyNumber(item.valor_total),
+                        ...buildNFeItemTotalAdjustments(payload, index, valorTotal),
                         cEANTrib: "SEM GTIN",
                         uTrib: item.unidade || "UN",
                         qTrib: item.quantidade,
                         vUnTrib: toMoneyNumber(item.valor_unitario),
                         indTot: 1,
                     },
-                    imposto: {
-                        ICMS: {
-                            ICMSSN102: {
-                                orig: 0,
-                                CSOSN: "400",
-                            },
-                        },
-                        PIS: {
-                            PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 },
-                        },
-                        COFINS: {
-                            COFINSOutr: { CST: "99", vBC: 0, pCOFINS: 0, vCOFINS: 0 },
-                        },
-                    },
+                    imposto: buildNFeItemImposto(item, "400"),
                 })),
                 total: {
-                    ICMSTot: {
-                        vBC: 0, vICMS: 0, vICMSDeson: 0, vFCP: 0,
-                        vBCST: 0, vST: 0, vFCPST: 0, vFCPSTRet: 0,
-                        vProd: valorTotal, vFrete: 0, vSeg: 0, vDesc: 0,
-                        vII: 0, vIPI: 0, vIPIDevol: 0, vPIS: 0,
-                        vCOFINS: 0, vOutro: 0, vNF: valorTotal,
-                    },
+                    ICMSTot: buildNFeIcmsTot(payload, valorTotal),
                 },
-                transp: { modFrete: Number(payload.modFrete || "9") },
-                pag: {
-                    detPag: [{
-                        tPag: "90",
-                        vPag: 0,
-                    }],
-                },
-                infAdic: {
-                    infCpl: payload.observacao?.trim() || observacaoPadrao,
-                },
-                infRespTec: buildNFeInfRespTecVenda(company, cnpjEmit, env),
+                transp: buildNFeTransp(payload),
+                pag: { detPag: buildNFeSemPagamento() },
+                infAdic: buildAdvancedInfAdic(payload, observacaoPadrao),
+                ...(buildIntermediador(payload) ? { infIntermed: buildIntermediador(payload) } : {}),
+                infRespTec: buildNFeInfRespTec(company, cnpjEmit, env),
             },
         };
 
@@ -1796,6 +2109,701 @@ export async function emitirNFeRemessaGarantiaAction(payload: EmissionPayload & 
     return emitirNFeRemessaGarantia(payload);
 }
 
+export async function emitirNFeTransferencia(payload: EmissionPayload & { observacao?: string; modFrete?: string; finalidade_transferencia: "Transferencia entre filiais" | "Transferencia para deposito" | "Retorno de deposito" }) {
+    const supabase = createClient();
+    let invoiceId: string | null = null;
+
+    try {
+        const env = payload.environment || "production";
+
+        const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFe", env);
+        if (duplicateError) {
+            return { success: false, error: duplicateError };
+        }
+
+        const token = await getNuvemFiscalToken(env);
+        const baseUrl = env === "production"
+            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
+            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+
+        const { data: company } = await supabase
+            .from("company_settings")
+            .select("*")
+            .eq("organization_id", payload.organization_id)
+            .single();
+
+        if (!company) {
+            throw new Error("Configuracoes da empresa nao encontradas.");
+        }
+        assertNFeSimplesNacional(company);
+
+        const cnpjEmit = normalizeDocument(company.cnpj || company.cpf_cnpj);
+        if (!cnpjEmit) {
+            throw new Error("Dados da empresa incompletos para emissao (CNPJ ausente).");
+        }
+
+        const inscricaoEstadual = String(company.inscricao_estadual || "").replace(/\D/g, "");
+        if (!inscricaoEstadual) {
+            throw new Error("Configuracoes fiscais incompletas: informe a Inscricao Estadual (IE) da empresa para emitir NF-e.");
+        }
+
+        if (!payload.itens.length) {
+            throw new Error("Adicione ao menos um produto para emitir NF-e de transferencia.");
+        }
+
+        const itemSemNcm = payload.itens.find(item => !/^\d{8}$/.test(String(item.ncm || "")) || item.ncm === "00000000");
+        if (itemSemNcm) {
+            throw new Error(`NCM valido e obrigatorio para emitir NF-e de transferencia. Verifique o produto: ${itemSemNcm.descricao || itemSemNcm.codigo}.`);
+        }
+
+        const dest = buildNFeDest(payload.cliente);
+        const destinatarioUF = String(payload.cliente.endereco?.uf || "").trim().toUpperCase();
+        const emitenteUF = String(company.uf || "").trim().toUpperCase();
+        const mesmoEstado = !destinatarioUF || destinatarioUF === emitenteUF;
+        const prefix = mesmoEstado ? "5" : "6";
+        const cfopTransferencia = payload.finalidade_transferencia === "Retorno de deposito" ? `${prefix}153` : `${prefix}152`;
+        const natOp = payload.finalidade_transferencia === "Transferencia entre filiais"
+            ? "TRANSFERENCIA ENTRE FILIAIS"
+            : payload.finalidade_transferencia === "Transferencia para deposito"
+                ? "TRANSFERENCIA PARA DEPOSITO"
+                : "RETORNO DE DEPOSITO";
+        const nfeSerie = getCompanyNFeSerie(company);
+        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
+        const { dhEmi } = getSaoPauloDatePartsWithSafety();
+        const valorTotal = toMoneyNumber(payload.valor_total);
+        const observacaoPadrao = "TRANSFERENCIA DE MERCADORIA SEM COBRANCA. OPERACAO ENTRE ESTABELECIMENTOS.";
+
+        const nfePayload = {
+            ambiente: env === "production" ? "producao" : "homologacao",
+            infNFe: {
+                versao: "4.00",
+                ide: {
+                    cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
+                    natOp,
+                    mod: 55,
+                    serie: nfeSerie,
+                    nNF: nfeNumber,
+                    dhEmi,
+                    tpNF: 1,
+                    idDest: mesmoEstado ? 1 : 2,
+                    cMunFG: Number(company.codigo_municipio_ibge),
+                    tpImp: 1,
+                    tpEmis: 1,
+                    tpAmb: env === "production" ? 1 : 2,
+                    finNFe: 1,
+                    indFinal: payload.ind_final ?? 0,
+                    indPres: payload.ind_pres ?? 9,
+                    indIntermed: payload.ind_intermed ?? 0,
+                    procEmi: 0,
+                    verProc: "AutoEletrica 1.0",
+                },
+                emit: {
+                    CNPJ: cnpjEmit,
+                    xNome: company.razao_social,
+                    xFant: company.nome_fantasia,
+                    enderEmit: {
+                        xLgr: company.logradouro,
+                        nro: company.numero,
+                        xCpl: company.complemento || undefined,
+                        xBairro: company.bairro,
+                        cMun: Number(company.codigo_municipio_ibge),
+                        xMun: company.cidade,
+                        UF: company.uf,
+                        CEP: company.cep?.replace(/\D/g, ""),
+                        cPais: "1058",
+                        xPais: "BRASIL",
+                    },
+                    IE: inscricaoEstadual,
+                    CRT: Number(company.regime_tributario || "1"),
+                },
+                dest,
+                ...buildNFeEntregaRetirada(payload),
+                det: payload.itens.map((item, index) => ({
+                    nItem: index + 1,
+                    prod: {
+                        cProd: item.codigo || String(index + 1),
+                        cEAN: "SEM GTIN",
+                        xProd: item.descricao,
+                        NCM: item.ncm || "00000000",
+                        CFOP: cfopTransferencia,
+                        cBenef: item.cbenef?.trim() || undefined,
+                        uCom: item.unidade || "UN",
+                        qCom: item.quantidade,
+                        vUnCom: toMoneyNumber(item.valor_unitario),
+                        vProd: toMoneyNumber(item.valor_total),
+                        ...buildNFeItemTotalAdjustments(payload, index, valorTotal),
+                        cEANTrib: "SEM GTIN",
+                        uTrib: item.unidade || "UN",
+                        qTrib: item.quantidade,
+                        vUnTrib: toMoneyNumber(item.valor_unitario),
+                        indTot: 1,
+                    },
+                    imposto: buildNFeItemImposto(item, "400"),
+                })),
+                total: {
+                    ICMSTot: buildNFeIcmsTot(payload, valorTotal),
+                },
+                transp: buildNFeTransp(payload),
+                pag: { detPag: buildNFeSemPagamento() },
+                infAdic: buildAdvancedInfAdic(payload, observacaoPadrao),
+                ...(buildIntermediador(payload) ? { infIntermed: buildIntermediador(payload) } : {}),
+                infRespTec: buildNFeInfRespTec(company, cnpjEmit, env),
+            },
+        };
+
+        const { data: invoice, error: dbError } = await supabase
+            .from("fiscal_invoices")
+            .insert({
+                organization_id: payload.organization_id,
+                work_order_id: payload.work_order_id || null,
+                ...buildOutputInvoiceSnapshot(payload, company, dhEmi),
+                tipo_documento: "NFe",
+                status: "processing",
+                environment: env,
+                payload_json: nfePayload,
+            })
+            .select()
+            .single();
+
+        if (dbError) {
+            if (dbError.code === "23505") {
+                return { success: false, error: "Ja existe NF-e ativa para esta OS neste ambiente." };
+            }
+            throw dbError;
+        }
+
+        invoiceId = invoice.id;
+
+        const response = await fetch(`${baseUrl}/nfe`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(nfePayload),
+        });
+
+        const responseText = await response.text();
+        let result: any;
+        try {
+            result = responseText ? JSON.parse(responseText) : {};
+        } catch {
+            await supabase
+                .from("fiscal_invoices")
+                .update({ status: "error", error_message: `Resposta invalida da API (${response.status})` })
+                .eq("id", invoice.id);
+            return { success: false, error: `Resposta invalida da API (${response.status})`, invoiceId: invoice.id };
+        }
+
+        if (!response.ok) {
+            const providerError = result.error?.message
+                ? `${result.error.message}${result.error.details ? ` - ${JSON.stringify(result.error.details)}` : ""}`
+                : JSON.stringify(result);
+            await supabase
+                .from("fiscal_invoices")
+                .update({ status: "error", error_message: providerError })
+                .eq("id", invoice.id);
+            return { success: false, error: providerError || "Erro na emissao", invoiceId: invoice.id };
+        }
+
+        const realStatus = result.status;
+        if (realStatus === "rejeitado") {
+            const codigoErro = result.autorizacao?.codigo_status || "N/A";
+            const motivoErro = result.autorizacao?.motivo_status || "Motivo nao informado";
+            await supabase
+                .from("fiscal_invoices")
+                .update({
+                    status: "rejected",
+                    nuvemfiscal_uuid: result.id,
+                    chave_acesso: result.chave,
+                    numero: String(result.numero || ""),
+                    serie: String(result.serie || ""),
+                    error_message: `Erro ${codigoErro}: ${motivoErro}`,
+                })
+                .eq("id", invoice.id);
+            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`, invoiceId: invoice.id };
+        }
+
+        if (realStatus === "autorizado") {
+            const xmlContent = await tryFetchXmlContent(result.xml_url);
+            const update: Record<string, any> = {
+                status: "authorized",
+                nuvemfiscal_uuid: result.id,
+                chave_acesso: result.chave,
+                numero: String(result.numero || ""),
+                serie: String(result.serie || ""),
+                xml_url: result.xml_url,
+                pdf_url: result.pdf_url,
+            };
+            if (xmlContent) update.xml_content = xmlContent;
+            await supabase.from("fiscal_invoices").update(update).eq("id", invoice.id);
+            return { success: true, invoiceId: invoice.id };
+        }
+
+        await supabase
+            .from("fiscal_invoices")
+            .update({
+                status: "processing",
+                nuvemfiscal_uuid: result.id,
+                chave_acesso: result.chave,
+                numero: String(result.numero || ""),
+                serie: String(result.serie || ""),
+            })
+            .eq("id", invoice.id);
+
+        return { success: true, invoiceId: invoice.id, message: "NF-e de transferencia em processamento" };
+    } catch (error: any) {
+        console.error("Erro na emissao NFe transferencia:", error);
+        if (invoiceId) {
+            await supabase
+                .from("fiscal_invoices")
+                .update({ status: "error", error_message: error.message })
+                .eq("id", invoiceId);
+        }
+        return { success: false, error: error.message };
+    }
+}
+
+export async function emitirNFeTransferenciaAction(payload: EmissionPayload & { observacao?: string; modFrete?: string; finalidade_transferencia: "Transferencia entre filiais" | "Transferencia para deposito" | "Retorno de deposito" }) {
+    "use server";
+    return emitirNFeTransferencia(payload);
+}
+
+export async function emitirNFeBonificacaoDoacao(payload: EmissionPayload & { observacao?: string; modFrete?: string; finalidade_bonus: "Bonificacao" | "Brinde" | "Doacao" }) {
+    const supabase = createClient();
+    let invoiceId: string | null = null;
+
+    try {
+        const env = payload.environment || "production";
+        const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFe", env);
+        if (duplicateError) return { success: false, error: duplicateError };
+
+        const token = await getNuvemFiscalToken(env);
+        const baseUrl = env === "production"
+            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
+            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+
+        const { data: company } = await supabase
+            .from("company_settings")
+            .select("*")
+            .eq("organization_id", payload.organization_id)
+            .single();
+        if (!company) throw new Error("Configuracoes da empresa nao encontradas.");
+        assertNFeSimplesNacional(company);
+
+        const cnpjEmit = normalizeDocument(company.cnpj || company.cpf_cnpj);
+        if (!cnpjEmit) throw new Error("Dados da empresa incompletos para emissao (CNPJ ausente).");
+
+        const inscricaoEstadual = String(company.inscricao_estadual || "").replace(/\D/g, "");
+        if (!inscricaoEstadual) throw new Error("Configuracoes fiscais incompletas: informe a Inscricao Estadual (IE) da empresa para emitir NF-e.");
+
+        if (!payload.itens.length) throw new Error("Adicione ao menos um produto para emitir NF-e.");
+        const itemSemNcm = payload.itens.find(item => !/^\d{8}$/.test(String(item.ncm || "")) || item.ncm === "00000000");
+        if (itemSemNcm) throw new Error(`NCM valido e obrigatorio para emitir NF-e. Verifique o produto: ${itemSemNcm.descricao || itemSemNcm.codigo}.`);
+
+        const dest = buildNFeDest(payload.cliente);
+        const destinatarioUF = String(payload.cliente.endereco?.uf || "").trim().toUpperCase();
+        const emitenteUF = String(company.uf || "").trim().toUpperCase();
+        const mesmoEstado = !destinatarioUF || destinatarioUF === emitenteUF;
+        const prefix = mesmoEstado ? "5" : "6";
+        const cfop = `${prefix}910`;
+        const natOp = payload.finalidade_bonus === "Bonificacao"
+            ? "BONIFICACAO"
+            : payload.finalidade_bonus === "Brinde"
+                ? "REMESSA DE BRINDE"
+                : "DOACAO";
+        const observacaoPadrao = payload.finalidade_bonus === "Doacao"
+            ? "SAIDA EM DOACAO SEM COBRANCA."
+            : payload.finalidade_bonus === "Brinde"
+                ? "SAIDA DE BRINDE SEM COBRANCA."
+                : "SAIDA EM BONIFICACAO SEM COBRANCA.";
+
+        const nfeSerie = getCompanyNFeSerie(company);
+        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
+        const { dhEmi } = getSaoPauloDatePartsWithSafety();
+        const valorTotal = toMoneyNumber(payload.valor_total);
+
+        const nfePayload = {
+            ambiente: env === "production" ? "producao" : "homologacao",
+            infNFe: {
+                versao: "4.00",
+                ide: {
+                    cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
+                    natOp,
+                    mod: 55,
+                    serie: nfeSerie,
+                    nNF: nfeNumber,
+                    dhEmi,
+                    tpNF: 1,
+                    idDest: mesmoEstado ? 1 : 2,
+                    cMunFG: Number(company.codigo_municipio_ibge),
+                    tpImp: 1,
+                    tpEmis: 1,
+                    tpAmb: env === "production" ? 1 : 2,
+                    finNFe: 1,
+                    indFinal: payload.ind_final ?? (dest.indIEDest === 9 ? 1 : 0),
+                    indPres: payload.ind_pres ?? 9,
+                    indIntermed: payload.ind_intermed ?? 0,
+                    procEmi: 0,
+                    verProc: "AutoEletrica 1.0",
+                },
+                emit: {
+                    CNPJ: cnpjEmit,
+                    xNome: company.razao_social,
+                    xFant: company.nome_fantasia,
+                    enderEmit: {
+                        xLgr: company.logradouro,
+                        nro: company.numero,
+                        xCpl: company.complemento || undefined,
+                        xBairro: company.bairro,
+                        cMun: Number(company.codigo_municipio_ibge),
+                        xMun: company.cidade,
+                        UF: company.uf,
+                        CEP: company.cep?.replace(/\D/g, ""),
+                        cPais: "1058",
+                        xPais: "BRASIL",
+                    },
+                    IE: inscricaoEstadual,
+                    CRT: Number(company.regime_tributario || "1"),
+                },
+                dest,
+                ...buildNFeEntregaRetirada(payload),
+                det: payload.itens.map((item, index) => ({
+                    nItem: index + 1,
+                    prod: {
+                        cProd: item.codigo || String(index + 1),
+                        cEAN: "SEM GTIN",
+                        xProd: item.descricao,
+                        NCM: item.ncm || "00000000",
+                        CFOP: cfop,
+                        cBenef: item.cbenef?.trim() || undefined,
+                        uCom: item.unidade || "UN",
+                        qCom: item.quantidade,
+                        vUnCom: toMoneyNumber(item.valor_unitario),
+                        vProd: toMoneyNumber(item.valor_total),
+                        ...buildNFeItemTotalAdjustments(payload, index, valorTotal),
+                        cEANTrib: "SEM GTIN",
+                        uTrib: item.unidade || "UN",
+                        qTrib: item.quantidade,
+                        vUnTrib: toMoneyNumber(item.valor_unitario),
+                        indTot: 1,
+                    },
+                    imposto: buildNFeItemImposto(item, "400"),
+                })),
+                total: {
+                    ICMSTot: buildNFeIcmsTot(payload, valorTotal),
+                },
+                transp: buildNFeTransp(payload),
+                pag: { detPag: buildNFeSemPagamento() },
+                infAdic: buildAdvancedInfAdic(payload, observacaoPadrao),
+                ...(buildIntermediador(payload) ? { infIntermed: buildIntermediador(payload) } : {}),
+                infRespTec: buildNFeInfRespTec(company, cnpjEmit, env),
+            },
+        };
+
+        const { data: invoice, error: dbError } = await supabase
+            .from("fiscal_invoices")
+            .insert({
+                organization_id: payload.organization_id,
+                work_order_id: payload.work_order_id || null,
+                ...buildOutputInvoiceSnapshot(payload, company, dhEmi),
+                tipo_documento: "NFe",
+                status: "processing",
+                environment: env,
+                payload_json: nfePayload,
+            })
+            .select()
+            .single();
+        if (dbError) throw dbError;
+        invoiceId = invoice.id;
+
+        const response = await fetch(`${baseUrl}/nfe`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify(nfePayload),
+        });
+        const responseText = await response.text();
+        let result: any;
+        try { result = responseText ? JSON.parse(responseText) : {}; } catch { result = {}; }
+
+        if (!response.ok) {
+            const providerError = result.error?.message || JSON.stringify(result) || "Erro na emissao";
+            await supabase.from("fiscal_invoices").update({ status: "error", error_message: providerError }).eq("id", invoice.id);
+            return { success: false, error: providerError, invoiceId: invoice.id };
+        }
+
+        if (result.status === "autorizado") {
+            const xmlContent = await tryFetchXmlContent(result.xml_url);
+            const update: Record<string, any> = {
+                status: "authorized",
+                nuvemfiscal_uuid: result.id,
+                chave_acesso: result.chave,
+                numero: String(result.numero || ""),
+                serie: String(result.serie || ""),
+                xml_url: result.xml_url,
+                pdf_url: result.pdf_url,
+            };
+            if (xmlContent) update.xml_content = xmlContent;
+            await supabase.from("fiscal_invoices").update(update).eq("id", invoice.id);
+            return { success: true, invoiceId: invoice.id };
+        }
+
+        await supabase.from("fiscal_invoices").update({
+            status: result.status === "rejeitado" ? "rejected" : "processing",
+            nuvemfiscal_uuid: result.id,
+            chave_acesso: result.chave,
+            numero: String(result.numero || ""),
+            serie: String(result.serie || ""),
+            error_message: result.status === "rejeitado" ? `Erro ${result.autorizacao?.codigo_status || "N/A"}: ${result.autorizacao?.motivo_status || "Motivo nao informado"}` : null,
+        }).eq("id", invoice.id);
+
+        if (result.status === "rejeitado") {
+            return { success: false, error: `NF-e Rejeitada: Erro ${result.autorizacao?.codigo_status || "N/A"} - ${result.autorizacao?.motivo_status || "Motivo nao informado"}`, invoiceId: invoice.id };
+        }
+
+        return { success: true, invoiceId: invoice.id, message: "NF-e em processamento" };
+    } catch (error: any) {
+        if (invoiceId) {
+            await supabase.from("fiscal_invoices").update({ status: "error", error_message: error.message }).eq("id", invoiceId);
+        }
+        return { success: false, error: error.message };
+    }
+}
+
+export async function emitirNFeBonificacaoDoacaoAction(payload: EmissionPayload & { observacao?: string; modFrete?: string; finalidade_bonus: "Bonificacao" | "Brinde" | "Doacao" }) {
+    "use server";
+    return emitirNFeBonificacaoDoacao(payload);
+}
+
+export async function emitirNFeAssistida(payload: EmissionPayload & { observacao?: string; modFrete?: string }) {
+    const supabase = createClient();
+    let invoiceId: string | null = null;
+
+    try {
+        const env = payload.environment || "homologation";
+        if (env !== "homologation") {
+            return { success: false, error: "Emissao assistida liberada apenas em homologacao nesta fase." };
+        }
+
+        const natOp = String(payload.natureza_operacao || "").trim().toUpperCase();
+        if (!natOp) throw new Error("Informe a natureza da operacao para emissao assistida.");
+        if (![0, 1].includes(Number(payload.tipo_nfe))) throw new Error("Tipo NF-e invalido para emissao assistida.");
+        if (![1, 2, 3, 4].includes(Number(payload.finalidade_nfe))) throw new Error("Finalidade NF-e invalida para emissao assistida.");
+
+        const token = await getNuvemFiscalToken(env);
+        const baseUrl = process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br";
+
+        const { data: company } = await supabase
+            .from("company_settings")
+            .select("*")
+            .eq("organization_id", payload.organization_id)
+            .single();
+
+        if (!company) throw new Error("Configuracoes da empresa nao encontradas.");
+        assertNFeSimplesNacional(company);
+
+        const cnpjEmit = normalizeDocument(company.cnpj || company.cpf_cnpj);
+        if (!cnpjEmit) throw new Error("Dados da empresa incompletos para emissao (CNPJ ausente).");
+
+        const inscricaoEstadual = String(company.inscricao_estadual || "").replace(/\D/g, "");
+        if (!inscricaoEstadual) {
+            throw new Error("Configuracoes fiscais incompletas: informe a Inscricao Estadual (IE) da empresa para emitir NF-e.");
+        }
+
+        if (!payload.itens.length) throw new Error("Adicione ao menos um produto para emitir NF-e assistida.");
+
+        const itemInvalido = payload.itens.find((item) => (
+            !/^\d{8}$/.test(String(item.ncm || "")) ||
+            !/^\d{4}$/.test(String(item.cfop || ""))
+        ));
+        if (itemInvalido) {
+            throw new Error(`NCM e CFOP validos sao obrigatorios. Verifique o item: ${itemInvalido.descricao || itemInvalido.codigo}.`);
+        }
+
+        const dest = buildNFeDest(payload.cliente);
+        const destinatarioUF = String(payload.cliente.endereco?.uf || "").trim().toUpperCase();
+        const emitenteUF = String(company.uf || "").trim().toUpperCase();
+        const mesmoEstado = !destinatarioUF || destinatarioUF === emitenteUF;
+        const nfeSerie = getCompanyNFeSerie(company);
+        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
+        const { dhEmi } = getSaoPauloDatePartsWithSafety();
+        const valorTotal = toMoneyNumber(payload.valor_total);
+
+        const nfePayload = {
+            ambiente: "homologacao",
+            infNFe: {
+                versao: "4.00",
+                ide: {
+                    cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
+                    natOp,
+                    mod: 55,
+                    serie: nfeSerie,
+                    nNF: nfeNumber,
+                    dhEmi,
+                    tpNF: Number(payload.tipo_nfe ?? 1),
+                    idDest: mesmoEstado ? 1 : 2,
+                    cMunFG: Number(company.codigo_municipio_ibge),
+                    tpImp: 1,
+                    tpEmis: 1,
+                    tpAmb: 2,
+                    finNFe: Number(payload.finalidade_nfe ?? 1),
+                    indFinal: payload.ind_final ?? 1,
+                    indPres: payload.ind_pres ?? 9,
+                    indIntermed: payload.ind_intermed ?? 0,
+                    procEmi: 0,
+                    verProc: "AutoEletrica 1.0",
+                },
+                emit: {
+                    CNPJ: cnpjEmit,
+                    xNome: company.razao_social,
+                    xFant: company.nome_fantasia,
+                    enderEmit: {
+                        xLgr: company.logradouro,
+                        nro: company.numero,
+                        xCpl: company.complemento || undefined,
+                        xBairro: company.bairro,
+                        cMun: Number(company.codigo_municipio_ibge),
+                        xMun: company.cidade,
+                        UF: company.uf,
+                        CEP: company.cep?.replace(/\D/g, ""),
+                        cPais: "1058",
+                        xPais: "BRASIL",
+                    },
+                    IE: inscricaoEstadual,
+                    CRT: Number(company.regime_tributario || "1"),
+                },
+                dest,
+                ...buildNFeEntregaRetirada(payload),
+                det: payload.itens.map((item, index) => ({
+                    nItem: index + 1,
+                    prod: {
+                        cProd: item.codigo || String(index + 1),
+                        cEAN: "SEM GTIN",
+                        xProd: item.descricao,
+                        NCM: item.ncm || "00000000",
+                        CFOP: item.cfop,
+                        cBenef: item.cbenef?.trim() || undefined,
+                        uCom: item.unidade || "UN",
+                        qCom: item.quantidade,
+                        vUnCom: toMoneyNumber(item.valor_unitario),
+                        vProd: toMoneyNumber(item.valor_total),
+                        ...buildNFeItemTotalAdjustments(payload, index, valorTotal),
+                        cEANTrib: "SEM GTIN",
+                        uTrib: item.unidade || "UN",
+                        qTrib: item.quantidade,
+                        vUnTrib: toMoneyNumber(item.valor_unitario),
+                        indTot: 1,
+                    },
+                    imposto: buildNFeItemImposto(item, item.csosn || "400"),
+                })),
+                total: {
+                    ICMSTot: buildNFeIcmsTot(payload, valorTotal),
+                },
+                transp: buildNFeTransp(payload),
+                pag: { detPag: buildNFeDetPag(payload, getNFeValorNota(payload, valorTotal), "90") },
+                infAdic: buildAdvancedInfAdic(payload, natOp),
+                ...(buildIntermediador(payload) ? { infIntermed: buildIntermediador(payload) } : {}),
+                infRespTec: buildNFeInfRespTec(company, cnpjEmit, env),
+            },
+        };
+
+        const { data: invoice, error: dbError } = await supabase
+            .from("fiscal_invoices")
+            .insert({
+                organization_id: payload.organization_id,
+                work_order_id: payload.work_order_id || null,
+                ...buildOutputInvoiceSnapshot(payload, company, dhEmi),
+                tipo_documento: "NFe",
+                status: "processing",
+                environment: env,
+                payload_json: nfePayload,
+            })
+            .select()
+            .single();
+
+        if (dbError) throw dbError;
+        invoiceId = invoice.id;
+
+        console.log("[NFe Assistida] Enviando para /nfe, numero:", nfeNumber);
+        const response = await fetch(`${baseUrl}/nfe`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(nfePayload),
+        });
+
+        const responseText = await response.text();
+        let result: any;
+        try {
+            result = responseText ? JSON.parse(responseText) : {};
+        } catch {
+            await supabase.from("fiscal_invoices").update({ status: "error", error_message: `Resposta invalida da API (${response.status})` }).eq("id", invoice.id);
+            return { success: false, error: `Resposta invalida da API (${response.status})`, invoiceId: invoice.id };
+        }
+
+        if (!response.ok) {
+            const providerError = result.error?.message
+                ? `${result.error.message}${result.error.details ? ` - ${JSON.stringify(result.error.details)}` : ""}`
+                : JSON.stringify(result);
+            await supabase.from("fiscal_invoices").update({ status: "error", error_message: providerError }).eq("id", invoice.id);
+            return { success: false, error: providerError || "Erro na emissao", invoiceId: invoice.id };
+        }
+
+        if (result.status === "rejeitado") {
+            const codigoErro = result.autorizacao?.codigo_status || "N/A";
+            const motivoErro = result.autorizacao?.motivo_status || "Motivo nao informado";
+            await supabase.from("fiscal_invoices").update({
+                status: "rejected",
+                nuvemfiscal_uuid: result.id,
+                chave_acesso: result.chave,
+                numero: String(result.numero || ""),
+                serie: String(result.serie || ""),
+                error_message: `Erro ${codigoErro}: ${motivoErro}`,
+            }).eq("id", invoice.id);
+            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`, invoiceId: invoice.id };
+        }
+
+        if (result.status === "autorizado") {
+            const xmlContent = await tryFetchXmlContent(result.xml_url);
+            const update: Record<string, any> = {
+                status: "authorized",
+                nuvemfiscal_uuid: result.id,
+                chave_acesso: result.chave,
+                numero: String(result.numero || ""),
+                serie: String(result.serie || ""),
+                xml_url: result.xml_url,
+                pdf_url: result.pdf_url,
+            };
+            if (xmlContent) update.xml_content = xmlContent;
+            await supabase.from("fiscal_invoices").update(update).eq("id", invoice.id);
+            return { success: true, invoiceId: invoice.id };
+        }
+
+        await supabase.from("fiscal_invoices").update({
+            status: "processing",
+            nuvemfiscal_uuid: result.id,
+            chave_acesso: result.chave,
+            numero: String(result.numero || ""),
+            serie: String(result.serie || ""),
+        }).eq("id", invoice.id);
+
+        return { success: true, invoiceId: invoice.id, message: "NF-e assistida em processamento." };
+    } catch (error: any) {
+        console.error("[NFe Assistida] Erro:", error);
+        if (invoiceId) {
+            await supabase.from("fiscal_invoices").update({ status: "error", error_message: error.message }).eq("id", invoiceId);
+        }
+        return { success: false, error: error.message };
+    }
+}
+
+export async function emitirNFeAssistidaAction(payload: EmissionPayload & { observacao?: string; modFrete?: string }) {
+    "use server";
+    return emitirNFeAssistida(payload);
+}
+
 async function validateReferencedRemessaKind(
     supabase: any,
     organizationId: string,
@@ -1828,8 +2836,11 @@ async function validateReferencedRemessaKind(
     }
 
     const natOp = String(origin.payload_json?.infNFe?.ide?.natOp || "").toUpperCase();
-    const isConserto = natOp.includes("REMESSA") && natOp.includes("CONSERTO");
-    const isGarantia = natOp.includes("REMESSA") && natOp.includes("GARANTIA");
+    const infCpl = String(origin.payload_json?.infNFe?.infAdic?.infCpl || "").toUpperCase();
+    const text = `${natOp} ${infCpl}`;
+    const isRemessa = natOp.includes("REMESSA");
+    const isGarantia = isRemessa && text.includes("GARANTIA");
+    const isConserto = isRemessa && (text.includes("CONSERTO") || text.includes("REPARO")) && !isGarantia;
 
     if (expectedKind === "conserto" && !isConserto) {
         throw new Error("A NF-e de origem selecionada nao e uma Remessa para conserto. Para Retorno de conserto, selecione uma remessa com natureza de conserto.");
@@ -1874,6 +2885,7 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
         if (!company) {
             throw new Error("Configuracoes da empresa nao encontradas.");
         }
+        assertNFeSimplesNacional(company);
 
         const cnpjEmit = normalizeDocument(company.cnpj || company.cpf_cnpj);
         if (!cnpjEmit) {
@@ -1899,7 +2911,8 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
         const emitenteUF = String(company.uf || "").trim().toUpperCase();
         const mesmoEstado = !destinatarioUF || destinatarioUF === emitenteUF;
         const cfopRetorno = mesmoEstado ? "5916" : "6916";
-        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env);
+        const nfeSerie = getCompanyNFeSerie(company);
+        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
         const valorTotal = toMoneyNumber(payload.valor_total);
         const { cleanKey: cleanReferencedKey, originId } = await validateReferencedRemessaKind(
@@ -1920,7 +2933,7 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
                     cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
                     natOp: "RETORNO DE CONSERTO",
                     mod: 55,
-                    serie: 1,
+                    serie: nfeSerie,
                     nNF: nfeNumber,
                     dhEmi,
                     tpNF: 1,
@@ -1930,9 +2943,9 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
                     tpEmis: 1,
                     tpAmb: env === "production" ? 1 : 2,
                     finNFe: 1,
-                    indFinal: dest.indIEDest === 9 ? 1 : 0,
-                    indPres: 9,
-                    indIntermed: 0,
+                    indFinal: payload.ind_final ?? (dest.indIEDest === 9 ? 1 : 0),
+                    indPres: payload.ind_pres ?? 9,
+                    indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
                     verProc: "AutoEletrica 1.0",
                     NFref: [{ refNFe: cleanReferencedKey }],
@@ -1957,6 +2970,7 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
                     CRT: Number(company.regime_tributario || "1"),
                 },
                 dest,
+                ...buildNFeEntregaRetirada(payload),
                 det: payload.itens.map((item, index) => ({
                     nItem: index + 1,
                     prod: {
@@ -1965,51 +2979,28 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
                         xProd: item.descricao,
                         NCM: item.ncm || "00000000",
                         CFOP: cfopRetorno,
+                        cBenef: item.cbenef?.trim() || undefined,
                         uCom: item.unidade || "UN",
                         qCom: item.quantidade,
                         vUnCom: toMoneyNumber(item.valor_unitario),
                         vProd: toMoneyNumber(item.valor_total),
+                        ...buildNFeItemTotalAdjustments(payload, index, valorTotal),
                         cEANTrib: "SEM GTIN",
                         uTrib: item.unidade || "UN",
                         qTrib: item.quantidade,
                         vUnTrib: toMoneyNumber(item.valor_unitario),
                         indTot: 1,
                     },
-                    imposto: {
-                        ICMS: {
-                            ICMSSN102: {
-                                orig: 0,
-                                CSOSN: "400",
-                            },
-                        },
-                        PIS: {
-                            PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 },
-                        },
-                        COFINS: {
-                            COFINSOutr: { CST: "99", vBC: 0, pCOFINS: 0, vCOFINS: 0 },
-                        },
-                    },
+                    imposto: buildNFeItemImposto(item, "400"),
                 })),
                 total: {
-                    ICMSTot: {
-                        vBC: 0, vICMS: 0, vICMSDeson: 0, vFCP: 0,
-                        vBCST: 0, vST: 0, vFCPST: 0, vFCPSTRet: 0,
-                        vProd: valorTotal, vFrete: 0, vSeg: 0, vDesc: 0,
-                        vII: 0, vIPI: 0, vIPIDevol: 0, vPIS: 0,
-                        vCOFINS: 0, vOutro: 0, vNF: valorTotal,
-                    },
+                    ICMSTot: buildNFeIcmsTot(payload, valorTotal),
                 },
-                transp: { modFrete: Number(payload.modFrete || "9") },
-                pag: {
-                    detPag: [{
-                        tPag: "90",
-                        vPag: 0,
-                    }],
-                },
-                infAdic: {
-                    infCpl: payload.observacao?.trim() || observacaoPadrao,
-                },
-                infRespTec: buildNFeInfRespTecVenda(company, cnpjEmit, env),
+                transp: buildNFeTransp(payload),
+                pag: { detPag: buildNFeSemPagamento() },
+                infAdic: buildAdvancedInfAdic(payload, observacaoPadrao),
+                ...(buildIntermediador(payload) ? { infIntermed: buildIntermediador(payload) } : {}),
+                infRespTec: buildNFeInfRespTec(company, cnpjEmit, env),
             },
         };
 
@@ -2162,6 +3153,7 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
         if (!company) {
             throw new Error("Configuracoes da empresa nao encontradas.");
         }
+        assertNFeSimplesNacional(company);
 
         const cnpjEmit = normalizeDocument(company.cnpj || company.cpf_cnpj);
         if (!cnpjEmit) {
@@ -2187,7 +3179,8 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
         const emitenteUF = String(company.uf || "").trim().toUpperCase();
         const mesmoEstado = !destinatarioUF || destinatarioUF === emitenteUF;
         const cfopRetorno = mesmoEstado ? "5916" : "6916";
-        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env);
+        const nfeSerie = getCompanyNFeSerie(company);
+        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
         const valorTotal = toMoneyNumber(payload.valor_total);
         const { cleanKey: cleanReferencedKey, originId } = await validateReferencedRemessaKind(
@@ -2208,7 +3201,7 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
                     cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
                     natOp: "RETORNO DE GARANTIA",
                     mod: 55,
-                    serie: 1,
+                    serie: nfeSerie,
                     nNF: nfeNumber,
                     dhEmi,
                     tpNF: 1,
@@ -2218,9 +3211,9 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
                     tpEmis: 1,
                     tpAmb: env === "production" ? 1 : 2,
                     finNFe: 1,
-                    indFinal: dest.indIEDest === 9 ? 1 : 0,
-                    indPres: 9,
-                    indIntermed: 0,
+                    indFinal: payload.ind_final ?? (dest.indIEDest === 9 ? 1 : 0),
+                    indPres: payload.ind_pres ?? 9,
+                    indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
                     verProc: "AutoEletrica 1.0",
                     NFref: [{ refNFe: cleanReferencedKey }],
@@ -2245,6 +3238,7 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
                     CRT: Number(company.regime_tributario || "1"),
                 },
                 dest,
+                ...buildNFeEntregaRetirada(payload),
                 det: payload.itens.map((item, index) => ({
                     nItem: index + 1,
                     prod: {
@@ -2253,51 +3247,28 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
                         xProd: item.descricao,
                         NCM: item.ncm || "00000000",
                         CFOP: cfopRetorno,
+                        cBenef: item.cbenef?.trim() || undefined,
                         uCom: item.unidade || "UN",
                         qCom: item.quantidade,
                         vUnCom: toMoneyNumber(item.valor_unitario),
                         vProd: toMoneyNumber(item.valor_total),
+                        ...buildNFeItemTotalAdjustments(payload, index, valorTotal),
                         cEANTrib: "SEM GTIN",
                         uTrib: item.unidade || "UN",
                         qTrib: item.quantidade,
                         vUnTrib: toMoneyNumber(item.valor_unitario),
                         indTot: 1,
                     },
-                    imposto: {
-                        ICMS: {
-                            ICMSSN102: {
-                                orig: 0,
-                                CSOSN: "400",
-                            },
-                        },
-                        PIS: {
-                            PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 },
-                        },
-                        COFINS: {
-                            COFINSOutr: { CST: "99", vBC: 0, pCOFINS: 0, vCOFINS: 0 },
-                        },
-                    },
+                    imposto: buildNFeItemImposto(item, "400"),
                 })),
                 total: {
-                    ICMSTot: {
-                        vBC: 0, vICMS: 0, vICMSDeson: 0, vFCP: 0,
-                        vBCST: 0, vST: 0, vFCPST: 0, vFCPSTRet: 0,
-                        vProd: valorTotal, vFrete: 0, vSeg: 0, vDesc: 0,
-                        vII: 0, vIPI: 0, vIPIDevol: 0, vPIS: 0,
-                        vCOFINS: 0, vOutro: 0, vNF: valorTotal,
-                    },
+                    ICMSTot: buildNFeIcmsTot(payload, valorTotal),
                 },
-                transp: { modFrete: Number(payload.modFrete || "9") },
-                pag: {
-                    detPag: [{
-                        tPag: "90",
-                        vPag: 0,
-                    }],
-                },
-                infAdic: {
-                    infCpl: payload.observacao?.trim() || observacaoPadrao,
-                },
-                infRespTec: buildNFeInfRespTecVenda(company, cnpjEmit, env),
+                transp: buildNFeTransp(payload),
+                pag: { detPag: buildNFeSemPagamento() },
+                infAdic: buildAdvancedInfAdic(payload, observacaoPadrao),
+                ...(buildIntermediador(payload) ? { infIntermed: buildIntermediador(payload) } : {}),
+                infRespTec: buildNFeInfRespTec(company, cnpjEmit, env),
             },
         };
 
@@ -3134,8 +4105,23 @@ export async function consultarNFSe(invoiceId: string) {
 
 
 
-        if (!invoice || !invoice.nuvemfiscal_uuid) {
-            return { success: false, error: "Nota não encontrada ou sem ID da NuvemFiscal." };
+        if (!invoice) {
+            return { success: false, error: "Nota nao encontrada." };
+        }
+
+        if (!invoice.nuvemfiscal_uuid) {
+            if (invoice.status === "authorized" && invoice.xml_url && !invoice.xml_content) {
+                const xmlContent = await tryFetchXmlContent(invoice.xml_url);
+                if (xmlContent) {
+                    await supabase
+                        .from("fiscal_invoices")
+                        .update({ xml_content: xmlContent })
+                        .eq("id", invoiceId);
+                    return { success: true, status: "authorized", data: { xml_salvo: true } };
+                }
+            }
+
+            return { success: false, error: "Nota nao encontrada ou sem ID da NuvemFiscal." };
         }
 
 
@@ -3310,7 +4296,7 @@ export async function consultarNFSe(invoiceId: string) {
         if (
             novoStatus === 'authorized' &&
             !invoice.xml_content &&
-            (invoice.tipo_documento === "NFCe" || invoice.tipo_documento === "NFe")
+            (invoice.tipo_documento === "NFCe" || invoice.tipo_documento === "NFe" || invoice.tipo_documento === "NFSe")
         ) {
             let xmlContent: string | null = null;
 
@@ -3356,8 +4342,11 @@ export async function consultarNFSe(invoiceId: string) {
 
 }
 
-export async function inutilizarNumeracaoNFCe(params: {
+type FiscalInutilizationModel = "NFCe" | "NFe";
+
+export async function inutilizarNumeracaoFiscal(params: {
     organizationId: string;
+    model: FiscalInutilizationModel;
     year: number;
     serie: number;
     numeroInicial: number;
@@ -3406,7 +4395,8 @@ export async function inutilizarNumeracaoNFCe(params: {
             justificativa: params.justificativa.trim(),
         };
 
-        const response = await fetch(`${baseUrl}/nfce/inutilizacoes`, {
+        const endpoint = params.model === "NFe" ? "nfe" : "nfce";
+        const response = await fetch(`${baseUrl}/${endpoint}/inutilizacoes`, {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${token}`,
@@ -3434,7 +4424,7 @@ export async function inutilizarNumeracaoNFCe(params: {
                 .upsert({
                     organization_id: params.organizationId,
                     environment: env,
-                    model: "NFCe",
+                    model: params.model,
                     year: params.year,
                     serie: params.serie,
                     numero_inicial: params.numeroInicial,
@@ -3451,13 +4441,22 @@ export async function inutilizarNumeracaoNFCe(params: {
 
         return { success: true, data: result };
     } catch (error: any) {
-        console.error("Erro ao inutilizar numeracao NFC-e:", error);
+        console.error(`Erro ao inutilizar numeracao ${params.model}:`, error);
         return { success: false, error: error.message || "Erro inesperado na inutilizacao." };
     }
 }
 
-export async function listarInutilizacoesNFCe(params: {
+export async function inutilizarNumeracaoNFCe(params: Omit<Parameters<typeof inutilizarNumeracaoFiscal>[0], "model">) {
+    return inutilizarNumeracaoFiscal({ ...params, model: "NFCe" });
+}
+
+export async function inutilizarNumeracaoNFe(params: Omit<Parameters<typeof inutilizarNumeracaoFiscal>[0], "model">) {
+    return inutilizarNumeracaoFiscal({ ...params, model: "NFe" });
+}
+
+export async function listarInutilizacoesFiscais(params: {
     organizationId: string;
+    model?: FiscalInutilizationModel;
     year: number;
     environment?: "production" | "homologation";
 }) {
@@ -3465,20 +4464,28 @@ export async function listarInutilizacoesNFCe(params: {
     const env = params.environment || "production";
 
     try {
-        const { data, error } = await supabase
+        let query = supabase
             .from("fiscal_inutilizations")
-            .select("id, environment, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
+            .select("id, environment, model, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
             .eq("organization_id", params.organizationId)
-            .eq("model", "NFCe")
             .eq("environment", env)
-            .eq("year", params.year)
-            .order("created_at", { ascending: false });
+            .eq("year", params.year);
+
+        if (params.model) {
+            query = query.eq("model", params.model);
+        }
+
+        const { data, error } = await query.order("created_at", { ascending: false });
 
         if (error) return { success: false, error: error.message, data: [] };
         return { success: true, data: data || [] };
     } catch (error: any) {
         return { success: false, error: error.message || "Erro ao listar inutilizacoes.", data: [] };
     }
+}
+
+export async function listarInutilizacoesNFCe(params: Omit<Parameters<typeof listarInutilizacoesFiscais>[0], "model">) {
+    return listarInutilizacoesFiscais({ ...params, model: "NFCe" });
 }
 
 export async function updateCompanyCredentials(organizationId: string, environment: 'production' | 'homologation' = 'production') {
@@ -3664,7 +4671,7 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
 
 
         if (!invoice || !invoice.nuvemfiscal_uuid) {
-            return { success: false, error: "Nota não encontrada ou sem ID da NuvemFiscal." };
+            return { success: false, error: "Nota nao encontrada ou sem ID da NuvemFiscal." };
         }
 
 
@@ -3977,7 +4984,8 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         const cfopDevolucao = mesmoEstado ? "5202" : "6202";
 
         // 5. Próximo número de NF-e de devolução (série 1) — filtrado por ambiente
-        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env);
+        const nfeSerie = getCompanyNFeSerie(company);
+        const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
 
         // 6. Precomputar itens com ICMS proporcional à quantidade devolvida
@@ -4014,6 +5022,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         qCom: item.quantidade,
                         vUnCom: toMoneyNumber(item.valor_unitario),
                         vProd: itemVProd,
+                        ...buildNFeItemTotalAdjustments(payload as any, idx, toMoneyNumber(payload.valor_total)),
                         cEANTrib: "SEM GTIN",
                         uTrib: item.unidade,
                         qTrib: item.quantidade,
@@ -4043,7 +5052,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     cUF: Number(company.codigo_municipio_ibge?.substring(0, 2)),
                     natOp: "DEVOLUCAO DE MERCADORIA",
                     mod: 55,
-                    serie: 1,
+                    serie: nfeSerie,
                     nNF: nfeNumber,
                     dhEmi,
                     tpNF: 1,
@@ -4221,6 +5230,4 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         return { success: false, error: error.message };
     }
 }
-
-
 
