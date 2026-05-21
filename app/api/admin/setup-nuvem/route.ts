@@ -86,12 +86,17 @@ export async function GET(request: Request) {
         // 3. Configurar NFS-e
         try {
             logs.push("Configurando NFS-e...");
+            const nfseLogin = company.nfse_login || cnpj;
+            const nfsePassword = company.nfse_password;
+
+            if (!nfsePassword) {
+                logs.push("Configuração NFS-e ignorada: senha NFS-e não configurada na empresa.");
+            } else {
             const nfsePayload = {
                 ambiente: "producao",
-                rps: { lote: 1, serie: "1", numero: 1 },
                 prefeitura: {
-                    login: cnpj,
-                    senha: "Deusebom10@"
+                    login: nfseLogin,
+                    senha: nfsePassword
                 }
             };
 
@@ -123,6 +128,7 @@ export async function GET(request: Request) {
                 logs.push(`Erro config NFS-e (PUT): ${bodyPut.error?.message || resNfse.status}`);
             } else {
                 logs.push("Configuração NFS-e atualizada (PUT)!");
+            }
             }
         } catch (e: any) {
             logs.push(`Erro fatal ao configurar NFS-e: ${e.message}`);

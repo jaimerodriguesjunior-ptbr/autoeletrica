@@ -828,6 +828,71 @@ export async function emitirNFSe(payload: EmissionPayload) {
             .replace(/\D/g, "")
             .trim();
 
+        // Keep NFSe RPS sequence aligned with last authorized number in our database.
+        try {
+            const { data: issuedNfse } = await supabase
+                .from("fiscal_invoices")
+                .select("numero, id")
+                .eq("organization_id", payload.organization_id)
+                .eq("tipo_documento", "NFSe")
+                .eq("environment", env)
+                .not("numero", "is", null)
+                .order("id", { ascending: false })
+                .limit(400);
+
+            const lastIssuedNumber = (issuedNfse || []).reduce((max, row: any) => {
+                const parsed = parseInt(String(row?.numero || ""), 10);
+                if (!Number.isFinite(parsed)) return max;
+                return parsed > max ? parsed : max;
+            }, 0);
+
+            const expectedNextRps = lastIssuedNumber > 0 ? lastIssuedNumber + 1 : 1;
+            const cnpjLimpo = String(cnpj || "").replace(/\D/g, "");
+
+            if (cnpjLimpo) {
+                const configRes = await fetch(`${baseUrl}/empresas/${cnpjLimpo}/nfse`, {
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${token}`,
+                        "Content-Type": "application/json"
+                    }
+                });
+
+                if (configRes.ok) {
+                    const nfseConfig = await configRes.json();
+                    const currentRpsNumber = Number(nfseConfig?.rps?.numero || 0);
+
+                    if (Number.isFinite(currentRpsNumber) && currentRpsNumber < expectedNextRps) {
+                        const updateRes = await fetch(`${baseUrl}/empresas/${cnpjLimpo}/nfse`, {
+                            method: "PUT",
+                            headers: {
+                                "Authorization": `Bearer ${token}`,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                rps: {
+                                    ...(nfseConfig?.rps || {}),
+                                    numero: expectedNextRps
+                                }
+                            })
+                        });
+
+                        if (updateRes.ok) {
+                            console.log(`[NFSe][RPS Sync] RPS adjusted from ${currentRpsNumber} to ${expectedNextRps}.`);
+                        } else {
+                            console.warn("[NFSe][RPS Sync] Failed to update RPS:", await updateRes.text());
+                        }
+                    } else {
+                        console.log(`[NFSe][RPS Sync] RPS already aligned: current=${currentRpsNumber} expected=${expectedNextRps}.`);
+                    }
+                } else {
+                    console.warn("[NFSe][RPS Sync] Failed to read NFSe config:", await configRes.text());
+                }
+            }
+        } catch (rpsSyncError: any) {
+            console.warn("[NFSe][RPS Sync] Pre-sync failed, continuing emission:", rpsSyncError?.message || rpsSyncError);
+        }
+
 
 
         // 3. Montar JSON para Nuvem Fiscal (NFS-e - DPS)
@@ -1660,6 +1725,63 @@ export async function consultarNFSe(invoiceId: string) {
             }
         }
 
+        // After authorization, force next RPS in Nuvem Fiscal to avoid sequence rollback.
+        if (novoStatus === "authorized" && result.numero) {
+            try {
+                const issuedNumber = parseInt(String(result.numero), 10);
+                if (Number.isFinite(issuedNumber)) {
+                    const { data: company } = await supabase
+                        .from("company_settings")
+                        .select("cnpj, cpf_cnpj")
+                        .eq("organization_id", invoice.organization_id)
+                        .single();
+
+                    const cnpjLimpo = String(company?.cnpj || company?.cpf_cnpj || "").replace(/\D/g, "");
+                    if (cnpjLimpo) {
+                        const configRes = await fetch(`${baseUrl}/empresas/${cnpjLimpo}/nfse`, {
+                            method: "GET",
+                            headers: {
+                                "Authorization": `Bearer ${token}`,
+                                "Content-Type": "application/json"
+                            }
+                        });
+
+                        if (configRes.ok) {
+                            const nfseConfig = await configRes.json();
+                            const currentRps = Number(nfseConfig?.rps?.numero || 0);
+                            const expectedNext = issuedNumber + 1;
+
+                            if (!Number.isFinite(currentRps) || currentRps < expectedNext) {
+                                const updateRes = await fetch(`${baseUrl}/empresas/${cnpjLimpo}/nfse`, {
+                                    method: "PUT",
+                                    headers: {
+                                        "Authorization": `Bearer ${token}`,
+                                        "Content-Type": "application/json"
+                                    },
+                                    body: JSON.stringify({
+                                        rps: {
+                                            ...(nfseConfig?.rps || {}),
+                                            numero: expectedNext
+                                        }
+                                    })
+                                });
+
+                                if (!updateRes.ok) {
+                                    console.warn("[NFSe][RPS Post-Auth Sync] Failed to update RPS:", await updateRes.text());
+                                } else {
+                                    console.log(`[NFSe][RPS Post-Auth Sync] RPS moved to ${expectedNext}.`);
+                                }
+                            }
+                        } else {
+                            console.warn("[NFSe][RPS Post-Auth Sync] Failed to read NFSe config:", await configRes.text());
+                        }
+                    }
+                }
+            } catch (syncErr: any) {
+                console.warn("[NFSe][RPS Post-Auth Sync] Non-blocking sync error:", syncErr?.message || syncErr);
+            }
+        }
+
         await supabase
             .from("fiscal_invoices")
             .update(updatePayload)
@@ -1725,19 +1847,8 @@ export async function updateCompanyCredentials(organizationId: string, environme
 
             ambiente: environment === 'production' ? 'producao' : 'homologacao',
 
-            rps: {
-
-                lote: 1,
-
-                serie: "1",
-
-                numero: 1
-
-            },
-
             prefeitura: {
-
-                login: cnpj, // Usando CNPJ como login
+                login: company.nfse_login || cnpj,
 
                 senha: company.nfse_password
 
