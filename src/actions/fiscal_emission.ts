@@ -910,6 +910,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
         const codServico = servicoPrincipal.codigo_servico || "140101";
 
         const codServicoNac = servicoPrincipal.codigo_servico?.replace(/[.-]/g, "") || "140101"; // Formato limpo
+        const cnaeFormatado = String((company as any).cnae || "4520007").replace(/\D/g, "").slice(0, 7) || "4520007";
 
         const ibgeMunicipio = String(company.codigo_municipio_ibge || "4108809").replace(/\D/g, "") || "4108809";
         const isGuaira = ibgeMunicipio === "4108809";
@@ -1171,7 +1172,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
                         })(),
 
-                        CNAE: "4520007",
+                        CNAE: cnaeFormatado,
 
                         cSitTrib: "0",
 

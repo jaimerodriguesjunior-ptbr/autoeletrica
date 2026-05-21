@@ -29,6 +29,7 @@ type CompanySettings = {
   inscricao_estadual: string;
   inscricao_municipal: string;
   regime_tributario: string;
+  cnae?: string;
   logradouro: string;
   numero: string;
   complemento: string;
@@ -104,6 +105,7 @@ export default function Configuracoes() {
   const [company, setCompany] = useState<CompanySettings>({
     nome_fantasia: "", razao_social: "", cnpj: "",
     inscricao_estadual: "", inscricao_municipal: "", regime_tributario: "1",
+    cnae: "4520007",
     logradouro: "", numero: "", complemento: "", bairro: "",
     codigo_municipio_ibge: "", cidade: "", uf: "", cep: "",
     telefone: "", email_contato: "", email_contador: "",
@@ -318,6 +320,7 @@ export default function Configuracoes() {
         inscricao_estadual: company.inscricao_estadual,
         inscricao_municipal: company.inscricao_municipal,
         regime_tributario: company.regime_tributario,
+        cnae: company.cnae,
         logradouro: company.logradouro,
         numero: company.numero,
         complemento: company.complemento,
@@ -614,7 +617,7 @@ export default function Configuracoes() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">INSCRIÇÃO ESTADUAL</label>
                 <div className="relative">
@@ -638,6 +641,19 @@ export default function Configuracoes() {
                     onChange={e => setCompany({ ...company, inscricao_municipal: e.target.value })}
                     className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
                     placeholder="IM (Sem pontos)"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-stone-400 ml-2 mb-1 block">CNAE (NFS-e)</label>
+                <div className="relative">
+                  <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
+                  <input
+                    type="text"
+                    value={company.cnae || ''}
+                    onChange={e => setCompany({ ...company, cnae: e.target.value.replace(/\D/g, "").slice(0, 7) })}
+                    className="w-full bg-[#F8F7F2] rounded-2xl py-3 pl-12 pr-4 font-medium outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                    placeholder="Ex: 4520007"
                   />
                 </div>
               </div>
