@@ -2435,6 +2435,7 @@ export default function NFeCompletaPage() {
                                 total={displayTotal}
                                 modFrete={modFrete}
                                 infCpl={infCpl}
+                                infAdFisco={infAdFisco}
                             />
                         </section>
                     )}
@@ -3133,6 +3134,7 @@ function DanfePreview({
     total,
     modFrete,
     infCpl,
+    infAdFisco,
 }: {
     operation: string;
     purpose: string;
@@ -3142,7 +3144,17 @@ function DanfePreview({
     total: number;
     modFrete: string;
     infCpl: string;
+    infAdFisco: string;
 }) {
+    const modFreteLabel: Record<string, string> = {
+        "0": "Por conta do emitente",
+        "1": "Por conta do destinatário",
+        "2": "Por conta de terceiros",
+        "3": "Transporte próprio por conta do remetente",
+        "4": "Transporte próprio por conta do destinatário",
+        "9": "Sem ocorrência de transporte",
+    };
+
     return (
         <div className="overflow-hidden rounded-2xl border-2 border-stone-300 bg-white">
             <div className="grid grid-cols-1 border-b-2 border-stone-300 md:grid-cols-[1fr_220px]">
@@ -3198,14 +3210,18 @@ function DanfePreview({
                 </table>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2">
+            <div className="grid grid-cols-1 md:grid-cols-3">
                 <div className="p-4">
                     <p className="text-[10px] font-black uppercase text-stone-400">Transporte</p>
-                    <p className="mt-1 text-sm font-bold text-stone-700">modFrete {modFrete}</p>
+                    <p className="mt-1 text-sm font-bold text-stone-700">{modFreteLabel[modFrete] || `Modalidade ${modFrete}`}</p>
                 </div>
                 <div className="border-t-2 border-stone-300 p-4 md:border-l-2 md:border-t-0">
-                    <p className="text-[10px] font-black uppercase text-stone-400">Informações complementares</p>
-                    <p className="mt-1 text-sm font-medium text-stone-600">{infCpl || "Sem observações comerciais."}</p>
+                    <p className="text-[10px] font-black uppercase text-stone-400">Informacoes complementares</p>
+                    <p className="mt-1 text-sm font-medium text-stone-600">{infCpl || "Sem observacoes comerciais."}</p>
+                </div>
+                <div className="border-t-2 border-stone-300 p-4 md:border-l-2 md:border-t-0">
+                    <p className="text-[10px] font-black uppercase text-stone-400">Observacoes fiscais</p>
+                    <p className="mt-1 text-sm font-medium text-stone-600">{infAdFisco || "Sem observacoes fiscais."}</p>
                 </div>
             </div>
         </div>
