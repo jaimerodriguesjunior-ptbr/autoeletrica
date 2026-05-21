@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
@@ -25,10 +25,12 @@ import {
     Truck,
     UserPlus,
     Warehouse,
+    MessageCircle,
 } from "lucide-react";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { createClient } from "@/src/lib/supabase";
 import { auditarNFeAssistidaComIaAction } from "@/src/actions/fiscal_ai_audit";
+import { resolvePlaybook } from "@/src/lib/fiscal_audit_playbook";
 import { emitirNFeAssistidaUiAction, emitirNFeBonificacaoDoacaoUiAction, emitirNFeDevolucaoAction, emitirNFeRemessaConsertoUiAction, emitirNFeRemessaGarantiaUiAction, emitirNFeRetornoConsertoUiAction, emitirNFeRetornoGarantiaUiAction, emitirNFeTransferenciaUiAction, emitirNFeVendaAction } from "@/src/actions/fiscal_emission_actions";
 import { getEntryInvoiceWithItemsAction, getNFeInvoiceWithItemsAction, searchCloneableNFeInvoicesAction, searchProducts, type ParsedNFeItem } from "@/src/actions/fiscal_db";
 
@@ -66,12 +68,27 @@ type DraftItem = {
     codigo: string;
     descricao: string;
     ncm: string;
+    cest?: string;
     unidade: string;
     quantidade: number;
     valor_unitario: number;
     origem: string;
     cfop: string;
     csosn: string;
+    cbenef?: string;
+    ipi_cst?: string;
+    ipi_cenq?: string;
+    ipi_base?: number;
+    ipi_aliquota?: number;
+    ipi_valor?: number;
+    pis_cst?: string;
+    pis_base?: number;
+    pis_aliquota?: number;
+    pis_valor?: number;
+    cofins_cst?: string;
+    cofins_base?: number;
+    cofins_aliquota?: number;
+    cofins_valor?: number;
 };
 
 type ProductResult = {
@@ -247,6 +264,11 @@ function toArray<T>(value: T | T[] | undefined | null): T[] {
 function cloneItemFromDet(det: any): DraftItem {
     const prod = det?.prod || {};
     const icms = det?.imposto?.ICMS || {};
+    const ipi = det?.imposto?.IPI || {};
+    const ipiTrib = ipi?.IPITrib || {};
+    const ipiNt = ipi?.IPINT || {};
+    const pisOutr = det?.imposto?.PIS?.PISOutr || {};
+    const cofinsOutr = det?.imposto?.COFINS?.COFINSOutr || {};
     const icmsKey = Object.keys(icms)[0] || "";
     const icmsPayload = icmsKey ? (icms[icmsKey] || {}) : {};
     return {
@@ -260,6 +282,21 @@ function cloneItemFromDet(det: any): DraftItem {
         origem: String(icmsPayload.orig ?? "0"),
         cfop: String(prod.CFOP || ""),
         csosn: String(icmsPayload.CSOSN || icmsPayload.CST || "102"),
+        cest: String(prod.CEST || ""),
+        cbenef: String(prod.cBenef || ""),
+        ipi_cst: String(ipiTrib.CST || ipiNt.CST || ""),
+        ipi_cenq: String(ipi?.cEnq || ""),
+        ipi_base: Number(ipiTrib.vBC || 0),
+        ipi_aliquota: Number(ipiTrib.pIPI || 0),
+        ipi_valor: Number(ipiTrib.vIPI || 0),
+        pis_cst: String(pisOutr.CST || "99"),
+        pis_base: Number(pisOutr.vBC || 0),
+        pis_aliquota: Number(pisOutr.pPIS || 0),
+        pis_valor: Number(pisOutr.vPIS || 0),
+        cofins_cst: String(cofinsOutr.CST || "99"),
+        cofins_base: Number(cofinsOutr.vBC || 0),
+        cofins_aliquota: Number(cofinsOutr.pCOFINS || 0),
+        cofins_valor: Number(cofinsOutr.vCOFINS || 0),
     };
 }
 
@@ -347,8 +384,81 @@ function makeItem(): DraftItem {
         origem: "0",
         cfop: "",
         csosn: "102",
+        cest: "",
+        cbenef: "",
+        ipi_cst: "",
+        ipi_cenq: "999",
+        ipi_base: 0,
+        ipi_aliquota: 0,
+        ipi_valor: 0,
+        pis_cst: "99",
+        pis_base: 0,
+        pis_aliquota: 0,
+        pis_valor: 0,
+        cofins_cst: "99",
+        cofins_base: 0,
+        cofins_aliquota: 0,
+        cofins_valor: 0,
     };
 }
+
+function inferOperationFromClonedNFe(infNFe: any): {
+    operation: OperationGroup;
+    purpose: string;
+    advancedNature?: string;
+    advancedTpNF?: "0" | "1";
+    advancedFinNFe?: "1" | "2" | "3" | "4";
+} {
+    const ide = infNFe?.ide || {};
+    const natOp = String(ide?.natOp || "").toUpperCase();
+    const tpNF = String(ide?.tpNF ?? "1") as "0" | "1";
+    const finNFe = String(ide?.finNFe ?? "1") as "1" | "2" | "3" | "4";
+
+    if (natOp.includes("DEVOL")) return { operation: "return", purpose: "Devolução de compra" };
+    if (natOp.includes("TRANSFER")) {
+        if (natOp.includes("RETORNO") && natOp.includes("DEPOS")) return { operation: "transfer", purpose: "Retorno de depósito" };
+        if (natOp.includes("DEPOS")) return { operation: "transfer", purpose: "Transferência para depósito" };
+        return { operation: "transfer", purpose: "Transferência entre filiais" };
+    }
+    if (natOp.includes("CONSERTO")) {
+        if (natOp.includes("RETORNO")) return { operation: "shipment", purpose: "Retorno de conserto" };
+        return { operation: "shipment", purpose: "Remessa para conserto" };
+    }
+    if (natOp.includes("GARANT")) {
+        if (natOp.includes("RETORNO")) return { operation: "shipment", purpose: "Retorno de garantia" };
+        return { operation: "shipment", purpose: "Remessa em garantia" };
+    }
+    if (natOp.includes("BONIFIC")) return { operation: "bonus", purpose: "Bonificação" };
+    if (natOp.includes("BRINDE")) return { operation: "bonus", purpose: "Brinde" };
+    if (natOp.includes("DOAC")) return { operation: "bonus", purpose: "Doação" };
+    if (natOp.includes("VENDA")) return { operation: "sale", purpose: "Venda comum" };
+
+    return {
+        operation: "advanced",
+        purpose: "Operação avançada",
+        advancedNature: String(ide?.natOp || ""),
+        advancedTpNF: tpNF,
+        advancedFinNFe: finNFe,
+    };
+}
+
+function formatAiAuditForDisplay(text: string | null) {
+    if (!text) return "";
+    return text
+        .replace(/\s+Resumo:/g, "\nResumo:")
+        .replace(/\s+Revisar:/g, "\nRevisar:")
+        .replace(/\s+Problema:/g, "\nProblema:")
+        .replace(/\s+Impacto:/g, "\nImpacto:")
+        .replace(/\s+Solução A:/g, "\nSolução A:")
+        .replace(/\s+Solução B:/g, "\nSolução B:")
+        .replace(/\s+Confirmar com contador:/g, "\nConfirmar com contador:")
+        .replace(/\s+Opções de ajuste:/g, "\nOpções de ajuste:")
+        .replace(/\s+Ponto extra:/g, "\nPonto extra:")
+        .replace(/\s+Aviso:/g, "\nAviso:")
+        .trim();
+}
+
+const AUDIT_UI_VERSION = "AUDIT_UI_V2_WA_2026-05-21";
 
 export default function NFeCompletaPage() {
     const { profile } = useAuth();
@@ -394,6 +504,10 @@ export default function NFeCompletaPage() {
     const [infCpl, setInfCpl] = useState("");
     const [infAdFisco, setInfAdFisco] = useState("");
     const [aiAudit, setAiAudit] = useState<string | null>(null);
+    const [aiAuditStatus, setAiAuditStatus] = useState<"parece_correta" | "atencao" | "inconsistente" | null>(null);
+    const [aiAuditLoading, setAiAuditLoading] = useState(false);
+    const [advancedAuditReady, setAdvancedAuditReady] = useState(false);
+    const [advancedAuditConfirmed, setAdvancedAuditConfirmed] = useState(false);
     const [emitting, setEmitting] = useState(false);
     const [cloneModalOpen, setCloneModalOpen] = useState(false);
     const [cloneSearch, setCloneSearch] = useState("");
@@ -434,6 +548,66 @@ export default function NFeCompletaPage() {
     const isTransferDepositFlow = operation === "transfer" && (purpose === "Transferência para depósito" || purpose === "Retorno de depósito");
     const transferHasDifferentRoot = Boolean(companyCnpjBase && participantCnpjBase && companyCnpjBase !== participantCnpjBase);
 
+    const buildConciseAiAuditText = (audit: Awaited<ReturnType<typeof auditarNFeAssistidaComIaAction>>) => {
+        const result = audit.audit;
+        if (!result) {
+            const fallback = resolvePlaybook([]);
+            return [
+                "Status: Atenção.",
+                `Problema: ${fallback.problem}`,
+                `Impacto: ${fallback.impact}`,
+                `Solução A: ${fallback.solutionA}`,
+                `Solução B: ${fallback.solutionB}`,
+                `Confirmar com contador: ${fallback.confirmWithAccountant}`,
+            ].join("\n");
+        }
+
+        const statusLabel: Record<string, string> = {
+            parece_correta: "Parece coerente",
+            atencao: "Atenção",
+            inconsistente: "Inconsistente",
+        };
+
+        const findings = [...(result.inconsistencias || []), ...(result.confirmar_contador || [])];
+        const bullets = findings
+            .slice(0, 3)
+            .map((item) => item?.titulo?.trim())
+            .filter(Boolean) as string[];
+        const playbook = resolvePlaybook([result.resumo || "", ...bullets, ...findings.map((item) => `${item?.titulo || ""} ${item?.detalhe || ""} ${item?.sugestao || ""}`)]);
+
+        const lines = [
+            `Status: ${statusLabel[result.status] || "Atenção"}.`,
+            `Problema: ${playbook.problem}`,
+            `Impacto: ${playbook.impact}`,
+            `Solução A: ${playbook.solutionA}`,
+            `Solução B: ${playbook.solutionB}`,
+            `Confirmar com contador: ${playbook.confirmWithAccountant}`,
+            bullets.length > 0 ? `Contexto detectado: ${bullets.join(" x ")}` : "",
+        ].filter(Boolean);
+
+        return lines.join("\n");
+    };
+
+    const buildWhatsAppAuditMessage = () => {
+        const lines = [
+            "Olá, contador. Preciso de orientação nesta NF-e assistida.",
+            "",
+            `Operação: ${currentOperation.title} - ${purpose}`,
+            `Ambiente: ${environment === "production" ? "Produção" : "Homologação"}`,
+            `Participante: ${participant.nome || "Não informado"}`,
+            `Total: ${money(displayTotal)}`,
+            "",
+            "Auditoria automática identificou:",
+            formatAiAuditForDisplay(aiAudit || "Sem detalhes da auditoria."),
+        ];
+        return lines.join("\n");
+    };
+
+    const sendAuditToWhatsApp = () => {
+        const message = encodeURIComponent(buildWhatsAppAuditMessage());
+        window.open(`https://wa.me/?text=${message}`, "_blank");
+    };
+
     useEffect(() => {
         const loadCompany = async () => {
             if (!profile?.organization_id) return;
@@ -455,6 +629,9 @@ export default function NFeCompletaPage() {
         const op = OPERATIONS.find((item) => item.id === operation);
         setPurpose(op?.purposes[0] || "");
         setAiAudit(null);
+        setAiAuditStatus(null);
+        setAdvancedAuditReady(false);
+        setAdvancedAuditConfirmed(false);
         if (operation !== "advanced") {
             setAdvancedNature("");
             setAdvancedTpNF("1");
@@ -472,6 +649,27 @@ export default function NFeCompletaPage() {
         setOriginSearchStarted(false);
         setLegacyGuaranteeInvoices([]);
     }, [operation, purpose]);
+
+    useEffect(() => {
+        if (operation !== "advanced") return;
+        if (!advancedAuditReady) return;
+        setAdvancedAuditReady(false);
+        setAdvancedAuditConfirmed(false);
+    }, [
+        operation,
+        environment,
+        advancedNature,
+        advancedTpNF,
+        advancedFinNFe,
+        participant,
+        items,
+        modFrete,
+        carrierName,
+        carrierDoc,
+        volumes,
+        infCpl,
+        infAdFisco,
+    ]);
 
     useEffect(() => {
         if (!profile?.organization_id || !requiresReference) return;
@@ -936,7 +1134,7 @@ export default function NFeCompletaPage() {
 
     const collectTemplateOverrideWarnings = () => {
         const warnings: string[] = [];
-        const defaultCsosn = isVendaComumMvp ? "102" : "400";
+        const defaultCsosn = "102";
 
         if (operation === "advanced" || operation === "return") return warnings;
 
@@ -947,7 +1145,7 @@ export default function NFeCompletaPage() {
             if ((item.origem || "0") !== "0") {
                 warnings.push(`Item ${index + 1}: origem alterada para ${item.origem}.`);
             }
-            if ((item.csosn || defaultCsosn) !== defaultCsosn) {
+            if (isVendaComumMvp && (item.csosn || defaultCsosn) !== defaultCsosn) {
                 warnings.push(`Item ${index + 1}: CSOSN/CST alterado para ${item.csosn}.`);
             }
         });
@@ -960,7 +1158,13 @@ export default function NFeCompletaPage() {
     };
 
     const runAutoAiAuditForAdvanced = async () => {
-        const payload = {
+        setAiAuditLoading(true);
+        setAdvancedAuditReady(false);
+        setAdvancedAuditConfirmed(false);
+        setAiAuditStatus(null);
+        setAiAudit("Contador virtual analisando a nota...");
+        try {
+            const payload = {
             ambiente: environment,
             operacao: operation,
             natureza: advancedNature,
@@ -996,24 +1200,25 @@ export default function NFeCompletaPage() {
             total: Number(totalItems.toFixed(2)),
         };
 
-        const audit = await auditarNFeAssistidaComIaAction(payload);
-        if (!audit.success) {
-            setAiAudit(`Falha ao auditar com IA: ${audit.error || "erro desconhecido"}`);
+            const audit = await auditarNFeAssistidaComIaAction(payload);
+            if (!audit.success) {
+                setAiAudit(`Falha ao auditar com IA: ${audit.error || "erro desconhecido"}`);
+                setAiAuditStatus("atencao");
+                return { ok: true, severe: false };
+            }
+
+            setAiAudit(buildConciseAiAuditText(audit));
+            setAiAuditStatus(audit.audit?.status || "atencao");
+            setAdvancedAuditReady(true);
+
             return { ok: true, severe: false };
+        } catch (error) {
+            setAiAudit(`Falha ao auditar com IA: ${error instanceof Error ? error.message : "erro desconhecido"}`);
+            setAiAuditStatus("atencao");
+            return { ok: true, severe: false };
+        } finally {
+            setAiAuditLoading(false);
         }
-
-        setAiAudit(audit.text || "Auditoria concluida.");
-        const severe = audit.audit?.status === "inconsistente";
-        if (severe) {
-            const proceed = confirm(
-                "A auditoria por IA encontrou inconsistencias provaveis.\n\n" +
-                "Revise o bloco 'Auditoria por IA' e confirme apenas se houve validacao com o contador.\n\n" +
-                "Deseja continuar mesmo assim?"
-            );
-            return { ok: proceed, severe: true };
-        }
-
-        return { ok: true, severe: false };
     };
 
     const applyCloneInvoice = async (invoice: CloneInvoiceSummary) => {
@@ -1026,13 +1231,22 @@ export default function NFeCompletaPage() {
         const infNFe = data.invoice.payload_json.infNFe;
         const dest = infNFe.dest || {};
         const detList = toArray<any>(infNFe.det);
+        const inferred = inferOperationFromClonedNFe(infNFe);
 
+        setOperation(inferred.operation);
+        setPurpose(inferred.purpose);
+        if (inferred.operation === "advanced") {
+            setAdvancedNature(inferred.advancedNature || "");
+            setAdvancedTpNF(inferred.advancedTpNF || "1");
+            setAdvancedFinNFe(inferred.advancedFinNFe || "1");
+        }
         setParticipant(participantFromNFeDest(dest));
         setParticipantMode("manual");
         setItems(detList.length > 0 ? detList.map((det) => cloneItemFromDet(det)) : [makeItem()]);
         setModFrete(String(infNFe?.transp?.modFrete ?? "9"));
         setInfCpl(String(infNFe?.infAdic?.infCpl || ""));
         setAiAudit(null);
+        setAiAuditStatus(null);
         setClonedFrom(invoice);
         setStep("review");
         setCloneModalOpen(false);
@@ -1556,6 +1770,21 @@ export default function NFeCompletaPage() {
                     valor_total: Number((item.quantidade * item.valor_unitario).toFixed(2)),
                     csosn: item.csosn,
                     origem: item.origem,
+                    cest: item.cest || undefined,
+                    cbenef: item.cbenef || undefined,
+                    ipi_cst: item.ipi_cst || undefined,
+                    ipi_cenq: item.ipi_cenq || undefined,
+                    ipi_base: Number(item.ipi_base || 0),
+                    ipi_aliquota: Number(item.ipi_aliquota || 0),
+                    ipi_valor: Number(item.ipi_valor || 0),
+                    pis_cst: item.pis_cst || "99",
+                    pis_base: Number(item.pis_base || 0),
+                    pis_aliquota: Number(item.pis_aliquota || 0),
+                    pis_valor: Number(item.pis_valor || 0),
+                    cofins_cst: item.cofins_cst || "99",
+                    cofins_base: Number(item.cofins_base || 0),
+                    cofins_aliquota: Number(item.cofins_aliquota || 0),
+                    cofins_valor: Number(item.cofins_valor || 0),
                 })),
                 valor_total: Number(totalItems.toFixed(2)),
                 meio_pagamento: "90",
@@ -1580,11 +1809,12 @@ export default function NFeCompletaPage() {
     };
 
     const handleEmitirNFe = async () => {
+        if (emitting || aiAuditLoading) return;
         if (operation !== "advanced") {
             const warnings = collectTemplateOverrideWarnings();
             if (warnings.length > 0) {
                 const proceed = confirm(
-                    "Existem par?metros t?cnicos alterados na pr?-emiss?o:\n\n" +
+                    "Existem parâmetros técnicos alterados na pré-emissão:\n\n" +
                     warnings.map((item) => `- ${item}`).join("\n") +
                     "\n\nConfirme apenas se esses ajustes foram revisados com o contador.\n\nDeseja emitir mesmo assim?"
                 );
@@ -1618,9 +1848,12 @@ export default function NFeCompletaPage() {
         }
 
         if (operation === "advanced") {
-            const audit = await runAutoAiAuditForAdvanced();
-            if (!audit.ok) return;
-            handleEmitirAssistida();
+            if (!advancedAuditReady || !advancedAuditConfirmed) {
+                await runAutoAiAuditForAdvanced();
+                setEmitting(false);
+                return;
+            }
+            await handleEmitirAssistida();
             return;
         }
 
@@ -2283,6 +2516,74 @@ export default function NFeCompletaPage() {
                                                 <p className="mt-1 text-2xl font-black text-[#1A1A1A]">{money(item.quantidade * item.valor_unitario)}</p>
                                             </div>
                                         </div>
+
+                                        {operation === "advanced" && (
+                                            <div className="mt-4 space-y-3 rounded-xl border border-stone-200 bg-white p-3">
+                                                <p className="text-[11px] font-black uppercase tracking-wide text-stone-500">Tributação avançada</p>
+                                                <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>CEST</label>
+                                                        <input value={item.cest || ""} onChange={(e) => updateItem(item.id, { cest: e.target.value })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>cBenef</label>
+                                                        <input value={item.cbenef || ""} onChange={(e) => updateItem(item.id, { cbenef: e.target.value })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>IPI CST</label>
+                                                        <input value={item.ipi_cst || ""} onChange={(e) => updateItem(item.id, { ipi_cst: e.target.value })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>IPI cEnq</label>
+                                                        <input value={item.ipi_cenq || ""} onChange={(e) => updateItem(item.id, { ipi_cenq: e.target.value })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-4">
+                                                        <label className={itemLabelClass}>Base IPI</label>
+                                                        <input type="number" step="0.01" value={item.ipi_base ?? 0} onChange={(e) => updateItem(item.id, { ipi_base: Number(e.target.value) })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-4">
+                                                        <label className={itemLabelClass}>Alíquota IPI</label>
+                                                        <input type="number" step="0.01" value={item.ipi_aliquota ?? 0} onChange={(e) => updateItem(item.id, { ipi_aliquota: Number(e.target.value) })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-4">
+                                                        <label className={itemLabelClass}>Valor IPI</label>
+                                                        <input type="number" step="0.01" value={item.ipi_valor ?? 0} onChange={(e) => updateItem(item.id, { ipi_valor: Number(e.target.value) })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>PIS CST</label>
+                                                        <input value={item.pis_cst || "99"} onChange={(e) => updateItem(item.id, { pis_cst: e.target.value })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>Base PIS</label>
+                                                        <input type="number" step="0.01" value={item.pis_base ?? 0} onChange={(e) => updateItem(item.id, { pis_base: Number(e.target.value) })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>Alíquota PIS</label>
+                                                        <input type="number" step="0.01" value={item.pis_aliquota ?? 0} onChange={(e) => updateItem(item.id, { pis_aliquota: Number(e.target.value) })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>Valor PIS</label>
+                                                        <input type="number" step="0.01" value={item.pis_valor ?? 0} onChange={(e) => updateItem(item.id, { pis_valor: Number(e.target.value) })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>COFINS CST</label>
+                                                        <input value={item.cofins_cst || "99"} onChange={(e) => updateItem(item.id, { cofins_cst: e.target.value })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>Base COFINS</label>
+                                                        <input type="number" step="0.01" value={item.cofins_base ?? 0} onChange={(e) => updateItem(item.id, { cofins_base: Number(e.target.value) })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>Alíquota COFINS</label>
+                                                        <input type="number" step="0.01" value={item.cofins_aliquota ?? 0} onChange={(e) => updateItem(item.id, { cofins_aliquota: Number(e.target.value) })} className={itemFieldClass} />
+                                                    </div>
+                                                    <div className="xl:col-span-3">
+                                                        <label className={itemLabelClass}>Valor COFINS</label>
+                                                        <input type="number" step="0.01" value={item.cofins_valor ?? 0} onChange={(e) => updateItem(item.id, { cofins_valor: Number(e.target.value) })} className={itemFieldClass} />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -2350,9 +2651,10 @@ export default function NFeCompletaPage() {
                                             : "Confira o rascunho. Esta finalidade ainda n\u00e3o transmite NF-e."}
                                     </p>
                                 </div>
-                                {operation === "advanced" && (
-                                    <span className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700">
-                                        {"IA ser\u00e1 executada automaticamente ao emitir"}
+                                {operation === "advanced" && aiAuditLoading && (
+                                    <span className="inline-flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700">
+                                        <Loader2 size={14} className="animate-spin" />
+                                        Contador virtual analisando a nota...
                                     </span>
                                 )}
                             </div>
@@ -2374,9 +2676,42 @@ export default function NFeCompletaPage() {
 
                             {aiAudit && (
                                 <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                                    <p className="font-black text-blue-700">Auditoria por IA</p>
-                                    <p className="mt-1 text-sm font-medium text-blue-700">{aiAudit}</p>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <p className="font-black text-blue-700">Auditoria por IA</p>
+                                        <span className="rounded-md border border-blue-200 bg-white px-2 py-1 text-[10px] font-black text-blue-700">
+                                            {AUDIT_UI_VERSION}
+                                        </span>
+                                    </div>
+                                    <p className="mt-1 whitespace-pre-line text-sm font-medium text-blue-700">{formatAiAuditForDisplay(aiAudit)}</p>
+                                    <button
+                                        type="button"
+                                        onClick={sendAuditToWhatsApp}
+                                        className="mt-3 inline-flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-black text-green-700 hover:bg-green-100"
+                                    >
+                                        <MessageCircle size={14} />
+                                        Enviar para contador no WhatsApp
+                                    </button>
+                                    <div
+                                        className={`mt-3 rounded-lg border px-3 py-2 text-xs font-bold ${
+                                            aiAuditStatus === "inconsistente"
+                                                ? "border-amber-200 bg-amber-50 text-amber-800"
+                                                : "border-stone-200 bg-white text-stone-600"
+                                        }`}
+                                    >
+                                        Aviso: A IA não substitui a revisão do contador.
+                                    </div>
                                 </div>
+                            )}
+                            {operation === "advanced" && advancedAuditReady && !aiAuditLoading && (
+                                <label className="flex items-start gap-2 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm font-medium text-stone-700">
+                                    <input
+                                        type="checkbox"
+                                        checked={advancedAuditConfirmed}
+                                        onChange={(e) => setAdvancedAuditConfirmed(e.target.checked)}
+                                        className="mt-0.5 h-4 w-4 accent-[#1A1A1A]"
+                                    />
+                                    Já verifiquei as inconsistências com meu contador e quero emitir a nota.
+                                </label>
                             )}
 
                             {usesOriginItems && (
@@ -2437,12 +2772,32 @@ export default function NFeCompletaPage() {
                         ) : (
                             <button
                                 type="button"
-                                disabled={pending.length > 0 || emitting}
+                                disabled={pending.length > 0 || emitting || aiAuditLoading}
                                 onClick={handleEmitirNFe}
                                 className="flex items-center gap-2 rounded-xl bg-[#FACC15] px-4 py-2 text-sm font-black text-[#1A1A1A] transition hover:bg-yellow-300 disabled:opacity-40"
                             >
-                                {emitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                                {emitting ? "Emitindo..." : operation === "return" ? "Emitir NF-e de Devolução" : isVendaComumMvp ? "Emitir NF-e de Venda" : (isRemessaConsertoMvp || isRemessaGarantiaMvp) ? "Emitir NF-e de Remessa" : (isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "Emitir NF-e de Retorno" : isTransferenciaMvp ? "Emitir NF-e de Transferência" : isBonusMvp ? "Emitir NF-e de Bonificação/Doação" : operation === "advanced" ? "Emitir NF-e assistida" : "Emissão indisponível"}
+                                {(emitting || aiAuditLoading) ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                                {aiAuditLoading
+                                    ? "Contador virtual analisando..."
+                                    : emitting
+                                        ? "Emitindo..."
+                                        : operation === "advanced" && (!advancedAuditReady || !advancedAuditConfirmed)
+                                            ? "Revisão final"
+                                        : operation === "return"
+                                            ? "Emitir NF-e de Devolução"
+                                            : isVendaComumMvp
+                                                ? "Emitir NF-e de Venda"
+                                                : (isRemessaConsertoMvp || isRemessaGarantiaMvp)
+                                                    ? "Emitir NF-e de Remessa"
+                                                    : (isRetornoConsertoMvp || isRetornoGarantiaMvp)
+                                                        ? "Emitir NF-e de Retorno"
+                                                        : isTransferenciaMvp
+                                                            ? "Emitir NF-e de Transferência"
+                                                            : isBonusMvp
+                                                                ? "Emitir NF-e de Bonificação/Doação"
+                                                                : operation === "advanced"
+                                                                    ? "Emitir NF-e assistida"
+                                                                    : "Emissão indisponível"}
                             </button>
                         )}
                     </div>
@@ -2545,6 +2900,45 @@ function CloneInvoiceModal({
     onClose: () => void;
     onSelect: (invoice: CloneInvoiceSummary) => void;
 }) {
+    const getCloneTaxSummary = (invoice: CloneInvoiceSummary) => {
+        const detRaw = invoice.payload_json?.infNFe?.det;
+        const detList = Array.isArray(detRaw) ? detRaw : detRaw ? [detRaw] : [];
+        if (detList.length === 0) return null;
+
+        let hasIpi = false;
+        let hasPis = false;
+        let hasCofins = false;
+        let hasCest = false;
+        let hasCBenef = false;
+
+        for (const det of detList) {
+            const prod = det?.prod || {};
+            const imposto = det?.imposto || {};
+            const ipi = imposto?.IPI || {};
+            const ipiTrib = ipi?.IPITrib || {};
+            const ipiNt = ipi?.IPINT || {};
+            const pisOutr = imposto?.PIS?.PISOutr || {};
+            const cofinsOutr = imposto?.COFINS?.COFINSOutr || {};
+
+            if (prod?.CEST) hasCest = true;
+            if (prod?.cBenef) hasCBenef = true;
+            if (ipiTrib?.CST || ipiNt?.CST || ipi?.cEnq || Number(ipiTrib?.vBC || 0) > 0 || Number(ipiTrib?.pIPI || 0) > 0 || Number(ipiTrib?.vIPI || 0) > 0) hasIpi = true;
+            if (pisOutr?.CST || Number(pisOutr?.vBC || 0) > 0 || Number(pisOutr?.pPIS || 0) > 0 || Number(pisOutr?.vPIS || 0) > 0) hasPis = true;
+            if (cofinsOutr?.CST || Number(cofinsOutr?.vBC || 0) > 0 || Number(cofinsOutr?.pCOFINS || 0) > 0 || Number(cofinsOutr?.vCOFINS || 0) > 0) hasCofins = true;
+        }
+
+        const tags = [
+            hasCest ? "CEST" : "",
+            hasCBenef ? "cBenef" : "",
+            hasIpi ? "IPI" : "",
+            hasPis ? "PIS" : "",
+            hasCofins ? "COFINS" : "",
+        ].filter(Boolean);
+
+        if (tags.length === 0) return null;
+        return tags.join(" • ");
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="max-h-[86vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -2582,10 +2976,20 @@ function CloneInvoiceModal({
                         <div className="space-y-2">
                             {invoices.map((invoice) => (
                                 <button key={invoice.id} type="button" onClick={() => onSelect(invoice)} className="w-full rounded-xl border border-stone-200 bg-white p-3 text-left transition hover:border-[#FACC15] hover:bg-yellow-50/40">
+                                    {(() => {
+                                        const taxSummary = getCloneTaxSummary(invoice);
+                                        const inferred = inferOperationFromClonedNFe(invoice.payload_json?.infNFe || {});
+                                        return (
                                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                         <div>
                                             <p className="font-black text-[#1A1A1A]">NF {invoice.numero || "-"} {invoice.serie ? `Serie ${invoice.serie}` : ""}</p>
                                             <p className="mt-1 text-xs font-bold text-stone-500">{invoice.destinatario_nome || "Destinatário sem nome"} | {invoice.destinatario_cnpj || "Documento pendente"}</p>
+                                            <p className="mt-1 text-[11px] font-black text-blue-700">
+                                                Tipo: {OPERATIONS.find((op) => op.id === inferred.operation)?.title || "Outra operação"} - {inferred.purpose}
+                                            </p>
+                                            {taxSummary && (
+                                                <p className="mt-1 text-[11px] font-black text-amber-700">Campos fiscais: {taxSummary}</p>
+                                            )}
                                         </div>
                                         <div className="text-right">
                                             <p className="text-sm font-black text-[#1A1A1A]">{money(Number(invoice.valor_total || 0))}</p>
@@ -2594,6 +2998,8 @@ function CloneInvoiceModal({
                                             </p>
                                         </div>
                                     </div>
+                                        );
+                                    })()}
                                 </button>
                             ))}
                         </div>
@@ -2879,7 +3285,7 @@ function ShipmentTechnicalPreview({
         <div className={`rounded-2xl border p-4 ${canEmit ? "border-green-100 bg-green-50" : "border-blue-100 bg-blue-50"}`}>
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                 <div>
-                    <p className={`font-black ${canEmit ? "text-green-800" : "text-blue-800"}`}>Pr?via t?cnica de Remessa/Retorno</p>
+                    <p className={`font-black ${canEmit ? "text-green-800" : "text-blue-800"}`}>Prévia técnica de Remessa/Retorno</p>
                     <p className={`mt-1 text-sm font-medium ${canEmit ? "text-green-700" : "text-blue-700"}`}>
                         {canEmit
                             ? "Esta finalidade esta pronta para transmissao: nota sem cobranca, CFOP automatico e impostos sem destaque."
@@ -2935,7 +3341,7 @@ function BlockedOperationTechnicalPreview({
     total: number;
 }) {
     const status = getOperationRuleStatus(operation, purpose);
-    const title = operation === "transfer" ? "Pr?via t?cnica de Transfer?ncia" : "Pr?via t?cnica de Bonifica??o/Doa??o";
+    const title = operation === "transfer" ? "Prévia técnica de Transferência" : "Prévia técnica de Bonificação/Doação";
 
     return (
         <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
@@ -3118,7 +3524,7 @@ function DanfePreview({
         <div className="overflow-hidden rounded-2xl border-2 border-stone-300 bg-white">
             <div className="grid grid-cols-1 border-b-2 border-stone-300 md:grid-cols-[1fr_220px]">
                 <div className="p-4">
-                    <p className="text-[10px] font-black uppercase text-stone-400">Previa estilo DANFE</p>
+                    <p className="text-[10px] font-black uppercase text-stone-400">Prévia estilo DANFE</p>
                     <h3 className="mt-1 text-lg font-black text-[#1A1A1A]">NF-e - {operation}</h3>
                     <p className="text-sm font-medium text-stone-500">{purpose} | {destinationLabel}</p>
                 </div>

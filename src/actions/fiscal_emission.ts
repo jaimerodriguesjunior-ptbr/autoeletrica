@@ -2407,14 +2407,20 @@ export async function emitirNFeBonificacaoDoacao(payload: EmissionPayload & { ob
         const mesmoEstado = !destinatarioUF || destinatarioUF === emitenteUF;
         const prefix = mesmoEstado ? "5" : "6";
         const cfop = `${prefix}910`;
-        const natOp = payload.finalidade_bonus === "Bonificacao"
+        const finalidadeBonusNormalizada = String(payload.finalidade_bonus || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .trim()
+            .toLowerCase();
+
+        const natOp = finalidadeBonusNormalizada === "bonificacao"
             ? "BONIFICACAO"
-            : payload.finalidade_bonus === "Brinde"
+            : finalidadeBonusNormalizada === "brinde"
                 ? "REMESSA DE BRINDE"
                 : "DOACAO";
-        const observacaoPadrao = payload.finalidade_bonus === "Doacao"
+        const observacaoPadrao = finalidadeBonusNormalizada === "doacao"
             ? "SAIDA EM DOACAO SEM COBRANCA."
-            : payload.finalidade_bonus === "Brinde"
+            : finalidadeBonusNormalizada === "brinde"
                 ? "SAIDA DE BRINDE SEM COBRANCA."
                 : "SAIDA EM BONIFICACAO SEM COBRANCA.";
 
