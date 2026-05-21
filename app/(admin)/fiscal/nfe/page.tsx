@@ -720,11 +720,11 @@ export default function NFeCompletaPage() {
             if (!isRetornoConsertoMvp && !isRetornoGarantiaMvp && !isRetornoDepositoMvp) {
                 if (items.length === 0) issues.push("Adicione ao menos um item.");
                 items.forEach((item, index) => {
-                    if (!item.descricao.trim()) issues.push(`Item ${index + 1}: informe a descricao.`);
-                    if (!/^\d{8}$/.test(digits(item.ncm))) issues.push(`Item ${index + 1}: informe NCM valido.`);
+                    if (!item.descricao.trim()) issues.push(`Item ${index + 1}: informe a descrição.`);
+                    if (!/^\d{8}$/.test(digits(item.ncm))) issues.push(`Item ${index + 1}: informe NCM válido.`);
                     if (!item.cfop || digits(item.cfop).length !== 4) issues.push(`Item ${index + 1}: CFOP pendente.`);
                     if (item.quantidade <= 0) issues.push(`Item ${index + 1}: quantidade deve ser maior que zero.`);
-                    if (item.valor_unitario < 0) issues.push(`Item ${index + 1}: valor unitario invalido.`);
+                    if (item.valor_unitario < 0) issues.push(`Item ${index + 1}: valor unitário inválido.`);
                 });
             }
         }
@@ -2196,7 +2196,7 @@ export default function NFeCompletaPage() {
                                     <p className="text-sm text-stone-500">
                                         {usesOriginItems
                                             ? "Selecione os itens da nota de origem e as quantidades desta emissão."
-                                            : "Tributacao e CFOP sao tratados por item."}
+                                            : "Tributação e CFOP são tratados por item."}
                                     </p>
                                 </div>
                                 {!usesOriginItems && (
@@ -2236,7 +2236,7 @@ export default function NFeCompletaPage() {
 
                                         <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
                                             <div className="xl:col-span-12">
-                                                <label className={itemLabelClass}>Descricao</label>
+                                                <label className={itemLabelClass}>Descrição</label>
                                                 <div className="relative">
                                                     <input
                                                         value={item.descricao}
@@ -2734,7 +2734,7 @@ function ReturnItemsTable({
             <div className="rounded-2xl border border-amber-100 bg-amber-50 p-6 text-sm font-medium text-amber-700">
                 {mode === "retorno"
                     ? "Selecione uma remessa para conserto na primeira etapa para carregar os itens do retorno."
-                    : "Selecione uma NF-e de entrada na primeira etapa para carregar os itens da devolu??o."}
+                    : "Selecione uma NF-e de entrada na primeira etapa para carregar os itens da devolução."}
             </div>
         );
     }
@@ -2748,7 +2748,7 @@ function ReturnItemsTable({
                 <p className="mt-1 text-xs font-medium text-stone-500">
                     {mode === "retorno"
                         ? "O retorno referencia a chave original e usa os itens do XML autorizado como base."
-                        : "A emiss?o usa o mesmo backend aprovado: os impostos/taxas s?o espelhados a partir do XML original."}
+                        : "A emissão usa o mesmo backend aprovado: os impostos/taxas são espelhados a partir do XML original."}
                 </p>
             </div>
             <div className="overflow-x-auto">
