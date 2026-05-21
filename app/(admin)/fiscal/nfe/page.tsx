@@ -110,11 +110,11 @@ type ReturnItemState = ParsedNFeItem & {
 };
 
 const STEPS: { id: StepId; label: string }[] = [
-    { id: "operation", label: "Operacao" },
+    { id: "operation", label: "Operação" },
     { id: "participant", label: "Participante" },
     { id: "items", label: "Itens" },
     { id: "transport", label: "Transporte" },
-    { id: "review", label: "Revisao" },
+    { id: "review", label: "Revisão" },
 ];
 
 const OPERATIONS: {
@@ -133,47 +133,47 @@ const OPERATIONS: {
     },
     {
         id: "return",
-        title: "Devolucao",
-        subtitle: "Devolucao de compra ou venda",
+        title: "Devolução",
+        subtitle: "Devolução de compra ou venda",
         icon: RotateCcw,
-        purposes: ["Devolucao de compra", "Devolucao de venda"],
+        purposes: ["Devolução de compra", "Devolução de venda"],
     },
     {
         id: "shipment",
         title: "Remessa/Retorno",
-        subtitle: "Garantia, conserto, demonstracao ou industrializacao",
+        subtitle: "Garantia, conserto, demonstração ou industrialização",
         icon: Repeat2,
         purposes: [
             "Remessa para conserto",
             "Retorno de conserto",
             "Remessa em garantia",
             "Retorno de garantia",
-            "Remessa para demonstracao",
-            "Retorno de demonstracao",
-            "Remessa para industrializacao",
-            "Retorno de industrializacao",
+            "Remessa para demonstração",
+            "Retorno de demonstração",
+            "Remessa para industrialização",
+            "Retorno de industrialização",
         ],
     },
     {
         id: "transfer",
-        title: "Transferencia",
-        subtitle: "Entre filiais ou depositos",
+        title: "Transferência",
+        subtitle: "Entre filiais ou depósitos",
         icon: Warehouse,
-        purposes: ["Transferencia entre filiais", "Transferencia para deposito", "Retorno de deposito"],
+        purposes: ["Transferência entre filiais", "Transferência para depósito", "Retorno de depósito"],
     },
     {
         id: "bonus",
-        title: "Bonificacao/Doacao",
-        subtitle: "Bonificacao, brinde ou doacao",
+        title: "Bonificação/Doação",
+        subtitle: "Bonificação, brinde ou doação",
         icon: Gift,
-        purposes: ["Bonificacao", "Brinde", "Doacao"],
+        purposes: ["Bonificação", "Brinde", "Doação"],
     },
     {
         id: "advanced",
-        title: "Outra operacao",
-        subtitle: "Modo avancado com validacoes",
+        title: "Outra operação",
+        subtitle: "Modo avançado com validações",
         icon: ShieldCheck,
-        purposes: ["Operacao avancada"],
+        purposes: ["Operação avançada"],
     },
 ];
 
@@ -279,14 +279,14 @@ function getGuidedCfop(operation: OperationGroup, purpose: string, isInterstate:
         if (purpose === "Retorno de conserto") return `${prefix}916`;
         if (purpose === "Remessa em garantia") return `${prefix}915`;
         if (purpose === "Retorno de garantia") return `${prefix}916`;
-        if (purpose === "Remessa para demonstracao") return `${prefix}912`;
-        if (purpose === "Retorno de demonstracao") return `${prefix}913`;
-        if (purpose === "Remessa para industrializacao") return `${prefix}901`;
-        if (purpose === "Retorno de industrializacao") return `${prefix}902`;
+        if (purpose === "Remessa para demonstração") return `${prefix}912`;
+        if (purpose === "Retorno de demonstração") return `${prefix}913`;
+        if (purpose === "Remessa para industrialização") return `${prefix}901`;
+        if (purpose === "Retorno de industrialização") return `${prefix}902`;
     }
 
     if (operation === "transfer") {
-        if (purpose === "Retorno de deposito") return `${prefix}153`;
+        if (purpose === "Retorno de depósito") return `${prefix}153`;
         return `${prefix}152`;
     }
 
@@ -296,20 +296,20 @@ function getGuidedCfop(operation: OperationGroup, purpose: string, isInterstate:
 function getOperationRuleStatus(operation: OperationGroup, purpose: string) {
     if (operation === "transfer") {
         return {
-            title: "Transferencia com emissao MVP",
-            detail: "Emissao liberada para transferencia entre filiais/depositos com CFOP guiado. Cenarios especiais devem ser alinhados com o contador.",
+            title: "Transferência com emissão MVP",
+            detail: "Emissão liberada para transferência entre filiais/depósitos com CFOP guiado. Cenários especiais devem ser alinhados com o contador.",
         };
     }
 
     if (operation === "bonus") {
         return {
-            title: "Bonificacao/Doacao com emissao MVP",
-            detail: "Emissao liberada para Bonificacao, Brinde e Doacao com CFOP guiado. Regras especiais permanecem sob validacao contabil.",
+            title: "Bonificação/Doação com emissão MVP",
+            detail: "Emissão liberada para Bonificação, Brinde e Doação com CFOP guiado. Regras especiais permanecem sob validação contábil.",
         };
     }
 
     return {
-        title: "Cenario ainda bloqueado para emissao",
+            title: "Cenário ainda bloqueado para emissão",
         detail: `A finalidade "${purpose}" precisa de parametrizacao fiscal antes da transmissao.`,
     };
 }
@@ -317,12 +317,12 @@ function getOperationRuleStatus(operation: OperationGroup, purpose: string) {
 function getShipmentRuleStatus(purpose: string) {
     if (purpose.includes("garantia")) {
         return {
-            title: "Sugestao inicial: tratar como conserto/garantia",
-            detail: "A tela sugere CFOP de conserto/reparo para remessa em garantia, mas a emissao real ainda precisa parametrizacao e validacao do contador.",
+            title: "Sugestão inicial: tratar como conserto/garantia",
+            detail: "A tela sugere CFOP de conserto/reparo para remessa em garantia, mas a emissão real ainda precisa parametrização e validação do contador.",
         };
     }
 
-    if (purpose.includes("industrializacao")) {
+    if (purpose.includes("industrialização")) {
         return {
             title: "Industrializacao exige regra propria",
             detail: "A sugestao de CFOP e apenas estrutural. Antes de emitir, sera necessario parametrizar retorno, insumos, cobranca e observacoes fiscais.",
@@ -410,18 +410,18 @@ export default function NFeCompletaPage() {
     const isRemessaGarantiaMvp = operation === "shipment" && purpose === "Remessa em garantia";
     const isRetornoConsertoMvp = operation === "shipment" && purpose === "Retorno de conserto";
     const isRetornoGarantiaMvp = operation === "shipment" && purpose === "Retorno de garantia";
-    const isRetornoDepositoMvp = operation === "transfer" && purpose === "Retorno de deposito";
-    const isTransferenciaMvp = operation === "transfer" && ["Transferencia entre filiais", "Transferencia para deposito", "Retorno de deposito"].includes(purpose);
-    const isBonusMvp = operation === "bonus" && ["Bonificacao", "Brinde", "Doacao"].includes(purpose);
+    const isRetornoDepositoMvp = operation === "transfer" && purpose === "Retorno de depósito";
+    const isTransferenciaMvp = operation === "transfer" && ["Transferência entre filiais", "Transferência para depósito", "Retorno de depósito"].includes(purpose);
+    const isBonusMvp = operation === "bonus" && ["Bonificação", "Brinde", "Doação"].includes(purpose);
     const isSalePurposeUnavailable = operation === "sale" && purpose !== "Venda comum";
-    const isReturnPurposeUnavailable = operation === "return" && purpose !== "Devolucao de compra";
+    const isReturnPurposeUnavailable = operation === "return" && purpose !== "Devolução de compra";
     const usesOriginItems = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp;
     const isEmissionSupported = isVendaComumMvp || isRemessaConsertoMvp || isRemessaGarantiaMvp || isRetornoConsertoMvp || isRetornoGarantiaMvp || isTransferenciaMvp || isBonusMvp;
     const destinationLabel = !participantUf || !companyUf
         ? "Aguardando endereco"
         : participantUf === companyUf
-            ? "Operacao interna"
-            : "Operacao interestadual";
+            ? "Operação interna"
+            : "Operação interestadual";
     const totalItems = items.reduce((sum, item) => sum + item.quantidade * item.valor_unitario, 0);
     const requiresReference = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp;
     const selectedReturnItems = returnItems.filter((item) => item.selected && item.qtd_devolver > 0);
@@ -430,8 +430,8 @@ export default function NFeCompletaPage() {
     const isReferenceSelectionPending = requiresReference && !selectedEntryInvoice;
     const shouldShowOriginSelector = requiresReference && !isReturnPurposeUnavailable;
     const participantCnpjBase = cnpjBase(participant.cpf_cnpj);
-    const isTransferBetweenBranches = operation === "transfer" && purpose === "Transferencia entre filiais";
-    const isTransferDepositFlow = operation === "transfer" && (purpose === "Transferencia para deposito" || purpose === "Retorno de deposito");
+    const isTransferBetweenBranches = operation === "transfer" && purpose === "Transferência entre filiais";
+    const isTransferDepositFlow = operation === "transfer" && (purpose === "Transferência para depósito" || purpose === "Retorno de depósito");
     const transferHasDifferentRoot = Boolean(companyCnpjBase && participantCnpjBase && companyCnpjBase !== participantCnpjBase);
 
     useEffect(() => {
@@ -685,35 +685,35 @@ export default function NFeCompletaPage() {
     const pending = useMemo(() => {
         const issues: string[] = [];
 
-        if (!operation) issues.push("Escolha o tipo de operacao.");
-        if (!purpose) issues.push("Escolha a finalidade especifica.");
+        if (!operation) issues.push("Escolha o tipo de operação.");
+        if (!purpose) issues.push("Escolha a finalidade específica.");
         if (operation === "advanced") {
-            if (!advancedNature.trim()) issues.push("Informe a natureza da operacao no modo assistido.");
-            if (![ "0", "1" ].includes(advancedTpNF)) issues.push("Tipo da NF-e invalido no modo assistido.");
-            if (![ "1", "2", "3", "4" ].includes(advancedFinNFe)) issues.push("Finalidade da NF-e invalida no modo assistido.");
+            if (!advancedNature.trim()) issues.push("Informe a natureza da operação no modo assistido.");
+            if (![ "0", "1" ].includes(advancedTpNF)) issues.push("Tipo da NF-e inválido no modo assistido.");
+            if (![ "1", "2", "3", "4" ].includes(advancedFinNFe)) issues.push("Finalidade da NF-e inválida no modo assistido.");
         }
         if (!isEmissionSupported && operation !== "return" && operation !== "advanced") {
-            issues.push("Emissao real indisponivel para a combinacao atual de operacao/finalidade.");
+            issues.push("Emissão real indisponível para a combinação atual de operação/finalidade.");
         }
         if (operation === "return") {
-            if (purpose !== "Devolucao de compra") issues.push("Emissao real de devolucao liberada apenas para Devolucao de compra com NF-e de entrada importada.");
-            if (!selectedEntryInvoice) issues.push("Selecione uma NF-e de entrada importada para devolucao.");
-            if (digits(referencedKey).length !== 44) issues.push("A nota de origem precisa ter chave de acesso valida.");
+            if (purpose !== "Devolução de compra") issues.push("Emissão real de devolução liberada apenas para Devolução de compra com NF-e de entrada importada.");
+            if (!selectedEntryInvoice) issues.push("Selecione uma NF-e de entrada importada para devolução.");
+            if (digits(referencedKey).length !== 44) issues.push("A nota de origem precisa ter chave de acesso válida.");
             if (selectedReturnItems.length === 0) issues.push("Selecione ao menos um item da nota de origem para devolver.");
         }
         if (isRetornoConsertoMvp || isRetornoGarantiaMvp) {
             if (!selectedEntryInvoice) issues.push(`Selecione uma NF-e de remessa para ${isRetornoGarantiaMvp ? "garantia" : "conserto"} autorizada.`);
-            if (digits(referencedKey).length !== 44) issues.push("A remessa de origem precisa ter chave de acesso valida.");
+            if (digits(referencedKey).length !== 44) issues.push("A remessa de origem precisa ter chave de acesso válida.");
             if (selectedReturnItems.length === 0) issues.push("Selecione ao menos um item da remessa para retornar.");
         }
         if (isRetornoDepositoMvp) {
-            if (!selectedEntryInvoice) issues.push("Selecione uma NF-e de transferencia para deposito autorizada.");
-            if (digits(referencedKey).length !== 44) issues.push("A transferencia de origem precisa ter chave de acesso valida.");
-            if (selectedReturnItems.length === 0) issues.push("Selecione ao menos um item da transferencia para retornar.");
+            if (!selectedEntryInvoice) issues.push("Selecione uma NF-e de transferência para depósito autorizada.");
+            if (digits(referencedKey).length !== 44) issues.push("A transferência de origem precisa ter chave de acesso válida.");
+            if (selectedReturnItems.length === 0) issues.push("Selecione ao menos um item da transferência para retornar.");
         }
         if (operation !== "return") {
             if (!participant.nome.trim()) issues.push("Informe ou selecione o participante.");
-            if (!isValidDoc(participant.cpf_cnpj)) issues.push("Informe CPF/CNPJ valido do participante.");
+            if (!isValidDoc(participant.cpf_cnpj)) issues.push("Informe CPF/CNPJ válido do participante.");
             if (!participant.logradouro || !participant.numero || !participant.bairro || !participant.cidade || !participant.uf || !participant.cep || !participant.codigo_municipio) {
                 issues.push("Complete o endereco do participante.");
             }
@@ -734,7 +734,7 @@ export default function NFeCompletaPage() {
         }
 
         if (isTransferBetweenBranches && transferHasDifferentRoot) {
-            issues.push("Transferencia entre filiais exige destinatario com a mesma raiz de CNPJ da empresa emitente.");
+            issues.push("Transferência entre filiais exige destinatário com a mesma raiz de CNPJ da empresa emitente.");
         }
 
         return issues;
@@ -1045,7 +1045,7 @@ export default function NFeCompletaPage() {
         }
 
         if (!isVendaComumMvp) {
-            alert("Nesta etapa, a emissao real da tela completa esta liberada apenas para Venda comum.");
+            alert("Nesta etapa, a emissão real da tela completa está liberada apenas para Venda comum.");
             return;
         }
 
@@ -1055,7 +1055,7 @@ export default function NFeCompletaPage() {
         }
 
         const confirmMessage =
-            `Emitir NF-e de Venda comum em ${environment === "production" ? "PRODUCAO" : "HOMOLOGACAO"}?\n\n` +
+            `Emitir NF-e de Venda comum em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?\n\n` +
             `Destinatario: ${participant.nome}\n` +
             `Itens: ${items.length}\n` +
             `Total: ${money(totalItems)}`;
@@ -1117,13 +1117,13 @@ export default function NFeCompletaPage() {
             return;
         }
 
-        if (purpose !== "Devolucao de compra") {
-            alert("Nesta etapa, a emissao real de devolucao esta liberada apenas para Devolucao de compra com NF-e de entrada importada.");
+        if (purpose !== "Devolução de compra") {
+            alert("Nesta etapa, a emissão real de devolução está liberada apenas para Devolução de compra com NF-e de entrada importada.");
             return;
         }
 
         if (!selectedEntryInvoice) {
-            alert("Selecione uma NF-e de entrada para devolucao.");
+            alert("Selecione uma NF-e de entrada para devolução.");
             return;
         }
 
@@ -1133,7 +1133,7 @@ export default function NFeCompletaPage() {
         }
 
         const confirmMessage =
-            `Emitir NF-e de Devolucao em ${environment === "production" ? "PRODUCAO" : "HOMOLOGACAO"}?\n\n` +
+            `Emitir NF-e de Devolução em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?\n\n` +
             `Fornecedor: ${selectedEntryInvoice.emitente_nome || "-"}\n` +
             `Itens: ${selectedReturnItems.length}\n` +
             `Total: ${money(returnTotal)}`;
@@ -1159,13 +1159,13 @@ export default function NFeCompletaPage() {
             });
 
             if (result.success) {
-                alert("NF-e de devolucao enviada.");
+                alert("NF-e de devolução enviada.");
                 window.location.href = "/fiscal";
             } else {
-                alert(`Erro ao emitir devolucao:\n${result.error || "Erro desconhecido"}`);
+                alert(`Erro ao emitir devolução:\n${result.error || "Erro desconhecido"}`);
             }
         } catch (error: any) {
-            alert(`Erro ao emitir devolucao:\n${error.message || "Erro desconhecido"}`);
+            alert(`Erro ao emitir devolução:\n${error.message || "Erro desconhecido"}`);
         } finally {
             setEmitting(false);
         }
@@ -1178,7 +1178,7 @@ export default function NFeCompletaPage() {
         }
 
         if (!isRemessaConsertoMvp && !isRemessaGarantiaMvp) {
-            alert("Nesta etapa, a emissao real de remessa esta liberada apenas para Remessa para conserto e Remessa em garantia.");
+            alert("Nesta etapa, a emissão real de remessa está liberada apenas para Remessa para conserto e Remessa em garantia.");
             return;
         }
 
@@ -1189,7 +1189,7 @@ export default function NFeCompletaPage() {
 
         const remessaLabel = isRemessaGarantiaMvp ? "Remessa em garantia" : "Remessa para conserto";
         const confirmMessage =
-            `Emitir NF-e de ${remessaLabel} em ${environment === "production" ? "PRODUCAO" : "HOMOLOGACAO"}?\n\n` +
+            `Emitir NF-e de ${remessaLabel} em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?\n\n` +
             `Destinatario: ${participant.nome}\n` +
             `CFOP: ${suggestedCfop}\n` +
             `Itens: ${items.length}\n` +
@@ -1263,7 +1263,7 @@ export default function NFeCompletaPage() {
         }
 
         if (!isRetornoConsertoMvp && !isRetornoGarantiaMvp) {
-            alert("Nesta etapa, a emissao real de retorno esta liberada apenas para Retorno de conserto e Retorno de garantia.");
+            alert("Nesta etapa, a emissão real de retorno está liberada apenas para Retorno de conserto e Retorno de garantia.");
             return;
         }
 
@@ -1274,7 +1274,7 @@ export default function NFeCompletaPage() {
 
         const retornoLabel = isRetornoGarantiaMvp ? "Retorno de garantia" : "Retorno de conserto";
         const confirmMessage =
-            `Emitir NF-e de ${retornoLabel} em ${environment === "production" ? "PRODUCAO" : "HOMOLOGACAO"}?\n\n` +
+            `Emitir NF-e de ${retornoLabel} em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?\n\n` +
             `Destinatario: ${participant.nome}\n` +
             `NF-e origem: ${selectedEntryInvoice?.numero || "-"}\n` +
             `CFOP: ${suggestedCfop}\n` +
@@ -1376,7 +1376,7 @@ export default function NFeCompletaPage() {
     const handleEmitirTransferencia = async () => {
         if (!profile?.organization_id) return;
         if (!isTransferenciaMvp) {
-            alert("Finalidade de transferencia ainda nao habilitada para emissao.");
+            alert("Finalidade de transferência ainda não habilitada para emissão.");
             return;
         }
         if (pending.length > 0) {
@@ -1384,7 +1384,7 @@ export default function NFeCompletaPage() {
             return;
         }
 
-        if (!confirm(`Emitir NF-e de ${purpose} em ${environment === "production" ? "PRODUCAO" : "HOMOLOGACAO"}?`)) return;
+        if (!confirm(`Emitir NF-e de ${purpose} em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?`)) return;
         setEmitting(true);
         try {
             const transferItemsPayload = isRetornoDepositoMvp
@@ -1434,7 +1434,7 @@ export default function NFeCompletaPage() {
                 tipo_documento: "NFe",
                 observacao: infCpl,
                 modFrete,
-                finalidade_transferencia: purpose as "Transferencia entre filiais" | "Transferencia para deposito" | "Retorno de deposito",
+                finalidade_transferencia: purpose as "Transferência entre filiais" | "Transferência para depósito" | "Retorno de depósito",
             });
             if (result.success) {
                 alert(result.message || "NF-e de transferencia enviada.");
@@ -1450,7 +1450,7 @@ export default function NFeCompletaPage() {
     const handleEmitirBonificacaoDoacao = async () => {
         if (!profile?.organization_id) return;
         if (!isBonusMvp) {
-            alert("Finalidade de bonificacao/doacao ainda nao habilitada para emissao.");
+            alert("Finalidade de bonificação/doação ainda não habilitada para emissão.");
             return;
         }
         if (pending.length > 0) {
@@ -1458,7 +1458,7 @@ export default function NFeCompletaPage() {
             return;
         }
 
-        if (!confirm(`Emitir NF-e de ${purpose} em ${environment === "production" ? "PRODUCAO" : "HOMOLOGACAO"}?`)) return;
+        if (!confirm(`Emitir NF-e de ${purpose} em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?`)) return;
         setEmitting(true);
         try {
             const result = await emitirNFeBonificacaoDoacaoUiAction({
@@ -1495,7 +1495,7 @@ export default function NFeCompletaPage() {
                 tipo_documento: "NFe",
                 observacao: infCpl,
                 modFrete,
-                finalidade_bonus: purpose as "Bonificacao" | "Brinde" | "Doacao",
+                finalidade_bonus: purpose as "Bonificação" | "Brinde" | "Doação",
             });
             if (result.success) {
                 alert(result.message || "NF-e de bonificacao/doacao enviada.");
@@ -1517,9 +1517,9 @@ export default function NFeCompletaPage() {
         }
 
         const confirmMessage =
-            `Emitir NF-e assistida em ${environment === "production" ? "PRODUCAO" : "HOMOLOGACAO"}?\n\n` +
+            `Emitir NF-e assistida em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?\n\n` +
             `Natureza: ${advancedNature}\n` +
-            `Tipo NF-e: ${advancedTpNF === "1" ? "Saida" : "Entrada"}\n` +
+            `Tipo NF-e: ${advancedTpNF === "1" ? "Saída" : "Entrada"}\n` +
             `Finalidade: ${advancedFinNFe}\n` +
             `Itens: ${items.length}\n` +
             `Total: ${money(totalItems)}`;
@@ -1659,7 +1659,7 @@ export default function NFeCompletaPage() {
                     </Link>
                     <div>
                         <h1 className="text-2xl font-black text-[#1A1A1A]">Emissao completa de NF-e</h1>
-                        <p className="text-sm font-medium text-stone-500">Rascunho guiado para operacoes comuns e modo avancado.</p>
+                        <p className="text-sm font-medium text-stone-500">Rascunho guiado para operações comuns e modo avançado.</p>
                     </div>
                 </div>
 
@@ -1742,7 +1742,7 @@ export default function NFeCompletaPage() {
                         <p className="text-xs font-black uppercase text-stone-400">Resumo</p>
                         <div className="mt-3 space-y-2 text-sm">
                             <div className="flex justify-between gap-3">
-                                <span className="text-stone-500">Operacao</span>
+                                <span className="text-stone-500">Operação</span>
                                 <span className="text-right font-black text-stone-800">{currentOperation.title}</span>
                             </div>
                             <div className="flex justify-between gap-3">
@@ -1773,8 +1773,8 @@ export default function NFeCompletaPage() {
                     {step === "operation" && (
                         <section className="space-y-5">
                             <div>
-                                <h2 className="text-lg font-black text-[#1A1A1A]">Tipo de operacao</h2>
-                                <p className="text-sm text-stone-500">Escolha a natureza de negocio. O CFOP vem depois, como resultado das regras.</p>
+                                <h2 className="text-lg font-black text-[#1A1A1A]">Tipo de operação</h2>
+                                <p className="text-sm text-stone-500">Escolha a natureza de negócio. O CFOP vem depois, como resultado das regras.</p>
                             </div>
 
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1805,7 +1805,7 @@ export default function NFeCompletaPage() {
 
                             {operation !== "advanced" && (
                                 <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
-                                    <label className={labelClass}>Finalidade especifica</label>
+                                    <label className={labelClass}>Finalidade específica</label>
                                     <select value={purpose} onChange={(e) => setPurpose(e.target.value)} className={fieldClass}>
                                         {currentOperation.purposes.map((item) => (
                                             <option key={item} value={item}>{item}</option>
@@ -1816,21 +1816,21 @@ export default function NFeCompletaPage() {
 
                             {operation === "advanced" && (
                                 <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                                    <p className="text-sm font-black text-blue-800">Pra fazer nota aqui e fundamental ter o auxilio do contador.</p>
+                                    <p className="text-sm font-black text-blue-800">Pra fazer nota aqui é fundamental ter o auxílio do contador.</p>
                                     <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
                                         <div className="md:col-span-3">
-                                            <label className={labelClass}>Natureza da operacao</label>
+                                            <label className={labelClass}>Natureza da operação</label>
                                             <input
                                                 value={advancedNature}
                                                 onChange={(e) => setAdvancedNature(e.target.value)}
                                                 className={fieldClass}
-                                                placeholder="Ex: REMESSA PARA DEMONSTRACAO"
+                                                placeholder="Ex: REMESSA PARA DEMONSTRAÇÃO"
                                             />
                                         </div>
                                         <div>
                                             <label className={labelClass}>Tipo NF-e</label>
                                             <select value={advancedTpNF} onChange={(e) => setAdvancedTpNF(e.target.value as "0" | "1")} className={fieldClass}>
-                                                <option value="1">1 - Saida</option>
+                                                <option value="1">1 - Saída</option>
                                                 <option value="0">0 - Entrada</option>
                                             </select>
                                         </div>
@@ -1840,7 +1840,7 @@ export default function NFeCompletaPage() {
                                                 <option value="1">1 - Normal</option>
                                                 <option value="2">2 - Complementar</option>
                                                 <option value="3">3 - Ajuste</option>
-                                                <option value="4">4 - Devolucao/Retorno</option>
+                                                <option value="4">4 - Devolução/Retorno</option>
                                             </select>
                                         </div>
                                     </div>
@@ -1874,7 +1874,7 @@ export default function NFeCompletaPage() {
                                                         {(isRetornoConsertoMvp || isRetornoGarantiaMvp)
                                                             ? `Buscar remessa para ${isRetornoGarantiaMvp ? "garantia" : "conserto"}`
                                                             : isRetornoDepositoMvp
-                                                                ? "Buscar transferencia para deposito"
+                                                                ? "Buscar transferência para depósito"
                                                                 : "Buscar NF-e de entrada"}
                                                     </label>
                                                     <input
@@ -1887,7 +1887,7 @@ export default function NFeCompletaPage() {
                                                             }
                                                         }}
                                                         className="mt-1 w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
-                                                        placeholder={(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? "Cliente, CPF/CNPJ, numero ou chave" : "Fornecedor, CNPJ, numero ou chave"}
+                                                        placeholder={(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? "Cliente, CPF/CNPJ, número ou chave" : "Fornecedor, CNPJ, número ou chave"}
                                                     />
                                                 </div>
 
@@ -1958,7 +1958,7 @@ export default function NFeCompletaPage() {
                                                                 {(isRetornoConsertoMvp || isRetornoGarantiaMvp)
                                                                     ? `Nenhuma remessa para ${isRetornoGarantiaMvp ? "garantia" : "conserto"} autorizada encontrada neste ambiente.`
                                                                     : isRetornoDepositoMvp
-                                                                        ? "Nenhuma transferencia para deposito autorizada encontrada neste ambiente."
+                                                                    ? "Nenhuma transferência para depósito autorizada encontrada neste ambiente."
                                                                         : "Nenhuma NF-e de entrada encontrada."}
                                                             </p>
                                                         )}
@@ -2036,27 +2036,27 @@ export default function NFeCompletaPage() {
 
                             {isSalePurposeUnavailable && (
                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                                    <p className="font-black text-amber-800">Finalidade nao disponivel</p>
+                                    <p className="font-black text-amber-800">Finalidade não disponível</p>
                                     <p className="mt-1 text-sm font-medium text-amber-700">
-                                        Para essa finalidade, use "Outra operacao" com a orientacao do seu contador.
+                                        Para essa finalidade, use "Outra operação" com a orientação do seu contador.
                                     </p>
                                 </div>
                             )}
 
                             {isReturnPurposeUnavailable && (
                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                                    <p className="font-black text-amber-800">Finalidade nao disponivel</p>
+                                    <p className="font-black text-amber-800">Finalidade não disponível</p>
                                     <p className="mt-1 text-sm font-medium text-amber-700">
-                                        Para essa finalidade, use "Outra operacao" com a orientacao do seu contador.
+                                        Para essa finalidade, use "Outra operação" com a orientação do seu contador.
                                     </p>
                                 </div>
                             )}
 
                             {operation === "shipment" && !isRemessaConsertoMvp && !isRemessaGarantiaMvp && !isRetornoConsertoMvp && !isRetornoGarantiaMvp && (
                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                                    <p className="font-black text-amber-800">Finalidade nao disponivel</p>
+                                    <p className="font-black text-amber-800">Finalidade não disponível</p>
                                     <p className="mt-1 text-sm font-medium text-amber-700">
-                                        Para essa finalidade, use "Outra operacao" com a orientacao do seu contador.
+                                        Para essa finalidade, use "Outra operação" com a orientação do seu contador.
                                     </p>
                                 </div>
                             )}
@@ -2065,9 +2065,9 @@ export default function NFeCompletaPage() {
 
                             {operation !== "sale" && operation !== "return" && operation !== "advanced" && operation !== "shipment" && !isTransferenciaMvp && !isBonusMvp && (
                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                                    <p className="font-black text-amber-800">Rascunho sem emissao real nesta fase</p>
+                                    <p className="font-black text-amber-800">Rascunho sem emissão real nesta fase</p>
                                     <p className="mt-1 text-sm font-medium text-amber-700">
-                                        Esta operacao precisa de motor fiscal proprio antes de transmitir. A UI permite estruturar o rascunho, mas bloqueia a emissao.
+                                        Esta operação precisa de motor fiscal próprio antes de transmitir. A UI permite estruturar o rascunho, mas bloqueia a emissão.
                                     </p>
                                 </div>
                             )}
@@ -2466,7 +2466,7 @@ export default function NFeCompletaPage() {
                                 className="flex items-center gap-2 rounded-xl bg-[#FACC15] px-4 py-2 text-sm font-black text-[#1A1A1A] transition hover:bg-yellow-300 disabled:opacity-40"
                             >
                                 {emitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                                {emitting ? "Emitindo..." : operation === "return" ? "Emitir NF-e de Devolucao" : isVendaComumMvp ? "Emitir NF-e de Venda" : (isRemessaConsertoMvp || isRemessaGarantiaMvp) ? "Emitir NF-e de Remessa" : (isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "Emitir NF-e de Retorno" : isTransferenciaMvp ? "Emitir NF-e de Transferencia" : isBonusMvp ? "Emitir NF-e de Bonificacao/Doacao" : operation === "advanced" ? "Emitir NF-e assistida" : "Emissao indisponivel"}
+                                {emitting ? "Emitindo..." : operation === "return" ? "Emitir NF-e de Devolução" : isVendaComumMvp ? "Emitir NF-e de Venda" : (isRemessaConsertoMvp || isRemessaGarantiaMvp) ? "Emitir NF-e de Remessa" : (isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "Emitir NF-e de Retorno" : isTransferenciaMvp ? "Emitir NF-e de Transferência" : isBonusMvp ? "Emitir NF-e de Bonificação/Doação" : operation === "advanced" ? "Emitir NF-e assistida" : "Emissão indisponível"}
                             </button>
                         )}
                     </div>
