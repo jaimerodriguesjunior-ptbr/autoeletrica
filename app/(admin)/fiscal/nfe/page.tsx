@@ -2316,19 +2316,19 @@ export default function NFeCompletaPage() {
                     {step === "transport" && (
                         <section className="space-y-5">
                             <div>
-                                <h2 className="text-lg font-black text-[#1A1A1A]">Transporte e observacoes</h2>
+                                <h2 className="text-lg font-black text-[#1A1A1A]">Transporte e observações</h2>
                                 <p className="text-sm text-stone-500">Preencha frete, volumes e textos fiscais/comerciais.</p>
                             </div>
 
                             <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
                                 <label className={labelClass}>Modalidade do frete</label>
                                 <select value={modFrete} onChange={(e) => setModFrete(e.target.value)} className={fieldClass}>
-                                    <option value="9">9 - Sem ocorrencia de transporte</option>
+                                    <option value="9">9 - Sem ocorrência de transporte</option>
                                     <option value="0">0 - Por conta do emitente</option>
-                                    <option value="1">1 - Por conta do destinatario</option>
+                                    <option value="1">1 - Por conta do destinatário</option>
                                     <option value="2">2 - Por conta de terceiros</option>
-                                    <option value="3">3 - Transporte proprio por conta do remetente</option>
-                                    <option value="4">4 - Transporte proprio por conta do destinatario</option>
+                                    <option value="3">3 - Transporte próprio por conta do remetente</option>
+                                    <option value="4">4 - Transporte próprio por conta do destinatário</option>
                                 </select>
 
                                 {modFrete !== "9" && (
@@ -2351,11 +2351,11 @@ export default function NFeCompletaPage() {
 
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div>
-                                    <label className={labelClass}>Observacoes comerciais</label>
+                                    <label className={labelClass}>Observações comerciais</label>
                                     <textarea value={infCpl} onChange={(e) => setInfCpl(e.target.value)} rows={6} className={`${fieldClass} resize-none`} />
                                 </div>
                                 <div>
-                                    <label className={labelClass}>Observacoes fiscais</label>
+                                    <label className={labelClass}>Observações fiscais</label>
                                     <textarea value={infAdFisco} onChange={(e) => setInfAdFisco(e.target.value)} rows={6} className={`${fieldClass} resize-none`} />
                                 </div>
                             </div>
