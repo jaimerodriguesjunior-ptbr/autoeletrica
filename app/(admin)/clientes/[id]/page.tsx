@@ -28,7 +28,7 @@ export default function EditarCliente() {
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
 
-  // Endere√ßo
+  // EndereÁo
   const [cep, setCep] = useState("");
   const [rua, setRua] = useState("");
   const [numero, setNumero] = useState("");
@@ -37,7 +37,7 @@ export default function EditarCliente() {
   const [uf, setUf] = useState("");
   const [codigoMunicipio, setCodigoMunicipio] = useState("");
 
-  // Lista de Ve√≠culos do Cliente
+  // Lista de VeÌculos do Cliente
   const [veiculos, setVeiculos] = useState<any[]>([]);
 
   // --- Financeiro & Portal ---
@@ -46,7 +46,7 @@ export default function EditarCliente() {
   const [totalPago, setTotalPago] = useState(0);
   const [loadingFinanceiro, setLoadingFinanceiro] = useState(true);
 
-  // --- Estados para Edi√ß√£o/Cria√ß√£o de Ve√≠culo ---
+  // --- Estados para EdiÁ„o/CriaÁ„o de VeÌculo ---
   const [modalVeiculoOpen, setModalVeiculoOpen] = useState(false);
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null); // Se null = Criando novo
   const [vPlaca, setVPlaca] = useState("");
@@ -81,7 +81,7 @@ export default function EditarCliente() {
         setWhatsapp(cliente.whatsapp || "");
         setEmail(cliente.email || "");
 
-        // Auto-gerar token para clientes antigos que n√£o t√™m
+        // Auto-gerar token para clientes antigos que n„o tÍm
         if (cliente.public_token) {
           setPublicToken(cliente.public_token);
         } else {
@@ -172,11 +172,11 @@ export default function EditarCliente() {
 
   const handleEnviarWhatsApp = () => {
     if (!publicToken || !whatsapp) {
-      alert('√â necess√°rio um WhatsApp e um token gerado.');
+      alert('… necess·rio um WhatsApp e um token gerado.');
       return;
     }
     const url = getExtratoUrl();
-    const msg = `Ol√° ${nome}! Segue o link do seu extrato financeiro:\n${url}`;
+    const msg = `Ol· ${nome}! Segue o link do seu extrato financeiro:\n${url}`;
     const wp = whatsapp.replace(/\D/g, '');
     window.open(`https://wa.me/55${wp}?text=${encodeURIComponent(msg)}`, '_blank');
   }
@@ -189,7 +189,7 @@ export default function EditarCliente() {
     try {
       const res = await fetch(`/api/cep?cep=${cleanCep}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "CEP n√É¬£o encontrado.");
+      if (!res.ok) throw new Error(data.error || "CEP n„o encontrado.");
 
       setCep(data.cep || cepValue);
       setRua(data.logradouro || "");
@@ -228,7 +228,7 @@ export default function EditarCliente() {
   };
 
   const handleExcluirCliente = async () => {
-    if (!confirm("ATEN√á√ÉO: Excluir este cliente apagar√° tamb√©m o hist√≥rico de ve√≠culos dele. Continuar?")) return;
+    if (!confirm("ATEN«√O: Excluir este cliente apagar· tambÈm o histÛrico de veÌculos dele. Continuar?")) return;
 
     setDeleting(true);
     try {
@@ -244,10 +244,10 @@ export default function EditarCliente() {
     }
   };
 
-  // --- FUN√á√ïES DE VE√çCULO (Cria√ß√£o e Edi√ß√£o) ---
+  // --- FUN«’ES DE VEÕCULO (CriaÁ„o e EdiÁ„o) ---
 
   const abrirModalNovo = () => {
-    setEditingVehicleId(null); // Modo Cria√ß√£o
+    setEditingVehicleId(null); // Modo CriaÁ„o
     setVPlaca("");
     setVModelo("");
     setVFabricante("");
@@ -278,7 +278,7 @@ export default function EditarCliente() {
         cor: vCor,
         ano: vAno,
         obs: vObs,
-        organization_id: profile?.organization_id, // Necess√°rio para insert
+        organization_id: profile?.organization_id, // Necess·rio para insert
         client_id: id // Vincula ao cliente atual
       };
 
@@ -299,10 +299,10 @@ export default function EditarCliente() {
 
       await fetchVeiculos();
       setModalVeiculoOpen(false);
-      alert(editingVehicleId ? "Ve√≠culo atualizado!" : "Ve√≠culo adicionado!");
+      alert(editingVehicleId ? "VeÌculo atualizado!" : "VeÌculo adicionado!");
 
     } catch (error: any) {
-      alert("Erro ao salvar ve√≠culo: " + error.message);
+      alert("Erro ao salvar veÌculo: " + error.message);
     } finally {
       setSavingVeiculo(false);
     }
@@ -323,7 +323,7 @@ export default function EditarCliente() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-[#1A1A1A]">Editar Cliente</h1>
-            <p className="text-stone-500 text-xs">Gerencie dados e ve√≠culos</p>
+            <p className="text-stone-500 text-xs">Gerencie dados e veÌculos</p>
           </div>
         </div>
         <button onClick={handleExcluirCliente} disabled={deleting} className="text-red-400 hover:text-red-600 font-bold text-sm flex items-center gap-2">
@@ -383,10 +383,10 @@ export default function EditarCliente() {
         </div>
       </div>
 
-      {/* 3. ENDERE√áO */}
+      {/* 3. ENDERE«O */}
       <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 space-y-4">
         <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
-          <MapPin size={18} /> Endere√ßo
+          <MapPin size={18} /> EndereÁo
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -405,7 +405,7 @@ export default function EditarCliente() {
                 onClick={() => buscarCep()}
                 disabled={loadingCep}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-stone-400 hover:text-[#1A1A1A] disabled:opacity-50"
-                title="Buscar endere√É¬ßo pelo CEP"
+                title="Buscar endereÁo pelo CEP"
               >
                 {loadingCep ? <Loader2 size={16} className="animate-spin" /> : <MapPin size={16} />}
               </button>
@@ -416,7 +416,7 @@ export default function EditarCliente() {
             <input type="text" value={rua} onChange={e => setRua(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition" />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-bold text-stone-400 ml-2">N√öMERO</label>
+            <label className="text-xs font-bold text-stone-400 ml-2">N⁄MERO</label>
             <input type="text" value={numero} onChange={e => setNumero(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15] transition" />
           </div>
           <div className="md:col-span-2 space-y-1">
@@ -492,11 +492,11 @@ export default function EditarCliente() {
         )}
       </div>
 
-      {/* 5. VE√çCULOS J√Å CADASTRADOS */}
+      {/* 5. VEÕCULOS J¡ CADASTRADOS */}
       <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
-            <Car size={18} /> Ve√≠culos Cadastrados
+            <Car size={18} /> VeÌculos Cadastrados
           </h3>
           <button
             onClick={abrirModalNovo}
@@ -507,7 +507,7 @@ export default function EditarCliente() {
         </div>
 
         {veiculos.length === 0 ? (
-          <p className="text-stone-400 text-sm italic text-center py-4">Nenhum ve√≠culo vinculado.</p>
+          <p className="text-stone-400 text-sm italic text-center py-4">Nenhum veÌculo vinculado.</p>
         ) : (
           <div className="space-y-3">
             {veiculos.map(v => (
@@ -533,7 +533,7 @@ export default function EditarCliente() {
         )}
       </div>
 
-      {/* 5. A√á√ÉO FLUTUANTE (SALVAR CLIENTE) */}
+      {/* 5. A«√O FLUTUANTE (SALVAR CLIENTE) */}
       <div className="fixed bottom-24 md:bottom-6 right-6 left-6 md:left-auto md:w-96 z-40">
         <button
           onClick={handleSalvarCliente}
@@ -545,14 +545,14 @@ export default function EditarCliente() {
         </button>
       </div>
 
-      {/* --- MODAL DE EDI√á√ÉO DE VE√çCULO --- */}
+      {/* --- MODAL DE EDI«√O DE VEÕCULO --- */}
       {
         modalVeiculoOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
             <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold text-[#1A1A1A] flex items-center gap-2">
-                  <Car size={24} /> {editingVehicleId ? "Editar Ve√≠culo" : "Novo Ve√≠culo"}
+                  <Car size={24} /> {editingVehicleId ? "Editar VeÌculo" : "Novo VeÌculo"}
                 </h2>
                 <button onClick={() => setModalVeiculoOpen(false)}><X /></button>
               </div>
@@ -626,7 +626,7 @@ export default function EditarCliente() {
                 disabled={savingVeiculo}
                 className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl flex justify-center gap-2 hover:scale-105 transition"
               >
-                {savingVeiculo ? <Loader2 className="animate-spin" /> : <Save />} Salvar Ve√≠culo
+                {savingVeiculo ? <Loader2 className="animate-spin" /> : <Save />} Salvar VeÌculo
               </button>
             </div>
           </div>

@@ -28,7 +28,7 @@ export default function NovoCliente() {
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
 
-  // Endere√ßo
+  // EndereÁo
   const [cep, setCep] = useState("");
   const [rua, setRua] = useState("");
   const [numero, setNumero] = useState("");
@@ -49,7 +49,7 @@ export default function NovoCliente() {
     try {
       const res = await fetch(`/api/cep?cep=${cleanCep}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "CEP n√É¬£o encontrado.");
+      if (!res.ok) throw new Error(data.error || "CEP n„o encontrado.");
 
       setCep(data.cep || cepValue);
       setRua(data.logradouro || "");
@@ -66,12 +66,12 @@ export default function NovoCliente() {
 
   const handleSalvar = async () => {
     if (!profile?.organization_id) {
-      alert("Erro: Organiza√ß√£o n√£o identificada. Tente recarregar a p√°gina.");
+      alert("Erro: OrganizaÁ„o n„o identificada. Tente recarregar a p·gina.");
       return;
     }
 
     if (!nome) {
-      alert("O nome √© obrigat√≥rio.");
+      alert("O nome È obrigatÛrio.");
       return;
     }
 
@@ -211,10 +211,10 @@ export default function NovoCliente() {
         </div>
       </div>
 
-      {/* 4. ENDERE√áO */}
+      {/* 4. ENDERE«O */}
       <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 space-y-4">
         <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
-          <MapPin size={18} /> Endere√ßo
+          <MapPin size={18} /> EndereÁo
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -234,7 +234,7 @@ export default function NovoCliente() {
                 onClick={() => buscarCep()}
                 disabled={loadingCep}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-stone-400 hover:text-[#1A1A1A] disabled:opacity-50"
-                title="Buscar endere√É¬ßo pelo CEP"
+                title="Buscar endereÁo pelo CEP"
               >
                 {loadingCep ? <Loader2 size={16} className="animate-spin" /> : <MapPin size={16} />}
               </button>
