@@ -1056,7 +1056,7 @@ export default function NFeCompletaPage() {
 
         const confirmMessage =
             `Emitir NF-e de Venda comum em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?\n\n` +
-            `Destinatario: ${participant.nome}\n` +
+            `Destinatário: ${participant.nome}\n` +
             `Itens: ${items.length}\n` +
             `Total: ${money(totalItems)}`;
 
@@ -1190,7 +1190,7 @@ export default function NFeCompletaPage() {
         const remessaLabel = isRemessaGarantiaMvp ? "Remessa em garantia" : "Remessa para conserto";
         const confirmMessage =
             `Emitir NF-e de ${remessaLabel} em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?\n\n` +
-            `Destinatario: ${participant.nome}\n` +
+            `Destinatário: ${participant.nome}\n` +
             `CFOP: ${suggestedCfop}\n` +
             `Itens: ${items.length}\n` +
             `Valor fiscal dos itens: ${money(totalItems)}\n\n` +
@@ -1275,7 +1275,7 @@ export default function NFeCompletaPage() {
         const retornoLabel = isRetornoGarantiaMvp ? "Retorno de garantia" : "Retorno de conserto";
         const confirmMessage =
             `Emitir NF-e de ${retornoLabel} em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?\n\n` +
-            `Destinatario: ${participant.nome}\n` +
+            `Destinatário: ${participant.nome}\n` +
             `NF-e origem: ${selectedEntryInvoice?.numero || "-"}\n` +
             `CFOP: ${suggestedCfop}\n` +
             `Itens: ${selectedReturnItems.length}\n` +
@@ -1658,7 +1658,7 @@ export default function NFeCompletaPage() {
                         </button>
                     </Link>
                     <div>
-                        <h1 className="text-2xl font-black text-[#1A1A1A]">Emissao completa de NF-e</h1>
+                        <h1 className="text-2xl font-black text-[#1A1A1A]">Emissão completa de NF-e</h1>
                         <p className="text-sm font-medium text-stone-500">Rascunho guiado para operações comuns e modo avançado.</p>
                     </div>
                 </div>
@@ -1683,14 +1683,14 @@ export default function NFeCompletaPage() {
                             onClick={() => setEnvironment("homologation")}
                             className={`rounded-lg px-4 py-2 text-xs font-black transition ${environment === "homologation" ? "bg-yellow-100 text-yellow-700" : "text-stone-400 hover:text-stone-700"}`}
                         >
-                            Homologacao
+                            Homologação
                         </button>
                         <button
                             type="button"
                             onClick={() => setEnvironment("production")}
                             className={`rounded-lg px-4 py-2 text-xs font-black transition ${environment === "production" ? "bg-green-100 text-green-700" : "text-stone-400 hover:text-stone-700"}`}
                         >
-                            Producao
+                            Produção
                         </button>
                     </div>
                 </div>
@@ -1939,7 +1939,7 @@ export default function NFeCompletaPage() {
                                                                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                                                         <div>
                                                                             <p className="font-black text-[#1A1A1A]">
-                                                                                NF {invoice.numero || "-"} | {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? (invoice.destinatario_nome || "Destinat?rio sem nome") : (invoice.emitente_nome || "Fornecedor sem nome")}
+                                                                                NF {invoice.numero || "-"} | {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? (invoice.destinatario_nome || "Destinatário sem nome") : (invoice.emitente_nome || "Fornecedor sem nome")}
                                                                             </p>
                                                                             <p className="mt-1 text-xs font-medium text-stone-500">
                                                                                 {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? (invoice.destinatario_cnpj || "CNPJ pendente") : (invoice.emitente_cnpj || "CNPJ pendente")} | {invoice.chave_acesso || "chave pendente"}
@@ -1975,7 +1975,7 @@ export default function NFeCompletaPage() {
                                                 <div>
                                                     <p className="font-black text-[#1A1A1A]">
                                                         NF {selectedEntryInvoice.numero || "-"} | {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp)
-                                                            ? (selectedEntryInvoice.destinatario_nome || "Destinat?rio sem nome")
+                                                            ? (selectedEntryInvoice.destinatario_nome || "Destinatário sem nome")
                                                             : (selectedEntryInvoice.emitente_nome || "Fornecedor sem nome")}
                                                     </p>
                                                     <p className="mt-1 text-xs font-medium text-stone-500">
@@ -1998,7 +1998,7 @@ export default function NFeCompletaPage() {
                                                 Notas legadas (fora do padr?o atual): {legacyGuaranteeInvoices.length}
                                             </p>
                                             <p className="mt-1 text-xs font-medium text-amber-700">
-                                                Estas notas t?m observa??o de garantia, mas natureza de conserto. Ficam separadas e marcadas como legado.
+                                                Estas notas têm observação de garantia, mas natureza de conserto. Ficam separadas e marcadas como legado.
                                             </p>
                                             <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
                                                 {filteredLegacyGuaranteeInvoices.map((invoice) => {
@@ -2014,7 +2014,7 @@ export default function NFeCompletaPage() {
                                                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                                                 <div>
                                                                     <p className="font-black text-[#1A1A1A]">
-                                                                        NF {invoice.numero || "-"} | {invoice.destinatario_nome || "Destinat?rio sem nome"}
+                                                                        NF {invoice.numero || "-"} | {invoice.destinatario_nome || "Destinatário sem nome"}
                                                                     </p>
                                                                     <p className="mt-1 text-xs font-medium text-stone-500">
                                                                         {invoice.destinatario_cnpj || "CNPJ pendente"} | {invoice.chave_acesso || "chave pendente"}
@@ -2366,23 +2366,23 @@ export default function NFeCompletaPage() {
                         <section className="space-y-5">
                             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                 <div>
-                                    <h2 className="text-lg font-black text-[#1A1A1A]">Revisao fiscal</h2>
+                                    <h2 className="text-lg font-black text-[#1A1A1A]">{"Revis\u00e3o fiscal"}</h2>
                                     <p className="text-sm text-stone-500">
                                         {isEmissionSupported || operation === "return"
                                             ? "Confira todos os dados antes de transmitir a NF-e."
-                                            : "Confira o rascunho. Esta finalidade ainda nao transmite NF-e."}
+                                            : "Confira o rascunho. Esta finalidade ainda n\u00e3o transmite NF-e."}
                                     </p>
                                 </div>
                                 {operation === "advanced" && (
                                     <span className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700">
-                                        IA sera executada automaticamente ao emitir
+                                        {"IA ser\u00e1 executada automaticamente ao emitir"}
                                     </span>
                                 )}
                             </div>
 
                             {pending.length > 0 ? (
                                 <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
-                                    <p className="font-black text-red-700">Pendencias bloqueantes</p>
+                                    <p className="font-black text-red-700">{"Pend\u00eancias bloqueantes"}</p>
                                     <div className="mt-2 space-y-1">
                                         {pending.map((issue) => (
                                             <p key={issue} className="text-sm font-medium text-red-700">- {issue}</p>
@@ -2391,7 +2391,7 @@ export default function NFeCompletaPage() {
                                 </div>
                             ) : (
                                 <div className="rounded-2xl border border-green-100 bg-green-50 p-4">
-                                    <p className="flex items-center gap-2 font-black text-green-700"><CheckCircle size={18} /> Rascunho sem pendencias estruturais.</p>
+                                    <p className="flex items-center gap-2 font-black text-green-700"><CheckCircle size={18} /> {"Rascunho sem pend\u00eancias estruturais."}</p>
                                 </div>
                             )}
 
@@ -2456,7 +2456,7 @@ export default function NFeCompletaPage() {
                                 disabled={step === "operation" && (isSalePurposeUnavailable || isReferenceSelectionPending)}
                                 className="flex items-center gap-2 rounded-xl bg-[#1A1A1A] px-4 py-2 text-sm font-black text-[#FACC15] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
                             >
-                                Proximo <ChevronRight size={16} />
+                                {"Pr\u00f3ximo"} <ChevronRight size={16} />
                             </button>
                         ) : (
                             <button
@@ -2474,15 +2474,15 @@ export default function NFeCompletaPage() {
 
                 <aside className="space-y-3">
                     <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
-                        <p className="flex items-center gap-2 text-sm font-black text-[#1A1A1A]"><AlertCircle size={16} /> Pendencias</p>
+                        <p className="flex items-center gap-2 text-sm font-black text-[#1A1A1A]"><AlertCircle size={16} /> {"Pend\u00eancias"}</p>
                         {pending.length === 0 ? (
-                            <p className="mt-3 text-sm font-medium text-green-700">Nenhuma pendencia estrutural.</p>
+                            <p className="mt-3 text-sm font-medium text-green-700">{"Nenhuma pend\u00eancia estrutural."}</p>
                         ) : (
                             <div className="mt-3 space-y-2">
                                 {pending.slice(0, 6).map((issue) => (
                                     <p key={issue} className="rounded-xl bg-red-50 p-2 text-xs font-bold text-red-700">{issue}</p>
                                 ))}
-                                {pending.length > 6 && <p className="text-xs font-bold text-stone-400">+ {pending.length - 6} pendencia(s)</p>}
+                                {pending.length > 6 && <p className="text-xs font-bold text-stone-400">+ {pending.length - 6} {"pend\u00eancia(s)"}</p>}
                             </div>
                         )}
                     </div>
@@ -2490,18 +2490,18 @@ export default function NFeCompletaPage() {
                     <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
                         <p className="flex items-center gap-2 text-sm font-black text-[#1A1A1A]"><Truck size={16} /> Regra atual</p>
                         <div className="mt-3 space-y-2 text-sm font-medium text-stone-600">
-                            <p>UF emitente: <strong>{companyUf || "Nao carregada"}</strong></p>
+                            <p>UF emitente: <strong>{companyUf || "N\u00e3o carregada"}</strong></p>
                             <p>UF participante: <strong>{participantUf || "Pendente"}</strong></p>
-                            <p>Classificacao: <strong>{destinationLabel}</strong></p>
-                            <p>CFOP sugerido: <strong>{suggestedCfop || "Modo avancado"}</strong></p>
+                            <p>{"Classifica\u00e7\u00e3o"}: <strong>{destinationLabel}</strong></p>
+                            <p>CFOP sugerido: <strong>{suggestedCfop || "Modo avan\u00e7ado"}</strong></p>
                         </div>
                     </div>
 
                     {isTransferDepositFlow && transferHasDifferentRoot && (
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-                            <p className="text-sm font-black text-amber-800">Alerta para deposito</p>
+                            <p className="text-sm font-black text-amber-800">{"Alerta para dep\u00f3sito"}</p>
                             <p className="mt-2 text-xs font-medium text-amber-700">
-                                CNPJ do destinatario com raiz diferente do emitente. Em deposito de terceiro pode ser valido, mas confirme com o contador antes de emitir.
+                                {"CNPJ do destinat\u00e1rio com raiz diferente do emitente. Em dep\u00f3sito de terceiro pode ser v\u00e1lido, mas confirme com o contador antes de emitir."}
                             </p>
                         </div>
                     )}
@@ -2551,7 +2551,7 @@ function CloneInvoiceModal({
                 <div className="flex items-center justify-between gap-3 border-b border-stone-100 p-4">
                     <div>
                         <p className="text-lg font-black text-[#1A1A1A]">Clonar NF-e</p>
-                        <p className="text-xs font-bold text-stone-500">{environment === "production" ? "Producao" : "Homologacao"}</p>
+                        <p className="text-xs font-bold text-stone-500">{environment === "production" ? "Produção" : "Homologação"}</p>
                     </div>
                     <button type="button" onClick={onClose} className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-black text-stone-600">Fechar</button>
                 </div>
@@ -2585,7 +2585,7 @@ function CloneInvoiceModal({
                                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                         <div>
                                             <p className="font-black text-[#1A1A1A]">NF {invoice.numero || "-"} {invoice.serie ? `Serie ${invoice.serie}` : ""}</p>
-                                            <p className="mt-1 text-xs font-bold text-stone-500">{invoice.destinatario_nome || "Destinat?rio sem nome"} | {invoice.destinatario_cnpj || "Documento pendente"}</p>
+                                            <p className="mt-1 text-xs font-bold text-stone-500">{invoice.destinatario_nome || "Destinatário sem nome"} | {invoice.destinatario_cnpj || "Documento pendente"}</p>
                                         </div>
                                         <div className="text-right">
                                             <p className="text-sm font-black text-[#1A1A1A]">{money(Number(invoice.valor_total || 0))}</p>
@@ -2997,16 +2997,16 @@ function ReturnTechnicalPreview({
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                 <div>
                     <p className="font-black text-orange-800">
-                        {mode === "retorno" ? "Pr?via t?cnica do retorno de conserto" : "Pr?via t?cnica da devolu??o"}
+                        {mode === "retorno" ? "Pr\u00e9via t\u00e9cnica do retorno de conserto" : "Pr\u00e9via t\u00e9cnica da devolu\u00e7\u00e3o"}
                     </p>
                     <p className="mt-1 text-sm font-medium text-orange-700">
                         {mode === "retorno"
-                            ? "Esta emissao referenciara a NF-e original e usar? CFOP 5916/6916 conforme a UF do participante."
-                            : "Esta emiss?o chamar? o mesmo backend aprovado em produ??o: `emitirNFeDevolucao`."}
+                            ? "Esta emiss\u00e3o referenciar\u00e1 a NF-e original e usar\u00e1 CFOP 5916/6916 conforme a UF do participante."
+                            : "Esta emiss\u00e3o chamar\u00e1 o mesmo backend aprovado em produ\u00e7\u00e3o: `emitirNFeDevolucao`."}
                     </p>
                 </div>
                 <span className={`w-fit rounded-full px-3 py-1 text-[10px] font-black uppercase ${environment === "production" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
-                    {environment === "production" ? "Producao" : "Homologacao"}
+                    {environment === "production" ? "Produ\u00e7\u00e3o" : "Homologa\u00e7\u00e3o"}
                 </span>
             </div>
 
@@ -3035,7 +3035,7 @@ function ReturnTechnicalPreview({
                 </div>
                 {selectedItems.length === 0 ? (
                     <p className="p-3 text-sm font-medium text-orange-700">
-                        {mode === "retorno" ? "Nenhum item selecionado para retorno." : "Nenhum item selecionado para devolu??o."}
+                        {mode === "retorno" ? "Nenhum item selecionado para retorno." : "Nenhum item selecionado para devolu\u00e7\u00e3o."}
                     </p>
                 ) : (
                     selectedItems.map((item, index) => (
@@ -3164,7 +3164,7 @@ function DanfePreview({
                     <p className="text-xs font-medium text-stone-500">Dados reais entram pelo cadastro da empresa.</p>
                 </div>
                 <div className="border-t-2 border-stone-300 p-4 md:border-l-2 md:border-t-0">
-                    <p className="text-[10px] font-black uppercase text-stone-400">Destinatario/Remetente</p>
+                    <p className="text-[10px] font-black uppercase text-stone-400">Destinatário/Remetente</p>
                     <p className="mt-1 font-black text-[#1A1A1A]">{participant.nome || "Nao informado"}</p>
                     <p className="text-xs font-medium text-stone-500">{participant.cpf_cnpj || "Documento pendente"}</p>
                     <p className="text-xs font-medium text-stone-500">{participant.cidade || "Cidade"} / {participant.uf || "UF"}</p>
@@ -3186,7 +3186,7 @@ function DanfePreview({
                     <tbody>
                         {items.map((item) => (
                             <tr key={item.id} className="border-b border-stone-200">
-                                <td className="px-3 py-3 font-bold text-stone-800">{item.descricao || "Item sem descricao"}</td>
+                                <td className="px-3 py-3 font-bold text-stone-800">{item.descricao || "Item sem descrição"}</td>
                                 <td className="px-3 py-3">{item.ncm || "-"}</td>
                                 <td className="px-3 py-3">{item.cfop || "-"}</td>
                                 <td className="px-3 py-3">{item.quantidade} {item.unidade}</td>
@@ -3204,8 +3204,8 @@ function DanfePreview({
                     <p className="mt-1 text-sm font-bold text-stone-700">modFrete {modFrete}</p>
                 </div>
                 <div className="border-t-2 border-stone-300 p-4 md:border-l-2 md:border-t-0">
-                    <p className="text-[10px] font-black uppercase text-stone-400">Informacoes complementares</p>
-                    <p className="mt-1 text-sm font-medium text-stone-600">{infCpl || "Sem observacoes comerciais."}</p>
+                    <p className="text-[10px] font-black uppercase text-stone-400">Informações complementares</p>
+                    <p className="mt-1 text-sm font-medium text-stone-600">{infCpl || "Sem observações comerciais."}</p>
                 </div>
             </div>
         </div>
