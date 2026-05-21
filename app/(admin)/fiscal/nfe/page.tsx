@@ -2083,7 +2083,7 @@ export default function NFeCompletaPage() {
                                 <p className="text-sm text-stone-500">
                                     {operation === "return"
                                         ? "Na devolução, o participante vem da NF-e de entrada selecionada."
-                                        : "Busque um cadastro existente ou preencha um novo destinatario/remetente."}
+                                        : "Busque um cadastro existente ou preencha um novo destinatário/remetente."}
                                 </p>
                             </div>
 
@@ -2631,7 +2631,7 @@ function ParticipantForm({
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                 <div className="md:col-span-2">
-                    <label className={labelClass}>Nome/Razao social</label>
+                    <label className={labelClass}>Nome/Razão social</label>
                     <input value={participant.nome} onChange={(e) => patch({ nome: e.target.value })} className={fieldClass} />
                 </div>
                 <div>
@@ -2647,7 +2647,7 @@ function ParticipantForm({
                     <select value={participant.ind_ie_dest} onChange={(e) => patch({ ind_ie_dest: e.target.value as Participant["ind_ie_dest"] })} className={fieldClass}>
                         <option value="1">Contribuinte</option>
                         <option value="2">Isento</option>
-                        <option value="9">Nao contribuinte</option>
+                        <option value="9">Não contribuinte</option>
                     </select>
                 </div>
                 <div className="md:col-span-2">
@@ -2684,7 +2684,7 @@ function ParticipantForm({
                     <input value={participant.logradouro} onChange={(e) => patch({ logradouro: e.target.value })} className={fieldClass} />
                 </div>
                 <div>
-                    <label className={labelClass}>Numero</label>
+                    <label className={labelClass}>Número</label>
                     <input id={numeroInputId} value={participant.numero} onChange={(e) => patch({ numero: e.target.value })} className={fieldClass} />
                 </div>
                 <div>
@@ -2700,7 +2700,7 @@ function ParticipantForm({
                     <input value={participant.uf} onChange={(e) => patch({ uf: e.target.value.toUpperCase().slice(0, 2) })} className={fieldClass} />
                 </div>
                 <div>
-                    <label className={labelClass}>Codigo municipio</label>
+                    <label className={labelClass}>Código município</label>
                     <input value={participant.codigo_municipio} onChange={(e) => patch({ codigo_municipio: e.target.value.replace(/\D/g, "").slice(0, 7) })} className={fieldClass} />
                 </div>
             </div>
