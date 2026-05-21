@@ -325,7 +325,7 @@ function getShipmentRuleStatus(purpose: string) {
     if (purpose.includes("industrialização")) {
         return {
             title: "Industrializacao exige regra propria",
-            detail: "A sugestao de CFOP e apenas estrutural. Antes de emitir, sera necessario parametrizar retorno, insumos, cobranca e observacoes fiscais.",
+            detail: "A sugestão de CFOP é apenas estrutural. Antes de emitir, será necessário parametrizar retorno, insumos, cobrança e observações fiscais.",
         };
     }
 
@@ -786,7 +786,7 @@ export default function NFeCompletaPage() {
                 ? await getEntryInvoiceWithItemsAction(invoice.id)
                 : await getNFeInvoiceWithItemsAction(invoice.id);
             if (!data) {
-                alert("Nao foi possivel carregar a NF-e de origem selecionada.");
+                alert("Não foi possível carregar a NF-e de origem selecionada.");
                 setReturnItems([]);
                 return;
             }
@@ -1019,7 +1019,7 @@ export default function NFeCompletaPage() {
     const applyCloneInvoice = async (invoice: CloneInvoiceSummary) => {
         const data = await getNFeInvoiceWithItemsAction(invoice.id);
         if (!data?.invoice?.payload_json?.infNFe) {
-            alert("Nao foi possivel ler os dados da NF-e selecionada para clonagem.");
+            alert("N?o foi poss?vel ler os dados da NF-e selecionada para clonagem.");
             return;
         }
 
@@ -1584,7 +1584,7 @@ export default function NFeCompletaPage() {
             const warnings = collectTemplateOverrideWarnings();
             if (warnings.length > 0) {
                 const proceed = confirm(
-                    "Existem parametros tecnicos alterados na pre-emissao:\n\n" +
+                    "Existem par?metros t?cnicos alterados na pr?-emiss?o:\n\n" +
                     warnings.map((item) => `- ${item}`).join("\n") +
                     "\n\nConfirme apenas se esses ajustes foram revisados com o contador.\n\nDeseja emitir mesmo assim?"
                 );
@@ -1865,7 +1865,7 @@ export default function NFeCompletaPage() {
                                     {originSelectorExpanded && (
                                         <div className="mt-4 space-y-3">
                                             <p className="text-sm font-medium text-orange-700">
-                                                Para continuar escolha a nota em que chegou a(s) peca(s) a ser(em) devolvida(s).
+                                                Para continuar escolha a nota em que chegou a(s) pe?a(s) a ser(em) devolvida(s).
                                             </p>
 
                                             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -1900,7 +1900,7 @@ export default function NFeCompletaPage() {
                                                         }}
                                                         className={`rounded-lg px-3 py-2 text-xs font-black transition ${originQuickFilter === "recent" ? "bg-white text-orange-800 shadow-sm" : "text-orange-600"}`}
                                                     >
-                                                        Ultimas 10
+                                                        ?ltimas 10
                                                     </button>
                                                     <button
                                                         type="button"
@@ -1939,7 +1939,7 @@ export default function NFeCompletaPage() {
                                                                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                                                         <div>
                                                                             <p className="font-black text-[#1A1A1A]">
-                                                                                NF {invoice.numero || "-"} | {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? (invoice.destinatario_nome || "Destinatario sem nome") : (invoice.emitente_nome || "Fornecedor sem nome")}
+                                                                                NF {invoice.numero || "-"} | {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? (invoice.destinatario_nome || "Destinat?rio sem nome") : (invoice.emitente_nome || "Fornecedor sem nome")}
                                                                             </p>
                                                                             <p className="mt-1 text-xs font-medium text-stone-500">
                                                                                 {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? (invoice.destinatario_cnpj || "CNPJ pendente") : (invoice.emitente_cnpj || "CNPJ pendente")} | {invoice.chave_acesso || "chave pendente"}
@@ -1975,7 +1975,7 @@ export default function NFeCompletaPage() {
                                                 <div>
                                                     <p className="font-black text-[#1A1A1A]">
                                                         NF {selectedEntryInvoice.numero || "-"} | {(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp)
-                                                            ? (selectedEntryInvoice.destinatario_nome || "Destinatario sem nome")
+                                                            ? (selectedEntryInvoice.destinatario_nome || "Destinat?rio sem nome")
                                                             : (selectedEntryInvoice.emitente_nome || "Fornecedor sem nome")}
                                                     </p>
                                                     <p className="mt-1 text-xs font-medium text-stone-500">
@@ -1995,10 +1995,10 @@ export default function NFeCompletaPage() {
                                     {originSelectorExpanded && originSearchStarted && isRetornoGarantiaMvp && legacyGuaranteeInvoices.length > 0 && (
                                         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
                                             <p className="text-xs font-black uppercase text-amber-700">
-                                                Notas legadas (fora do padrao atual): {legacyGuaranteeInvoices.length}
+                                                Notas legadas (fora do padr?o atual): {legacyGuaranteeInvoices.length}
                                             </p>
                                             <p className="mt-1 text-xs font-medium text-amber-700">
-                                                Estas notas tem observacao de garantia, mas natureza de conserto. Ficam separadas e marcadas como legado.
+                                                Estas notas t?m observa??o de garantia, mas natureza de conserto. Ficam separadas e marcadas como legado.
                                             </p>
                                             <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
                                                 {filteredLegacyGuaranteeInvoices.map((invoice) => {
@@ -2014,7 +2014,7 @@ export default function NFeCompletaPage() {
                                                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                                                 <div>
                                                                     <p className="font-black text-[#1A1A1A]">
-                                                                        NF {invoice.numero || "-"} | {invoice.destinatario_nome || "Destinatario sem nome"}
+                                                                        NF {invoice.numero || "-"} | {invoice.destinatario_nome || "Destinat?rio sem nome"}
                                                                     </p>
                                                                     <p className="mt-1 text-xs font-medium text-stone-500">
                                                                         {invoice.destinatario_cnpj || "CNPJ pendente"} | {invoice.chave_acesso || "chave pendente"}
@@ -2082,7 +2082,7 @@ export default function NFeCompletaPage() {
                                 <h2 className="text-lg font-black text-[#1A1A1A]">Participante da nota</h2>
                                 <p className="text-sm text-stone-500">
                                     {operation === "return"
-                                        ? "Na devolucao, o participante vem da NF-e de entrada selecionada."
+                                        ? "Na devolução, o participante vem da NF-e de entrada selecionada."
                                         : "Busque um cadastro existente ou preencha um novo destinatario/remetente."}
                                 </p>
                             </div>
@@ -2195,7 +2195,7 @@ export default function NFeCompletaPage() {
                                     <h2 className="text-lg font-black text-[#1A1A1A]">Itens da NF-e</h2>
                                     <p className="text-sm text-stone-500">
                                         {usesOriginItems
-                                            ? "Selecione os itens da nota de origem e as quantidades desta emissao."
+                                            ? "Selecione os itens da nota de origem e as quantidades desta emissão."
                                             : "Tributacao e CFOP sao tratados por item."}
                                     </p>
                                 </div>
@@ -2244,7 +2244,7 @@ export default function NFeCompletaPage() {
                                                         onFocus={() => setFocusedItemId(item.id)}
                                                         onBlur={() => setTimeout(() => setFocusedItemId(null), 180)}
                                                         className={`${itemFieldClass} !border-amber-300 !bg-amber-100`}
-                                                        placeholder="Buscar peca do estoque..."
+                                                        placeholder="Buscar pe?a do estoque..."
                                                     />
                                                     {focusedItemId === item.id && (
                                                         <div className="absolute left-0 top-full z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-stone-200 bg-white p-2 shadow-xl">
@@ -2585,12 +2585,12 @@ function CloneInvoiceModal({
                                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                         <div>
                                             <p className="font-black text-[#1A1A1A]">NF {invoice.numero || "-"} {invoice.serie ? `Serie ${invoice.serie}` : ""}</p>
-                                            <p className="mt-1 text-xs font-bold text-stone-500">{invoice.destinatario_nome || "Destinatario sem nome"} | {invoice.destinatario_cnpj || "Documento pendente"}</p>
+                                            <p className="mt-1 text-xs font-bold text-stone-500">{invoice.destinatario_nome || "Destinat?rio sem nome"} | {invoice.destinatario_cnpj || "Documento pendente"}</p>
                                         </div>
                                         <div className="text-right">
                                             <p className="text-sm font-black text-[#1A1A1A]">{money(Number(invoice.valor_total || 0))}</p>
                                             <p className="mt-1 text-[11px] font-bold text-stone-500">
-                                                {invoice.data_emissao ? new Date(invoice.data_emissao).toLocaleDateString("pt-BR") : "Data nao informada"}
+                                                {invoice.data_emissao ? new Date(invoice.data_emissao).toLocaleDateString("pt-BR") : "Data n?o informada"}
                                             </p>
                                         </div>
                                     </div>
@@ -2734,7 +2734,7 @@ function ReturnItemsTable({
             <div className="rounded-2xl border border-amber-100 bg-amber-50 p-6 text-sm font-medium text-amber-700">
                 {mode === "retorno"
                     ? "Selecione uma remessa para conserto na primeira etapa para carregar os itens do retorno."
-                    : "Selecione uma NF-e de entrada na primeira etapa para carregar os itens da devolucao."}
+                    : "Selecione uma NF-e de entrada na primeira etapa para carregar os itens da devolu??o."}
             </div>
         );
     }
@@ -2748,7 +2748,7 @@ function ReturnItemsTable({
                 <p className="mt-1 text-xs font-medium text-stone-500">
                     {mode === "retorno"
                         ? "O retorno referencia a chave original e usa os itens do XML autorizado como base."
-                        : "A emissao usa o mesmo backend aprovado: os impostos/taxas sao espelhados a partir do XML original."}
+                        : "A emiss?o usa o mesmo backend aprovado: os impostos/taxas s?o espelhados a partir do XML original."}
                 </p>
             </div>
             <div className="overflow-x-auto">
@@ -2812,7 +2812,7 @@ function ShipmentGuidance({ purpose, cfop, destinationLabel, canEmit }: { purpos
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                     <p className={`font-black ${canEmit ? "text-green-800" : "text-blue-800"}`}>
-                        {canEmit ? `${purpose} liberada para emissao` : status.title}
+                        {canEmit ? `${purpose} liberada para emiss?o` : status.title}
                     </p>
                     <p className={`mt-1 text-sm font-medium ${canEmit ? "text-green-700" : "text-blue-700"}`}>
                         {canEmit
@@ -2879,7 +2879,7 @@ function ShipmentTechnicalPreview({
         <div className={`rounded-2xl border p-4 ${canEmit ? "border-green-100 bg-green-50" : "border-blue-100 bg-blue-50"}`}>
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                 <div>
-                    <p className={`font-black ${canEmit ? "text-green-800" : "text-blue-800"}`}>Previa tecnica de Remessa/Retorno</p>
+                    <p className={`font-black ${canEmit ? "text-green-800" : "text-blue-800"}`}>Pr?via t?cnica de Remessa/Retorno</p>
                     <p className={`mt-1 text-sm font-medium ${canEmit ? "text-green-700" : "text-blue-700"}`}>
                         {canEmit
                             ? "Esta finalidade esta pronta para transmissao: nota sem cobranca, CFOP automatico e impostos sem destaque."
@@ -2935,7 +2935,7 @@ function BlockedOperationTechnicalPreview({
     total: number;
 }) {
     const status = getOperationRuleStatus(operation, purpose);
-    const title = operation === "transfer" ? "Previa tecnica de Transferencia" : "Previa tecnica de Bonificacao/Doacao";
+    const title = operation === "transfer" ? "Pr?via t?cnica de Transfer?ncia" : "Pr?via t?cnica de Bonifica??o/Doa??o";
 
     return (
         <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
@@ -2997,12 +2997,12 @@ function ReturnTechnicalPreview({
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                 <div>
                     <p className="font-black text-orange-800">
-                        {mode === "retorno" ? "Previa tecnica do retorno de conserto" : "Previa tecnica da devolucao"}
+                        {mode === "retorno" ? "Pr?via t?cnica do retorno de conserto" : "Pr?via t?cnica da devolu??o"}
                     </p>
                     <p className="mt-1 text-sm font-medium text-orange-700">
                         {mode === "retorno"
-                            ? "Esta emissao referenciara a NF-e original e usara CFOP 5916/6916 conforme a UF do participante."
-                            : "Esta emissao chamara o mesmo backend aprovado em producao: `emitirNFeDevolucao`."}
+                            ? "Esta emissao referenciara a NF-e original e usar? CFOP 5916/6916 conforme a UF do participante."
+                            : "Esta emiss?o chamar? o mesmo backend aprovado em produ??o: `emitirNFeDevolucao`."}
                     </p>
                 </div>
                 <span className={`w-fit rounded-full px-3 py-1 text-[10px] font-black uppercase ${environment === "production" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
@@ -3016,7 +3016,7 @@ function ReturnTechnicalPreview({
                     <p className="mt-1 break-all font-mono text-xs font-bold text-[#1A1A1A]">{entryInvoice?.id || "pendente"}</p>
                 </div>
                 <div className="rounded-xl bg-white p-3">
-                    <p className="text-[10px] font-black uppercase text-stone-400">nota origem</p>
+                    <p className="text-[10px] font-black uppercase text-stone-400">nota de origem</p>
                     <p className="mt-1 text-sm font-black text-[#1A1A1A]">
                         NF {entryInvoice?.numero || "-"} | {mode === "retorno" ? (entryInvoice?.destinatario_nome || "-") : (entryInvoice?.emitente_nome || "-")}
                     </p>
@@ -3035,7 +3035,7 @@ function ReturnTechnicalPreview({
                 </div>
                 {selectedItems.length === 0 ? (
                     <p className="p-3 text-sm font-medium text-orange-700">
-                        {mode === "retorno" ? "Nenhum item selecionado para retorno." : "Nenhum item selecionado para devolucao."}
+                        {mode === "retorno" ? "Nenhum item selecionado para retorno." : "Nenhum item selecionado para devolu??o."}
                     </p>
                 ) : (
                     selectedItems.map((item, index) => (
@@ -3091,13 +3091,13 @@ function ProductLookup({ query, onSelect }: { query: string; onSelect: (product:
     if (loading) {
         return (
             <div className="flex items-center gap-2 p-2 text-xs font-medium text-stone-400">
-                <Loader2 size={14} className="animate-spin" /> Buscando pecas...
+                <Loader2 size={14} className="animate-spin" /> Buscando pe?as...
             </div>
         );
     }
 
     if (results.length === 0) {
-        return <p className="p-2 text-xs font-medium text-stone-400">Nenhuma peca encontrada. Voce pode continuar preenchendo manualmente.</p>;
+        return <p className="p-2 text-xs font-medium text-stone-400">Nenhuma pe?a encontrada. Voc? pode continuar preenchendo manualmente.</p>;
     }
 
     return (
