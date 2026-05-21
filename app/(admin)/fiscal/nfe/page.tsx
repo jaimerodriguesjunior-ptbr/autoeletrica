@@ -1865,7 +1865,7 @@ export default function NFeCompletaPage() {
                                     {originSelectorExpanded && (
                                         <div className="mt-4 space-y-3">
                                             <p className="text-sm font-medium text-orange-700">
-                                                Para continuar escolha a nota em que chegou a(s) pe?a(s) a ser(em) devolvida(s).
+                                                Para continuar escolha a nota em que chegou a(s) peça(s) a ser(em) devolvida(s).
                                             </p>
 
                                             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -1900,7 +1900,7 @@ export default function NFeCompletaPage() {
                                                         }}
                                                         className={`rounded-lg px-3 py-2 text-xs font-black transition ${originQuickFilter === "recent" ? "bg-white text-orange-800 shadow-sm" : "text-orange-600"}`}
                                                     >
-                                                        ?ltimas 10
+                                                        Últimas 10
                                                     </button>
                                                     <button
                                                         type="button"
@@ -2244,7 +2244,7 @@ export default function NFeCompletaPage() {
                                                         onFocus={() => setFocusedItemId(item.id)}
                                                         onBlur={() => setTimeout(() => setFocusedItemId(null), 180)}
                                                         className={`${itemFieldClass} !border-amber-300 !bg-amber-100`}
-                                                        placeholder="Buscar pe?a do estoque..."
+                                                        placeholder="Buscar peça do estoque..."
                                                     />
                                                     {focusedItemId === item.id && (
                                                         <div className="absolute left-0 top-full z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-stone-200 bg-white p-2 shadow-xl">
@@ -3091,13 +3091,13 @@ function ProductLookup({ query, onSelect }: { query: string; onSelect: (product:
     if (loading) {
         return (
             <div className="flex items-center gap-2 p-2 text-xs font-medium text-stone-400">
-                <Loader2 size={14} className="animate-spin" /> Buscando pe?as...
+                <Loader2 size={14} className="animate-spin" /> Buscando peças...
             </div>
         );
     }
 
     if (results.length === 0) {
-        return <p className="p-2 text-xs font-medium text-stone-400">Nenhuma pe?a encontrada. Voc? pode continuar preenchendo manualmente.</p>;
+        return <p className="p-2 text-xs font-medium text-stone-400">Nenhuma peça encontrada. Você pode continuar preenchendo manualmente.</p>;
     }
 
     return (
