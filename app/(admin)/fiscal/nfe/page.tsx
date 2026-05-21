@@ -1698,7 +1698,7 @@ export default function NFeCompletaPage() {
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_1fr_320px]">
                 <aside className="space-y-3">
-                    <div className="rounded-2xl border border-stone-100 bg-white p-3 shadow-sm">
+                                        <div className="rounded-2xl border border-stone-100 bg-white p-3 shadow-sm">
                         {STEPS.map((item, index) => {
                             const active = item.id === step;
                             const done = index < stepIndex;
@@ -1738,29 +1738,6 @@ export default function NFeCompletaPage() {
                         })}
                     </div>
 
-                    <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
-                        <p className="text-xs font-black uppercase text-stone-400">Resumo</p>
-                        <div className="mt-3 space-y-2 text-sm">
-                            <div className="flex justify-between gap-3">
-                                <span className="text-stone-500">Operação</span>
-                                <span className="text-right font-black text-stone-800">{currentOperation.title}</span>
-                            </div>
-                            <div className="flex justify-between gap-3">
-                                <span className="text-stone-500">Destino</span>
-                                <span className="text-right font-black text-stone-800">{destinationLabel}</span>
-                            </div>
-                            <div className="flex justify-between gap-3">
-                                <span className="text-stone-500">Itens</span>
-                                <span className="font-black text-stone-800">{usesOriginItems ? selectedReturnItems.length : items.length}</span>
-                            </div>
-                            <div className="border-t border-stone-100 pt-2">
-                                <div className="flex justify-between gap-3">
-                                    <span className="text-stone-500">Total</span>
-                                    <span className="font-black text-[#1A1A1A]">{money(displayTotal)}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                 </aside>
 
                 <main className="min-h-[640px] rounded-2xl border border-stone-100 bg-white p-5 shadow-sm">
@@ -2405,8 +2382,6 @@ export default function NFeCompletaPage() {
                             {usesOriginItems && (
                                 <ReturnTechnicalPreview
                                     entryInvoice={selectedEntryInvoice}
-                                    referencedKey={referencedKey}
-                                    selectedItems={selectedReturnItems}
                                     total={returnTotal}
                                     environment={environment}
                                     mode={(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? "retorno" : "devolucao"}
@@ -2474,6 +2449,30 @@ export default function NFeCompletaPage() {
                 </main>
 
                 <aside className="space-y-3">
+                    <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
+                        <p className="text-xs font-black uppercase text-stone-400">Resumo</p>
+                        <div className="mt-3 space-y-2 text-sm">
+                            <div className="flex justify-between gap-3">
+                                <span className="text-stone-500">Operação</span>
+                                <span className="text-right font-black text-stone-800">{currentOperation.title}</span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                                <span className="text-stone-500">Destino</span>
+                                <span className="text-right font-black text-stone-800">{destinationLabel}</span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                                <span className="text-stone-500">Itens</span>
+                                <span className="font-black text-stone-800">{usesOriginItems ? selectedReturnItems.length : items.length}</span>
+                            </div>
+                            <div className="border-t border-stone-100 pt-2">
+                                <div className="flex justify-between gap-3">
+                                    <span className="text-stone-500">Total</span>
+                                    <span className="font-black text-[#1A1A1A]">{money(displayTotal)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
                         <p className="flex items-center gap-2 text-sm font-black text-[#1A1A1A]"><AlertCircle size={16} /> {"Pend\u00eancias"}</p>
                         {pending.length === 0 ? (
@@ -2980,15 +2979,11 @@ function BlockedOperationTechnicalPreview({
 
 function ReturnTechnicalPreview({
     entryInvoice,
-    referencedKey,
-    selectedItems,
     total,
     environment,
     mode,
 }: {
     entryInvoice: EntryInvoiceSummary | null;
-    referencedKey: string;
-    selectedItems: ReturnItemState[];
     total: number;
     environment: "homologation" | "production";
     mode: "devolucao" | "retorno";
@@ -2998,12 +2993,7 @@ function ReturnTechnicalPreview({
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                 <div>
                     <p className="font-black text-orange-800">
-                        {mode === "retorno" ? "Pr\u00e9via t\u00e9cnica do retorno de conserto" : "Pr\u00e9via t\u00e9cnica da devolu\u00e7\u00e3o"}
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-orange-700">
-                        {mode === "retorno"
-                            ? "Esta emiss\u00e3o referenciar\u00e1 a NF-e original e usar\u00e1 CFOP 5916/6916 conforme a UF do participante."
-                            : "Esta emiss\u00e3o chamar\u00e1 o mesmo backend aprovado em produ\u00e7\u00e3o: `emitirNFeDevolucao`."}
+                        {mode === "retorno" ? "Pr\u00e9via do retorno de conserto" : "Pr\u00e9via da devolu\u00e7\u00e3o"}
                     </p>
                 </div>
                 <span className={`w-fit rounded-full px-3 py-1 text-[10px] font-black uppercase ${environment === "production" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
@@ -3011,47 +3001,16 @@ function ReturnTechnicalPreview({
                 </span>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div className="rounded-xl bg-white p-3">
-                    <p className="text-[10px] font-black uppercase text-stone-400">entry_invoice_id</p>
-                    <p className="mt-1 break-all font-mono text-xs font-bold text-[#1A1A1A]">{entryInvoice?.id || "pendente"}</p>
-                </div>
+            <div className="mt-4 grid grid-cols-1 gap-3">
                 <div className="rounded-xl bg-white p-3">
                     <p className="text-[10px] font-black uppercase text-stone-400">nota de origem</p>
                     <p className="mt-1 text-sm font-black text-[#1A1A1A]">
                         NF {entryInvoice?.numero || "-"} | {mode === "retorno" ? (entryInvoice?.destinatario_nome || "-") : (entryInvoice?.emitente_nome || "-")}
                     </p>
-                </div>
-                <div className="rounded-xl bg-white p-3 md:col-span-2">
-                    <p className="text-[10px] font-black uppercase text-stone-400">chave referenciada</p>
-                    <p className="mt-1 break-all font-mono text-xs font-bold text-[#1A1A1A]">{referencedKey || "pendente"}</p>
-                </div>
-            </div>
-
-            <div className="mt-4 overflow-hidden rounded-xl border border-orange-100 bg-white">
-                <div className="grid grid-cols-[1fr_90px_120px] gap-2 border-b border-orange-100 bg-orange-100/60 px-3 py-2 text-[10px] font-black uppercase text-orange-800">
-                    <span>Item selecionado</span>
-                    <span className="text-right">Qtd.</span>
-                    <span className="text-right">Total</span>
-                </div>
-                {selectedItems.length === 0 ? (
-                    <p className="p-3 text-sm font-medium text-orange-700">
-                        {mode === "retorno" ? "Nenhum item selecionado para retorno." : "Nenhum item selecionado para devolu\u00e7\u00e3o."}
+                    <p className="mt-1 text-xs font-medium text-stone-500">
+                        Data: {entryInvoice?.data_emissao ? new Date(entryInvoice.data_emissao).toLocaleDateString("pt-BR") : "não informada"}
                     </p>
-                ) : (
-                    selectedItems.map((item, index) => (
-                        <div key={`${item.codigo}-${index}`} className="grid grid-cols-[1fr_90px_120px] gap-2 border-b border-stone-100 px-3 py-2 text-sm last:border-b-0">
-                            <span className="font-bold text-stone-800">{item.descricao}</span>
-                            <span className="text-right font-mono text-stone-600">{item.qtd_devolver}</span>
-                            <span className="text-right font-black text-[#1A1A1A]">{money(item.qtd_devolver * item.valor_unitario)}</span>
-                        </div>
-                    ))
-                )}
-            </div>
-
-            <div className="mt-4 flex items-center justify-between rounded-xl bg-white p-3">
-                <span className="text-sm font-black text-stone-500">valor_total enviado</span>
-                <span className="text-xl font-black text-[#1A1A1A]">{money(total)}</span>
+                </div>
             </div>
         </div>
     );
@@ -3177,7 +3136,7 @@ function DanfePreview({
                 </div>
                 <div className="border-t-2 border-stone-300 p-4 md:border-l-2 md:border-t-0">
                     <p className="text-[10px] font-black uppercase text-stone-400">Destinatário/Remetente</p>
-                    <p className="mt-1 font-black text-[#1A1A1A]">{participant.nome || "Nao informado"}</p>
+                    <p className="mt-1 font-black text-[#1A1A1A]">{participant.nome || "Não informado"}</p>
                     <p className="text-xs font-medium text-stone-500">{participant.cpf_cnpj || "Documento pendente"}</p>
                     <p className="text-xs font-medium text-stone-500">{participant.cidade || "Cidade"} / {participant.uf || "UF"}</p>
                 </div>

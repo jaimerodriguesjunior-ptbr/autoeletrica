@@ -88,6 +88,25 @@ A copia gradual reduz risco porque:
 - evita que uma mudanca central derrube todos;
 - facilita suporte por uma pessoa so.
 
+## Base Semantica Comum (Decisao Explicita)
+Mesmo sem API fiscal central neste momento, os sistemas devem compartilhar a mesma base semantica.
+
+Isso significa:
+- regras de negocio com a mesma intencao fiscal;
+- mesmos criterios de validacao estrutural antes da emissao;
+- mesmas nomenclaturas-chave de fluxo (operacao, participante, itens, transporte, revisao);
+- mesmas mensagens criticas para orientar o usuario em erros e bloqueios;
+- mesmo checklist de homologacao para evitar regressao silenciosa.
+
+Em resumo:
+- a execucao continua local por sistema (isolamento de risco);
+- a semantica continua comum entre sistemas (portabilidade de correcao).
+
+Objetivo pratico:
+- o que for corrigido na autoeletrica deve ser reaplicado com baixo atrito nos demais programas;
+- reduzir divergencia funcional ao longo do tempo, mesmo com codigo separado;
+- manter previsibilidade para suporte, contador e validacao fiscal.
+
 ## Riscos da Estrategia de Copia Gradual
 
 ### Risco 1: Divergencia entre sistemas
