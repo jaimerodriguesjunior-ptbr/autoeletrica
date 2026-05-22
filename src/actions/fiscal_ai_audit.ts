@@ -430,7 +430,7 @@ CORRECAO OBRIGATORIA DE QUALIDADE:
             raw: parsed,
         };
     } catch {
-        const recovered = recoverAuditTextFromPartialJson(textResponse);
+        const recovered = recoverAuditTextFromPartialJson(textResponse || "");
         return {
             success: true,
             text: recovered.text,

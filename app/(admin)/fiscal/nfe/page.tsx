@@ -616,11 +616,12 @@ export default function NFeCompletaPage() {
             : "Operação interestadual";
     const totalItems = items.reduce((sum, item) => sum + item.quantidade * item.valor_unitario, 0);
     const requiresReference = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp;
+    const allowsAdvancedOriginReference = operation === "advanced";
     const selectedReturnItems = returnItems.filter((item) => item.selected && item.qtd_devolver > 0);
     const returnTotal = selectedReturnItems.reduce((sum, item) => sum + item.qtd_devolver * item.valor_unitario, 0);
     const displayTotal = usesOriginItems ? returnTotal : totalItems;
     const isReferenceSelectionPending = requiresReference && !selectedEntryInvoice;
-    const shouldShowOriginSelector = requiresReference && !isReturnPurposeUnavailable;
+    const shouldShowOriginSelector = (requiresReference && !isReturnPurposeUnavailable) || allowsAdvancedOriginReference;
     const participantCnpjBase = cnpjBase(participant.cpf_cnpj);
     const isTransferBetweenBranches = operation === "transfer" && purpose === "Transferência entre filiais";
     const isTransferDepositFlow = operation === "transfer" && (purpose === "Transferência para depósito" || purpose === "Retorno de depósito");
@@ -841,7 +842,7 @@ export default function NFeCompletaPage() {
     ]);
 
     useEffect(() => {
-        if (!profile?.organization_id || !requiresReference) return;
+        if (!profile?.organization_id || (!requiresReference && !allowsAdvancedOriginReference)) return;
 
         const loadEntryInvoices = async () => {
             setLoadingEntryInvoices(true);
@@ -936,7 +937,7 @@ export default function NFeCompletaPage() {
         };
 
         loadEntryInvoices();
-    }, [operation, purpose, requiresReference, environment, profile?.organization_id, supabase, isRetornoConsertoMvp, isRetornoGarantiaMvp, isRetornoDepositoMvp]);
+    }, [operation, purpose, requiresReference, allowsAdvancedOriginReference, environment, profile?.organization_id, supabase, isRetornoConsertoMvp, isRetornoGarantiaMvp, isRetornoDepositoMvp]);
 
     useEffect(() => {
         if (!profile?.organization_id || participantSearchLocked || participantSearch.trim().length < 2) {
@@ -1192,6 +1193,11 @@ export default function NFeCompletaPage() {
         setSelectedEntryInvoice(invoice);
         setReferencedKey(invoice.chave_acesso || "");
         setOriginSelectorExpanded(false);
+        if (operation === "advanced") {
+            setReturnItems([]);
+            return;
+        }
+
         setLoadingEntryItems(true);
 
         try {
@@ -1455,7 +1461,12 @@ export default function NFeCompletaPage() {
             }
 
             setAiAudit(buildConciseAiAuditText(audit));
-            setAiAuditStatus(audit.audit?.status || "atencao");
+            const auditStatus = audit.audit?.status;
+            setAiAuditStatus(
+                auditStatus === "parece_correta" || auditStatus === "atencao" || auditStatus === "inconsistente"
+                    ? auditStatus
+                    : "atencao"
+            );
             setAdvancedAuditReady(true);
 
             return { ok: true, severe: false };
@@ -1906,7 +1917,9 @@ export default function NFeCompletaPage() {
                 tipo_documento: "NFe",
                 observacao: infCpl,
                 modFrete,
-                finalidade_transferencia: purpose as "Transferência entre filiais" | "Transferência para depósito" | "Retorno de depósito",
+                finalidade_transferencia: purpose
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "") as "Transferencia entre filiais" | "Transferencia para deposito" | "Retorno de deposito",
             });
             if (result.success) {
                 alert(result.message || "NF-e de transferencia enviada.");
@@ -1967,7 +1980,9 @@ export default function NFeCompletaPage() {
                 tipo_documento: "NFe",
                 observacao: infCpl,
                 modFrete,
-                finalidade_bonus: purpose as "Bonificação" | "Brinde" | "Doação",
+                finalidade_bonus: purpose
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "") as "Bonificacao" | "Brinde" | "Doacao",
             });
             if (result.success) {
                 alert(result.message || "NF-e de bonificacao/doacao enviada.");
@@ -2054,6 +2069,7 @@ export default function NFeCompletaPage() {
                 tipo_documento: "NFe",
                 observacao: infCpl,
                 modFrete,
+                referenced_key: digits(referencedKey).length === 44 ? digits(referencedKey) : undefined,
                 ind_pres: indPres,
                 ind_intermed: indIntermed,
                 ind_final: indFinal,
@@ -2346,13 +2362,17 @@ export default function NFeCompletaPage() {
                                     {originSelectorExpanded && (
                                         <div className="mt-4 space-y-3">
                                             <p className="text-sm font-medium text-orange-700">
-                                                Para continuar escolha a nota em que chegou a(s) peça(s) a ser(em) devolvida(s).
+                                                {operation === "advanced"
+                                                    ? "Opcional: selecione uma nota de origem para referenciar nesta emissão."
+                                                    : "Para continuar escolha a nota em que chegou a(s) peça(s) a ser(em) devolvida(s)."}
                                             </p>
 
                                             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                                                 <div className="flex-1">
                                                     <label className="ml-1 text-[10px] font-black uppercase text-orange-500">
-                                                        {(isRetornoConsertoMvp || isRetornoGarantiaMvp)
+                                                        {operation === "advanced"
+                                                            ? "Buscar NF-e para referência"
+                                                            : (isRetornoConsertoMvp || isRetornoGarantiaMvp)
                                                             ? `Buscar remessa para ${isRetornoGarantiaMvp ? "garantia" : "conserto"}`
                                                             : isRetornoDepositoMvp
                                                                 ? "Buscar transferência para depósito"
@@ -2368,7 +2388,11 @@ export default function NFeCompletaPage() {
                                                             }
                                                         }}
                                                         className="mt-1 w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
-                                                        placeholder={(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? "Cliente, CPF/CNPJ, número ou chave" : "Fornecedor, CNPJ, número ou chave"}
+                                                        placeholder={operation === "advanced"
+                                                            ? "Número, chave, emitente ou destinatário"
+                                                            : (isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp)
+                                                                ? "Cliente, CPF/CNPJ, número ou chave"
+                                                                : "Fornecedor, CNPJ, número ou chave"}
                                                     />
                                                 </div>
 
@@ -2403,7 +2427,7 @@ export default function NFeCompletaPage() {
                                             ) : (
                                                 <>
                                                     <p className="text-xs font-bold text-orange-700">
-                                                        Mostrando {filteredEntryInvoices.length} de {entryInvoices.length} {(isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "remessa(s) autorizada(s)" : isRetornoDepositoMvp ? "transferencia(s) autorizada(s)" : "nota(s) encontrada(s)"}.
+                                                        Mostrando {filteredEntryInvoices.length} de {entryInvoices.length} {operation === "advanced" ? "nota(s) encontrada(s)" : (isRetornoConsertoMvp || isRetornoGarantiaMvp) ? "remessa(s) autorizada(s)" : isRetornoDepositoMvp ? "transferencia(s) autorizada(s)" : "nota(s) encontrada(s)"}.
                                                     </p>
 
                                                     <div className="max-h-72 space-y-2 overflow-y-auto">

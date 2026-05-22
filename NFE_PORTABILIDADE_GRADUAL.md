@@ -107,6 +107,232 @@ Objetivo pratico:
 - reduzir divergencia funcional ao longo do tempo, mesmo com codigo separado;
 - manter previsibilidade para suporte, contador e validacao fiscal.
 
+## Contrato Semantico Que Deve Ser Mantido
+Ao portar a tela de NF-e para outro sistema, a primeira preocupacao nao deve ser copiar pixels ou nomes internos de arquivos. A primeira preocupacao deve ser manter o mesmo contrato mental do fluxo.
+
+O fluxo sempre deve preservar estes passos:
+1. Operacao.
+2. Participante.
+3. Itens.
+4. Transporte e observacoes.
+5. Revisao.
+
+Significado de cada passo:
+- `Operacao`: define a intencao fiscal inicial, template ou modo assistido.
+- `Participante`: define destinatario/remetente e dados de endereco/IE.
+- `Itens`: define produtos, NCM, CFOP, origem, CSOSN/CST e impostos por item.
+- `Transporte e observacoes`: define frete, presenca da operacao, intermediador, pagamento, valores acessorios e observacoes.
+- `Revisao`: consolida pendencias, regra atual, previa e auditoria por IA quando aplicavel.
+
+Esse contrato deve existir mesmo que a UI de outro sistema seja visualmente diferente.
+
+### Tipos de Operacao Padrao
+A implementacao atual trabalha com estes grupos:
+- `sale`: venda comum.
+- `return`: devolucao de compra baseada em NF-e de entrada.
+- `shipment`: remessa/retorno (conserto, garantia, demonstracao, industrializacao quando aplicavel).
+- `transfer`: transferencia entre filiais/depositos e retorno de deposito.
+- `bonus`: bonificacao, brinde e doacao.
+- `advanced`: outra operacao, com orientacao do contador.
+
+Ao portar, mantenha esses conceitos mesmo que o texto da tela seja adaptado ao dominio do novo sistema.
+
+## Arquitetura Local Que Deve Ser Portada
+Na autoeletrica, a NF-e completa esta distribuida principalmente nestas camadas:
+
+- UI principal: `app/(admin)/fiscal/nfe/page.tsx`
+- Emissao fiscal: `src/actions/fiscal_emission.ts`
+- Wrappers/actions de UI: `src/actions/fiscal_emission_actions.ts`
+- Banco e leitura de notas/XML: `src/actions/fiscal_db.ts`
+- Auditoria por IA: `src/actions/fiscal_ai_audit.ts`
+- Listagem/portal fiscal: `app/(admin)/fiscal/page.tsx`
+- Configuracoes da empresa: `app/(admin)/configuracoes/page.tsx`
+
+Portar apenas a tela nao e suficiente. A tela depende do contrato das actions, do banco, da numeracao, das configuracoes da empresa e das rotas de download/impressao.
+
+## Campos Funcionais Que Devem Existir
+Os sistemas destino precisam oferecer dados equivalentes a estes, mesmo que o banco tenha nomes diferentes.
+
+### Empresa
+- CNPJ/CPF.
+- Razao social e nome fantasia.
+- Inscricao estadual.
+- Inscricao municipal.
+- Regime tributario/CRT.
+- CNAE para NFS-e, sem tratar CNAE como bloqueio de preenchimento de NF-e.
+- Endereco completo com codigo IBGE.
+- Serie padrao da NF-e.
+- Credenciais Nuvem Fiscal.
+- Responsavel tecnico da software house.
+
+### Participante
+- Nome/razao social.
+- CPF/CNPJ.
+- Indicador IE (`indIEDest`).
+- Inscricao estadual quando houver.
+- Email/telefone.
+- Endereco completo com codigo IBGE.
+
+### Itens
+- Codigo.
+- Descricao.
+- NCM.
+- CFOP.
+- Unidade.
+- Quantidade.
+- Valor unitario/total.
+- Origem.
+- CSOSN/CST.
+- CEST/cBenef quando aplicavel.
+- IPI (`CST`, `cEnq`, base, aliquota, valor).
+- PIS (`CST`, base, aliquota, valor).
+- COFINS (`CST`, base, aliquota, valor).
+
+### Transporte, Pagamento e Parametros da Operacao
+- `modFrete`.
+- Transportadora, documento e volumes quando houver transporte.
+- `indPres` (presencial, internet, outros).
+- `indIntermed` e dados do intermediador.
+- `indFinal`.
+- `meio_pagamento`.
+- Frete, seguro, desconto e outras despesas.
+- Observacoes comerciais (`infCpl`).
+- Observacoes fiscais (`infAdFisco`).
+
+## Regras de UX Que Devem Ser Preservadas
+A tela foi desenhada para reduzir erro fiscal sem transformar a emissao em uma parede tecnica.
+
+Regras importantes:
+- Pendencias bloqueantes devem aparecer antes da transmissao.
+- O menu lateral deve indicar tambem o passo onde a correcao acontece.
+- A revisao pode manter alerta geral, mas o passo especifico tambem precisa alertar.
+- Campo tecnico deve aparecer apenas onde ele ajuda a decidir ou corrigir.
+- Textos para usuario devem ser simples; termos tecnicos ficam quando forem inevitaveis.
+- Operacoes sem template devem orientar o usuario para `Outra operacao`.
+- `Outra operacao` exige reforco visual de que o contador deve orientar a emissao.
+- Auditoria por IA nao substitui contador e nao deve virar autorizacao fiscal.
+
+Exemplo de regra objetiva que deve ficar em pendencias, nao depender da IA:
+- venda de saida com `indPres = 0` deve alertar antes da auditoria.
+- `modFrete = 9` com valor de frete maior que zero deve alertar.
+- intermediador marcado como ativo exige CNPJ valido.
+- desconto nao pode ser maior que o total dos itens.
+
+## Templates e Reenquadramento Apos Clonagem
+A clonagem de NF-e nao significa reaproveitar a nota anterior como documento fiscal. Ela serve para reaproveitar dados operacionais.
+
+Dados que podem ser reaproveitados:
+- participante;
+- endereco;
+- itens;
+- valores de itens;
+- NCM/unidade;
+- observacoes quando a operacao continuar no mesmo template.
+
+Dados que nao devem ser reaproveitados como identidade fiscal:
+- numero da nota;
+- chave de acesso;
+- protocolo;
+- status;
+- autorizacao;
+- data de autorizacao;
+- qualquer identificador de emissao anterior.
+
+Comportamento esperado:
+- se o usuario clonar uma venda e continuar em venda, pode manter mais campos.
+- se o usuario clonar uma venda e trocar para bonificacao/doacao/remessa/transferencia, o sistema deve reaplicar o template fiscal da nova operacao.
+- o template novo deve recalcular ou limpar pagamento, `indPres`, `indIntermed`, `indFinal`, intermediador, CSOSN padrao, observacoes e valores acessorios quando necessario.
+- a clonagem deve reduzir retrabalho, nao congelar a nota antiga.
+
+Exemplo:
+- usuario clona uma venda para o mesmo cliente;
+- troca tipo de operacao para `Doacao`;
+- sistema mantem cliente e itens;
+- sistema troca pagamento para sem pagamento;
+- sistema troca observacao para texto de doacao;
+- sistema reaplica CSOSN/CFOP do template;
+- sistema nao reaproveita numero/chave/protocolo da venda original.
+
+## Nota de Origem e Referencias
+Algumas operacoes precisam ou podem referenciar uma NF-e anterior.
+
+Casos obrigatorios:
+- devolucao de compra;
+- retorno de conserto;
+- retorno de garantia;
+- retorno de deposito;
+- outros retornos com template especifico.
+
+Casos opcionais:
+- `Outra operacao`, quando o contador orientar referencia a uma nota anterior.
+
+Comportamento esperado:
+- em operacoes obrigatorias, sem nota de origem a emissao deve ficar bloqueada.
+- em `Outra operacao`, a nota de origem deve ser opcional.
+- quando selecionada, a chave da nota de origem deve ir em `NFref`.
+- em `Outra operacao`, selecionar nota de origem nao deve necessariamente substituir os itens atuais.
+- nos fluxos de devolucao/retorno com template, a nota de origem pode alimentar os itens e quantidades retornadas.
+
+Essa diferenca e importante:
+- devolucao/retorno usa nota de origem como base operacional;
+- outra operacao pode usar nota de origem apenas como referencia fiscal.
+
+## Operacao Assistida e Auditoria por IA
+`Outra operacao` existe para operacoes sem template ou com parametrizacao orientada pelo contador.
+
+Regras:
+- deve ficar limitada a homologacao enquanto nao houver maturidade suficiente para producao;
+- deve permitir preencher natureza, tipo NF-e, finalidade, CFOP, impostos e observacoes;
+- deve permitir nota de origem opcional;
+- deve enviar para a IA o payload completo da operacao, incluindo parametros de presenca, pagamento, intermediador e valores acessorios;
+- deve ter botao para enviar resumo ao contador por WhatsApp quando houver duvida;
+- deve exigir confirmacao explicita antes de emitir quando a auditoria apontar pontos de atencao.
+
+Escopo da IA:
+- auditar consistencia de preenchimento da NF-e;
+- nao decidir se a empresa pode ou nao emitir pela atividade/CNAE;
+- nao substituir contador;
+- nao bloquear por incerteza generica;
+- apontar campo concreto quando houver conflito.
+
+Logs recomendados:
+- modelo usado;
+- tentativa;
+- falha/sucesso;
+- tokens de entrada;
+- tokens de saida;
+- tokens totais.
+
+## Contrato Minimo do Payload de Emissao
+Ao portar, garanta que os payloads consigam representar:
+
+- `organization_id`
+- `cliente`
+- `itens`
+- `valor_total`
+- `valor_frete`
+- `valor_seguro`
+- `valor_desconto`
+- `valor_outras_despesas`
+- `meio_pagamento`
+- `environment`
+- `tipo_documento`
+- `natureza_operacao`
+- `tipo_nfe`
+- `finalidade_nfe`
+- `ind_pres`
+- `ind_intermed`
+- `ind_final`
+- `intermediador`
+- `transporte`
+- `entrega`
+- `retirada`
+- `inf_ad_fisco`
+- `observacao`
+- `referenced_key`
+
+Esse contrato nao precisa ser identico no banco, mas precisa existir na fronteira entre UI e emissao.
+
 ## Riscos da Estrategia de Copia Gradual
 
 ### Risco 1: Divergencia entre sistemas
@@ -157,8 +383,11 @@ Mitigacao:
 - [ ] Actions de banco fiscal.
 - [ ] Actions de auditoria por IA.
 - [ ] Tela completa `/fiscal/nfe`.
+- [ ] Contrato entre UI e emissao preserva `indPres`, `indIntermed`, `indFinal`, pagamento, intermediador, frete, seguro, desconto, outras despesas e referencia de origem.
 - [ ] Busca e clonagem de NF-e para pre-preencher a UI sem reaproveitar autorizacao.
 - [ ] Cards de clonagem exibem resumo fiscal (CFOP, origem/CSOSN/CST, IPI, PIS, COFINS) para escolha rapida da nota base.
+- [ ] Troca de operacao/finalidade apos clonagem reaplica template fiscal e nao carrega observacao incoerente.
+- [ ] Nota de origem opcional em `Outra operacao` envia `NFref` quando selecionada.
 - [ ] Tela fiscal/listagem de notas.
 - [ ] Rota de impressao/download.
 - [ ] Configuracoes da empresa.
@@ -168,10 +397,12 @@ Mitigacao:
 
 ### Banco de Dados
 - [ ] `company_settings.nfe_serie` existe.
+- [ ] `company_settings.cnae` existe para NFS-e, mas nao e usado como bloqueio principal da auditoria de NF-e.
 - [ ] `nfe_sequences` existe.
 - [ ] RPC `get_next_nfe_number` existe.
 - [ ] Tabelas fiscais possuem campos esperados.
 - [ ] `fiscal_invoices` armazena XML/PDF/status corretamente.
+- [ ] `fiscal_invoices.payload_json` preserva `infNFe`, `ide`, `det`, `transp`, `pag`, `infAdic` e `NFref` quando houver.
 - [ ] Inutilizacoes suportam modelo `NFCe` e `NFe`.
 
 ### Variaveis e Credenciais
@@ -186,14 +417,22 @@ Mitigacao:
 - [ ] Venda interna e interestadual.
 - [ ] Validacao local de CPF/CNPJ (participante, transportadora e intermediador) bloqueando antes da Nuvem Fiscal.
 - [ ] Clonar NF-e existente apenas como rascunho, sem reaproveitar numero, chave, protocolo, status ou autorizacao.
+- [ ] Clonar venda e trocar para bonificacao/doacao: participante e itens permanecem, template fiscal e observacao sao recalculados.
+- [ ] Clonar nota errada/rejeitada quando filtro permitir, corrigir dados e emitir novo rascunho sem reaproveitar identidade fiscal antiga.
 - [ ] Venda com frete.
+- [ ] `modFrete = 9` com valor de frete maior que zero bloqueia antes da emissao.
 - [ ] Venda com desconto.
+- [ ] Desconto maior que total dos itens bloqueia antes da emissao.
 - [ ] Venda com IPI tributado.
+- [ ] Venda de saida com `indPres = 0` bloqueia antes da auditoria por IA.
+- [ ] Operacao com intermediador ativo exige CNPJ valido do intermediador.
 - [ ] Remessa em garantia.
 - [ ] Retorno de garantia.
 - [ ] Remessa para conserto.
 - [ ] Retorno de conserto.
 - [ ] Devolucao baseada em nota de origem.
+- [ ] Outra operacao com nota de origem opcional gera `NFref` quando a chave for valida.
+- [ ] Outra operacao sem nota de origem continua permitida quando a operacao nao exigir referencia.
 - [ ] Bonificacao/doacao.
 - [ ] Transferencia, quando aplicavel.
 - [ ] Transferencia entre filiais bloqueia quando raiz de CNPJ emitente/destinatario for diferente.
@@ -201,6 +440,9 @@ Mitigacao:
 - [ ] UI sem regressao de status: quando finalidade estiver habilitada, nao pode aparecer "operacao bloqueada/desativada".
 - [ ] Operacao assistida com auditoria por IA.
 - [ ] Auditoria por IA sem botao dedicado: chamada automatica no momento de emissao da operacao assistida.
+- [ ] Auditoria por IA recebe `company_fiscal_context` e `operacao_fiscal`.
+- [ ] Auditoria por IA nao usa CNAE como motivo principal de bloqueio de NF-e.
+- [ ] Auditoria por IA registra no terminal modelo, tentativa, falha/sucesso e tokens de entrada/saida.
 - [ ] Templates com alteracoes tecnicas relevantes exibem aviso de confirmacao antes da emissao.
 - [ ] Download de XML.
 - [ ] XML autorizado sem `xml_content` fica laranja, tenta persistir automaticamente e vira azul quando salvo no banco.

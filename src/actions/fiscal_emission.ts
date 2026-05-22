@@ -117,6 +117,7 @@ type EmissionPayload = {
     ind_final?: 0 | 1;
 
     inf_ad_fisco?: string;
+    referenced_key?: string;
 
     intermediador?: {
 
@@ -803,6 +804,8 @@ export async function emitirNFCe(payload: EmissionPayload) {
             throw new Error("Configurações fiscais incompletas: informe a Inscrição Estadual (IE) da empresa para emitir NFC-e.");
         }
 
+        const { dhEmi } = getSaoPauloDatePartsWithSafety();
+
         // 2.5 Buscar próxima numeração sequencial
         // Buscamos a série ativa para a organização
         const { data: sequenceData } = await supabase
@@ -851,7 +854,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                     nNF: nextNumber,
 
-                    dhEmi: new Date().toISOString(),
+                    dhEmi,
 
                     tpNF: 1, // 1 = Saída
 
@@ -879,7 +882,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                 emit: {
 
-                    CNPJ: company.cnpj.replace(/\D/g, ""),
+                    CNPJ: cnpj.replace(/\D/g, ""),
 
                     xNome: company.razao_social,
 
@@ -1076,7 +1079,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                         }
                     ]
                 },
-                infRespTec: buildNFeInfRespTec(company, company.cnpj.replace(/\D/g, ""), env)
+                infRespTec: buildNFeInfRespTec(company, cnpj.replace(/\D/g, ""), env)
 
             }
 
@@ -4124,17 +4127,6 @@ export async function emitirNFSe(payload: EmissionPayload) {
             })
             .eq("id", invoice.id);
 
-
-        // 6.5 Verificação automática de status (poll imediato após 2s)
-        // Muitas prefeituras autorizam instantaneamente, então verificamos logo
-        setTimeout(async () => {
-            try {
-                console.log("[NFSe] Verificando status automaticamente após 2s...");
-                await consultarNFSe(invoice.id);
-            } catch (e) {
-                console.error("[NFSe] Erro na verificação automática:", e);
-            }
-        }, 2000);
 
         return { success: true, invoiceId: invoice.id };
 
