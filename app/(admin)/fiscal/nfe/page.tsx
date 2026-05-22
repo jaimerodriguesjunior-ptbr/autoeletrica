@@ -1563,6 +1563,7 @@ export default function NFeCompletaPage() {
                         uf: participant.uf,
                         codigo_municipio: participant.codigo_municipio,
                         inscricao_estadual: participant.inscricao_estadual,
+                        ind_ie_dest: participant.ind_ie_dest,
                     },
                 },
                 itens: items.map((item, index) => ({
@@ -1699,6 +1700,7 @@ export default function NFeCompletaPage() {
                         uf: participant.uf,
                         codigo_municipio: participant.codigo_municipio,
                         inscricao_estadual: participant.inscricao_estadual,
+                        ind_ie_dest: participant.ind_ie_dest,
                     },
                 },
                 itens: items.map((item, index) => ({
@@ -1786,6 +1788,7 @@ export default function NFeCompletaPage() {
                             uf: participant.uf,
                             codigo_municipio: participant.codigo_municipio,
                             inscricao_estadual: participant.inscricao_estadual,
+                            ind_ie_dest: participant.ind_ie_dest,
                         },
                     },
                     itens: selectedReturnItems.map((item, index) => ({
@@ -1822,6 +1825,7 @@ export default function NFeCompletaPage() {
                         uf: participant.uf,
                         codigo_municipio: participant.codigo_municipio,
                         inscricao_estadual: participant.inscricao_estadual,
+                        ind_ie_dest: participant.ind_ie_dest,
                     },
                 },
                 itens: selectedReturnItems.map((item, index) => ({
@@ -1908,6 +1912,7 @@ export default function NFeCompletaPage() {
                         uf: participant.uf,
                         codigo_municipio: participant.codigo_municipio,
                         inscricao_estadual: participant.inscricao_estadual,
+                        ind_ie_dest: participant.ind_ie_dest,
                     },
                 },
                 itens: transferItemsPayload,
@@ -1962,6 +1967,7 @@ export default function NFeCompletaPage() {
                         uf: participant.uf,
                         codigo_municipio: participant.codigo_municipio,
                         inscricao_estadual: participant.inscricao_estadual,
+                        ind_ie_dest: participant.ind_ie_dest,
                     },
                 },
                 itens: items.map((item, index) => ({
@@ -2030,6 +2036,7 @@ export default function NFeCompletaPage() {
                         uf: participant.uf,
                         codigo_municipio: participant.codigo_municipio,
                         inscricao_estadual: participant.inscricao_estadual,
+                        ind_ie_dest: participant.ind_ie_dest,
                     },
                 },
                 itens: items.map((item, index) => ({

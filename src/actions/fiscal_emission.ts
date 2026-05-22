@@ -333,6 +333,35 @@ async function ensureNoActiveInvoiceForWorkOrder(
     return `Ja existe ${tipoDocumento} ${environment === "production" ? "de producao" : "de homologacao"} para esta OS.`;
 }
 
+async function ensureNoActiveDevolucaoForEntryInvoice(
+    supabase: any,
+    organizationId: string,
+    entryInvoiceId: string,
+    environment: "production" | "homologation"
+) {
+    if (!entryInvoiceId) return null;
+
+    const { data: existingInvoice, error } = await supabase
+        .from("fiscal_invoices")
+        .select("id, status")
+        .eq("organization_id", organizationId)
+        .eq("direction", "output")
+        .eq("tipo_documento", "NFe")
+        .eq("environment", environment)
+        .in("status", ["draft", "processing", "authorized"])
+        .contains("payload_json", { _entry_invoice_id: entryInvoiceId })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        throw new Error("Nao foi possivel validar duplicidade de devolucao.");
+    }
+
+    if (!existingInvoice) return null;
+
+    return `Ja existe NF-e de devolucao ${environment === "production" ? "de producao" : "de homologacao"} ativa para esta nota de entrada.`;
+}
+
 function buildAdvancedInfAdic(payload: EmissionPayload, fallbackInfCpl: string) {
     const infCpl = (payload as any).observacao?.trim() || fallbackInfCpl;
     const infAdFisco = payload.inf_ad_fisco?.trim();
@@ -509,14 +538,65 @@ function buildNFeItemIpi(item: EmissionPayload["itens"][number]) {
 
 function buildNFeItemImposto(item: EmissionPayload["itens"][number], fallbackCsosn: string) {
     const ipi = buildNFeItemIpi(item);
+    const csosn = item.csosn?.trim() || fallbackCsosn;
+    const supportedCsosn = ["101", "102", "103", "201", "202", "203", "300", "400", "500", "900"];
+    if (!supportedCsosn.includes(csosn)) {
+        throw new Error(`CSOSN ${csosn || "vazio"} nao suportado para emissao de NF-e.`);
+    }
+    const origem = Number(item.origem ?? 0);
+    const zeroSt = {
+        modBCST: 4,
+        pMVAST: 0,
+        pRedBCST: 0,
+        vBCST: 0,
+        pICMSST: 0,
+        vICMSST: 0,
+    };
+    const icmsSn =
+        csosn === "101"
+            ? { ICMSSN101: { orig: origem, CSOSN: csosn, pCredSN: 0, vCredICMSSN: 0 } }
+            : csosn === "201"
+                ? { ICMSSN201: { orig: origem, CSOSN: csosn, ...zeroSt, pCredSN: 0, vCredICMSSN: 0 } }
+                : csosn === "202" || csosn === "203"
+                    ? { ICMSSN202: { orig: origem, CSOSN: csosn, ...zeroSt } }
+                    : csosn === "500"
+                        ? {
+                            ICMSSN500: {
+                                orig: origem,
+                                CSOSN: csosn,
+                                vBCSTRet: 0,
+                                pST: 0,
+                                vICMSSubstituto: 0,
+                                vICMSSTRet: 0,
+                                vBCFCPSTRet: 0,
+                                pFCPSTRet: 0,
+                                vFCPSTRet: 0,
+                            },
+                        }
+                        : csosn === "900"
+                            ? {
+                                ICMSSN900: {
+                                    orig: origem,
+                                    CSOSN: csosn,
+                                    modBC: 3,
+                                    vBC: 0,
+                                    pRedBC: 0,
+                                    pICMS: 0,
+                                    vICMS: 0,
+                                    ...zeroSt,
+                                    pCredSN: 0,
+                                    vCredICMSSN: 0,
+                                },
+                            }
+                            : {
+                                ICMSSN102: {
+                                    orig: origem,
+                                    CSOSN: csosn,
+                                },
+                            };
 
     return {
-        ICMS: {
-            ICMSSN102: {
-                orig: Number(item.origem ?? 0),
-                CSOSN: item.csosn?.trim() || fallbackCsosn,
-            },
-        },
+        ICMS: icmsSn,
         PIS: {
             PISOutr: {
                 CST: item.pis_cst?.trim() || "99",
@@ -630,6 +710,10 @@ function buildNFeDest(cliente: EmissionPayload["cliente"]) {
 
     const ie = String(cliente.endereco?.inscricao_estadual || cliente.endereco?.ie || "")
         .replace(/\D/g, "");
+    const informedIndIeDest = Number(cliente.endereco?.ind_ie_dest);
+    const indIEDest = [1, 2, 9].includes(informedIndIeDest)
+        ? informedIndIeDest
+        : ie ? 1 : 9;
 
     return {
         CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
@@ -647,8 +731,8 @@ function buildNFeDest(cliente: EmissionPayload["cliente"]) {
             cPais: "1058",
             xPais: "BRASIL",
         },
-        indIEDest: ie ? 1 : 9,
-        ...(ie ? { IE: ie } : {}),
+        indIEDest,
+        ...(indIEDest === 1 && ie ? { IE: ie } : {}),
         email: cliente.email || undefined,
     };
 }
@@ -728,7 +812,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
     const supabase = createClient();
 
-    let invoiceId: number | null = null;
+    let invoiceId: string | null = null;
 
 
 
@@ -2637,6 +2721,11 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
         const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
         const valorTotal = toMoneyNumber(payload.valor_total);
+        const cleanReferencedKey = payload.referenced_key ? (normalizeDocument(payload.referenced_key) || "") : "";
+        const hasReferencedKey = /^\d{44}$/.test(cleanReferencedKey);
+        if (payload.referenced_key && !hasReferencedKey) {
+            console.warn("[NFe Assistida] referenced_key ignorada: chave invalida.");
+        }
 
         const nfePayload = {
             ambiente: "homologacao",
@@ -2661,6 +2750,7 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
                     indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
                     verProc: "AutoEletrica 1.0",
+                    ...(hasReferencedKey ? { NFref: [{ refNFe: cleanReferencedKey }] } : {}),
                 },
                 emit: {
                     CNPJ: cnpjEmit,
@@ -3410,7 +3500,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
     const supabase = createClient();
 
-    let invoiceId: number | null = null;
+    let invoiceId: string | null = null;
 
 
 
@@ -4958,6 +5048,16 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
 
     try {
         const env = payload.environment || "production";
+        const duplicateError = await ensureNoActiveDevolucaoForEntryInvoice(
+            supabase,
+            payload.organization_id,
+            payload.entry_invoice_id,
+            env
+        );
+        if (duplicateError) {
+            return { success: false, error: duplicateError };
+        }
+
         const token = await getNuvemFiscalToken(env);
         const baseUrl =
             env === "production"
@@ -5023,6 +5123,8 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             .single();
 
         if (!company) return { success: false, error: "Configurações da empresa não encontradas." };
+
+        assertNFeSimplesNacional(company);
 
         const cnpjEmit = (company.cnpj || company.cpf_cnpj || "").replace(/\D/g, "");
         if (!cnpjEmit) return { success: false, error: "CNPJ da empresa ausente." };
@@ -5340,4 +5442,3 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         return { success: false, error: error.message };
     }
 }
-

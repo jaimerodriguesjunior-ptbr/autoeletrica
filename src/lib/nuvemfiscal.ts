@@ -1,8 +1,45 @@
 // src/lib/nuvemfiscal.ts
 
+type CachedToken = {
+  token: string;
+  expiresAt: number;
+};
+
+const TOKEN_EXPIRY_SAFETY_MS = 60_000;
+const tokenCache: Record<string, CachedToken | undefined> = {};
+const tokenRequests: Record<string, Promise<string> | undefined> = {};
+
 export async function getNuvemFiscalToken(
   environment: 'production' | 'homologation' = 'production',
   scope = 'empresa nfce nfe nfse'
+) {
+  const cacheKey = `${environment}:${scope}`;
+  const now = Date.now();
+  const cached = tokenCache[cacheKey];
+
+  if (cached && cached.expiresAt > now + TOKEN_EXPIRY_SAFETY_MS) {
+    console.log(`[NuvemFiscal] Utilizando token cacheado para ${environment.toUpperCase()}.`);
+    return cached.token;
+  }
+
+  if (tokenRequests[cacheKey]) {
+    console.log(`[NuvemFiscal] Aguardando token em andamento para ${environment.toUpperCase()}.`);
+    return tokenRequests[cacheKey]!;
+  }
+
+  tokenRequests[cacheKey] = fetchNuvemFiscalToken(environment, scope, cacheKey);
+
+  try {
+    return await tokenRequests[cacheKey]!;
+  } finally {
+    delete tokenRequests[cacheKey];
+  }
+}
+
+async function fetchNuvemFiscalToken(
+  environment: 'production' | 'homologation',
+  scope: string,
+  cacheKey: string
 ) {
   // 1. Pega as credenciais do arquivo .env baseado no ambiente
   let clientId, clientSecret;
@@ -61,6 +98,12 @@ export async function getNuvemFiscalToken(
 
     const data = await response.json();
     console.log('[NuvemFiscal] Token obtido com sucesso!');
+    const expiresInSeconds = Number(data.expires_in || 3600);
+    tokenCache[cacheKey] = {
+      token: data.access_token,
+      expiresAt: Date.now() + expiresInSeconds * 1000,
+    };
+
     return data.access_token;
 
   } catch (error) {
