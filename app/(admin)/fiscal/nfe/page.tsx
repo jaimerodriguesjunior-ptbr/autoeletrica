@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import Link from "next/link";
 import {
@@ -30,7 +30,6 @@ import {
 import { useAuth } from "@/src/contexts/AuthContext";
 import { createClient } from "@/src/lib/supabase";
 import { auditarNFeAssistidaComIaAction } from "@/src/actions/fiscal_ai_audit";
-import { resolvePlaybook } from "@/src/lib/fiscal_audit_playbook";
 import { emitirNFeAssistidaUiAction, emitirNFeBonificacaoDoacaoUiAction, emitirNFeDevolucaoAction, emitirNFeRemessaConsertoUiAction, emitirNFeRemessaGarantiaUiAction, emitirNFeRetornoConsertoUiAction, emitirNFeRetornoGarantiaUiAction, emitirNFeTransferenciaUiAction, emitirNFeVendaAction } from "@/src/actions/fiscal_emission_actions";
 import { getEntryInvoiceWithItemsAction, getNFeInvoiceWithItemsAction, searchCloneableNFeInvoicesAction, searchProducts, type ParsedNFeItem } from "@/src/actions/fiscal_db";
 
@@ -458,7 +457,61 @@ function formatAiAuditForDisplay(text: string | null) {
         .trim();
 }
 
-const AUDIT_UI_VERSION = "AUDIT_UI_V2_WA_2026-05-21";
+function getTemplateDefaultCsosn(operation: OperationGroup) {
+    if (operation === "sale") return "102";
+    if (operation === "advanced") return "102";
+    return "400";
+}
+
+function getTemplateDefaultPayment(operation: OperationGroup) {
+    return operation === "sale" ? "01" : "90";
+}
+
+function getTemplateDefaultIndPres(operation: OperationGroup) {
+    return operation === "sale" ? 1 : 9;
+}
+
+function getTemplateDefaultInfCpl(operation: OperationGroup, purpose: string) {
+    if (operation === "sale") return "Venda";
+    if (operation === "return") return "Devolução de compra referenciada.";
+    if (operation === "shipment") {
+        if (purpose === "Remessa para conserto") return "Remessa para conserto sem cobrança.";
+        if (purpose === "Retorno de conserto") return "Retorno de conserto da mercadoria.";
+        if (purpose === "Remessa em garantia") return "Remessa em garantia sem cobrança.";
+        if (purpose === "Retorno de garantia") return "Retorno de garantia da mercadoria.";
+        if (purpose === "Remessa para demonstração") return "Remessa para demonstração sem cobrança.";
+        if (purpose === "Retorno de demonstração") return "Retorno de demonstração da mercadoria.";
+        if (purpose === "Remessa para industrialização") return "Remessa para industrialização sem cobrança.";
+        if (purpose === "Retorno de industrialização") return "Retorno de industrialização da mercadoria.";
+    }
+    if (operation === "transfer") {
+        if (purpose === "Transferência entre filiais") return "Transferência entre filiais sem cobrança.";
+        if (purpose === "Transferência para depósito") return "Transferência para depósito sem cobrança.";
+        if (purpose === "Retorno de depósito") return "Retorno de depósito sem cobrança.";
+    }
+    if (operation === "bonus") {
+        if (purpose === "Bonificação") return "Bonificação sem cobrança.";
+        if (purpose === "Brinde") return "Remessa em brinde sem cobrança.";
+        if (purpose === "Doação") return "Doação sem cobrança.";
+    }
+    return "";
+}
+
+function mapRegimeToCrt(regimeRaw: unknown): string {
+    const regime = String(regimeRaw || "").trim();
+    if (!regime) return "";
+    if (regime === "1" || regime === "2" || regime === "3") return regime;
+
+    const normalized = regime
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+    if (normalized.includes("simples")) return "1";
+    if (normalized.includes("lucro presumido")) return "3";
+    if (normalized.includes("lucro real")) return "3";
+    return "";
+}
 
 export default function NFeCompletaPage() {
     const { profile } = useAuth();
@@ -474,6 +527,19 @@ export default function NFeCompletaPage() {
 
     const [companyUf, setCompanyUf] = useState("");
     const [companyCnpjBase, setCompanyCnpjBase] = useState("");
+    const [companyFiscalContext, setCompanyFiscalContext] = useState<{
+        regime_tributario: string;
+        crt: string;
+        cnae: string;
+        inscricao_estadual: string;
+        inscricao_municipal: string;
+    }>({
+        regime_tributario: "",
+        crt: "",
+        cnae: "",
+        inscricao_estadual: "",
+        inscricao_municipal: "",
+    });
     const [participantMode, setParticipantMode] = useState<"search" | "manual">("search");
     const [participantSearch, setParticipantSearch] = useState("");
     const [participantSearchLocked, setParticipantSearchLocked] = useState(false);
@@ -501,11 +567,22 @@ export default function NFeCompletaPage() {
     const [carrierName, setCarrierName] = useState("");
     const [carrierDoc, setCarrierDoc] = useState("");
     const [volumes, setVolumes] = useState("");
+    const [indPres, setIndPres] = useState<number>(9);
+    const [indIntermed, setIndIntermed] = useState<0 | 1>(0);
+    const [indFinal, setIndFinal] = useState<0 | 1>(1);
+    const [intermediadorCnpj, setIntermediadorCnpj] = useState("");
+    const [intermediadorIdCadastro, setIntermediadorIdCadastro] = useState("");
+    const [meioPagamento, setMeioPagamento] = useState("90");
+    const [valorFrete, setValorFrete] = useState<number>(0);
+    const [valorSeguro, setValorSeguro] = useState<number>(0);
+    const [valorDesconto, setValorDesconto] = useState<number>(0);
+    const [valorOutrasDespesas, setValorOutrasDespesas] = useState<number>(0);
     const [infCpl, setInfCpl] = useState("");
     const [infAdFisco, setInfAdFisco] = useState("");
     const [aiAudit, setAiAudit] = useState<string | null>(null);
     const [aiAuditStatus, setAiAuditStatus] = useState<"parece_correta" | "atencao" | "inconsistente" | null>(null);
     const [aiAuditLoading, setAiAuditLoading] = useState(false);
+    const [lastAiAuditPayload, setLastAiAuditPayload] = useState<Record<string, unknown> | null>(null);
     const [advancedAuditReady, setAdvancedAuditReady] = useState(false);
     const [advancedAuditConfirmed, setAdvancedAuditConfirmed] = useState(false);
     const [emitting, setEmitting] = useState(false);
@@ -515,6 +592,7 @@ export default function NFeCompletaPage() {
     const [cloneResults, setCloneResults] = useState<CloneInvoiceSummary[]>([]);
     const [cloneLoading, setCloneLoading] = useState(false);
     const [clonedFrom, setClonedFrom] = useState<CloneInvoiceSummary | null>(null);
+    const previousTemplateRef = useRef<{ operation: OperationGroup; purpose: string } | null>(null);
 
     const currentOperation = OPERATIONS.find((item) => item.id === operation) || OPERATIONS[0];
     const stepIndex = STEPS.findIndex((item) => item.id === step);
@@ -551,14 +629,10 @@ export default function NFeCompletaPage() {
     const buildConciseAiAuditText = (audit: Awaited<ReturnType<typeof auditarNFeAssistidaComIaAction>>) => {
         const result = audit.audit;
         if (!result) {
-            const fallback = resolvePlaybook([]);
             return [
                 "Status: Atenção.",
-                `Problema: ${fallback.problem}`,
-                `Impacto: ${fallback.impact}`,
-                `Solução A: ${fallback.solutionA}`,
-                `Solução B: ${fallback.solutionB}`,
-                `Confirmar com contador: ${fallback.confirmWithAccountant}`,
+                "Resumo: A auditoria não retornou detalhes estruturados.",
+                "Revisar: natureza, CFOP, CSOSN/CST e observações.",
             ].join("\n");
         }
 
@@ -569,21 +643,45 @@ export default function NFeCompletaPage() {
         };
 
         const findings = [...(result.inconsistencias || []), ...(result.confirmar_contador || [])];
-        const bullets = findings
-            .slice(0, 3)
-            .map((item) => item?.titulo?.trim())
-            .filter(Boolean) as string[];
-        const playbook = resolvePlaybook([result.resumo || "", ...bullets, ...findings.map((item) => `${item?.titulo || ""} ${item?.detalhe || ""} ${item?.sugestao || ""}`)]);
+        const uniqueFindings = findings.filter((item, index, arr) => {
+            const current = `${item?.titulo || ""}|${item?.detalhe || ""}|${item?.sugestao || ""}`.trim().toLowerCase();
+            return arr.findIndex((candidate) => {
+                const compare = `${candidate?.titulo || ""}|${candidate?.detalhe || ""}|${candidate?.sugestao || ""}`.trim().toLowerCase();
+                return compare === current;
+            }) === index;
+        });
 
-        const lines = [
+        const reviewLine = uniqueFindings
+            .map((item) => item?.titulo?.trim())
+            .filter(Boolean)
+            .slice(0, 3)
+            .join(" x ");
+
+        const lines: string[] = [
             `Status: ${statusLabel[result.status] || "Atenção"}.`,
-            `Problema: ${playbook.problem}`,
-            `Impacto: ${playbook.impact}`,
-            `Solução A: ${playbook.solutionA}`,
-            `Solução B: ${playbook.solutionB}`,
-            `Confirmar com contador: ${playbook.confirmWithAccountant}`,
-            bullets.length > 0 ? `Contexto detectado: ${bullets.join(" x ")}` : "",
-        ].filter(Boolean);
+            result.resumo ? `Resumo: ${result.resumo}` : "",
+            reviewLine ? `Revisar: ${reviewLine}` : "",
+        ].filter(Boolean) as string[];
+
+        if (uniqueFindings.length > 0) {
+            lines.push("Opções de ajuste:");
+            const uniqueSuggestions = uniqueFindings
+                .map((item) => (item?.sugestao || item?.detalhe || "").trim())
+                .filter(Boolean)
+                .filter((text, index, arr) => arr.findIndex((candidate) => candidate.toLowerCase() === text.toLowerCase()) === index)
+                .slice(0, 2);
+            uniqueSuggestions.forEach((text) => lines.push(`- ${text}`));
+        }
+
+        if (result.perguntas_contador?.length) {
+            lines.push("Confirmar com contador:");
+            const uniqueQuestions = result.perguntas_contador
+                .map((q) => String(q || "").trim())
+                .filter(Boolean)
+                .filter((text, index, arr) => arr.findIndex((candidate) => candidate.toLowerCase() === text.toLowerCase()) === index)
+                .slice(0, 2);
+            uniqueQuestions.forEach((q) => lines.push(`- ${q}`));
+        }
 
         return lines.join("\n");
     };
@@ -608,18 +706,50 @@ export default function NFeCompletaPage() {
         window.open(`https://wa.me/?text=${message}`, "_blank");
     };
 
+    const exportAiAuditPayload = () => {
+        if (!lastAiAuditPayload) return;
+        const content = JSON.stringify(lastAiAuditPayload, null, 2);
+        const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `payload_auditoria_ia_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    };
+
+    const copyAiAuditPayload = async () => {
+        if (!lastAiAuditPayload) return;
+        try {
+            await navigator.clipboard.writeText(JSON.stringify(lastAiAuditPayload, null, 2));
+            alert("Payload da auditoria copiado para a área de transferência.");
+        } catch {
+            alert("Não foi possível copiar o payload automaticamente.");
+        }
+    };
+
     useEffect(() => {
         const loadCompany = async () => {
             if (!profile?.organization_id) return;
 
             const { data } = await supabase
                 .from("company_settings")
-                .select("uf, cnpj, cpf_cnpj")
+                .select("uf, cnpj, cpf_cnpj, regime_tributario, cnae, inscricao_estadual, inscricao_municipal")
                 .eq("organization_id", profile.organization_id)
                 .maybeSingle();
 
             setCompanyUf(String(data?.uf || "").toUpperCase());
             setCompanyCnpjBase(cnpjBase(String(data?.cnpj || data?.cpf_cnpj || "")));
+            const regime = String(data?.regime_tributario || "");
+            setCompanyFiscalContext({
+                regime_tributario: regime,
+                crt: mapRegimeToCrt(regime),
+                cnae: String(data?.cnae || ""),
+                inscricao_estadual: String(data?.inscricao_estadual || ""),
+                inscricao_municipal: String(data?.inscricao_municipal || ""),
+            });
         };
 
         loadCompany();
@@ -638,6 +768,45 @@ export default function NFeCompletaPage() {
             setAdvancedFinNFe("1");
         }
     }, [operation]);
+
+    useEffect(() => {
+        // Reaplica defaults fiscais do template quando troca operação/finalidade
+        // para evitar herdar parâmetros incompatíveis de uma nota clonada.
+        if (operation === "advanced") return;
+
+        const previous = previousTemplateRef.current;
+        const templateChanged = !previous || previous.operation !== operation || previous.purpose !== purpose;
+
+        setMeioPagamento(getTemplateDefaultPayment(operation));
+        setIndPres(getTemplateDefaultIndPres(operation));
+        setIndIntermed(0);
+        setIndFinal(operation === "sale" ? 1 : 0);
+        setIntermediadorCnpj("");
+        setIntermediadorIdCadastro("");
+        if (operation !== "sale") {
+            setValorFrete(0);
+            setValorSeguro(0);
+            setValorDesconto(0);
+            setValorOutrasDespesas(0);
+        }
+
+        if (!usesOriginItems) {
+            const defaultCsosn = getTemplateDefaultCsosn(operation);
+            setItems((current) =>
+                current.map((item) => ({
+                    ...item,
+                    csosn: defaultCsosn,
+                }))
+            );
+        }
+
+        if (templateChanged) {
+            setInfCpl(getTemplateDefaultInfCpl(operation, purpose));
+            setInfAdFisco("");
+        }
+
+        previousTemplateRef.current = { operation, purpose };
+    }, [operation, purpose, usesOriginItems]);
 
     useEffect(() => {
         setSelectedEntryInvoice(null);
@@ -930,19 +1099,65 @@ export default function NFeCompletaPage() {
         if (modFrete !== "9" && (!carrierName.trim() || !isValidDoc(carrierDoc))) {
             issues.push("Informe transportadora com CPF/CNPJ valido ou use frete sem transporte.");
         }
+        if (modFrete === "9" && Number(valorFrete || 0) > 0) {
+            issues.push("Frete sem transporte (modFrete 9) não pode ter valor de frete maior que zero.");
+        }
+        if (Number(valorFrete || 0) < 0) {
+            issues.push("Valor de frete inválido.");
+        }
+        if (Number(valorSeguro || 0) < 0) {
+            issues.push("Valor de seguro inválido.");
+        }
+        if (Number(valorDesconto || 0) < 0) {
+            issues.push("Valor de desconto inválido.");
+        }
+        if (Number(valorOutrasDespesas || 0) < 0) {
+            issues.push("Valor de outras despesas inválido.");
+        }
+        if (Number(valorDesconto || 0) > Number(totalItems || 0)) {
+            issues.push("Valor de desconto não pode ser maior que o total dos itens.");
+        }
+        if (operation === "advanced") {
+            if (indIntermed === 1 && digits(intermediadorCnpj).length !== 14) {
+                issues.push("Com intermediário ativo, informe CNPJ válido do intermediador.");
+            }
+            if (indIntermed === 0 && (digits(intermediadorCnpj).length > 0 || intermediadorIdCadastro.trim().length > 0)) {
+                issues.push("Há dados de intermediador preenchidos, mas a operação está marcada como sem intermediário.");
+            }
+            if (!meioPagamento) {
+                issues.push("Informe a forma de pagamento no modo assistido.");
+            }
+            const naturezaNormalized = advancedNature.trim().toLowerCase();
+            const isVendaSaida = advancedTpNF === "1" && naturezaNormalized.includes("venda");
+            if (isVendaSaida && indPres === 0) {
+                issues.push("Para venda de saída, o tipo da compra (indPres) não pode ser 0. Use 1 (presencial) ou 2/9 (não presencial).");
+            }
+        }
 
         if (isTransferBetweenBranches && transferHasDifferentRoot) {
             issues.push("Transferência entre filiais exige destinatário com a mesma raiz de CNPJ da empresa emitente.");
         }
 
         return issues;
-    }, [operation, purpose, isEmissionSupported, isRetornoConsertoMvp, isRetornoGarantiaMvp, isRetornoDepositoMvp, selectedEntryInvoice, referencedKey, selectedReturnItems.length, participant, items, modFrete, carrierName, carrierDoc, isTransferBetweenBranches, transferHasDifferentRoot, advancedNature, advancedTpNF, advancedFinNFe]);
+    }, [operation, purpose, isEmissionSupported, isRetornoConsertoMvp, isRetornoGarantiaMvp, isRetornoDepositoMvp, selectedEntryInvoice, referencedKey, selectedReturnItems.length, participant, items, modFrete, carrierName, carrierDoc, isTransferBetweenBranches, transferHasDifferentRoot, advancedNature, advancedTpNF, advancedFinNFe, indPres, indIntermed, intermediadorCnpj, intermediadorIdCadastro, meioPagamento, valorFrete, valorSeguro, valorDesconto, valorOutrasDespesas, totalItems]);
 
     const stepHasPending = (id: StepId) => {
         if (id === "operation") return !operation || !purpose || (requiresReference && (!selectedEntryInvoice || digits(referencedKey).length !== 44));
         if (id === "participant") return operation !== "return" && (!participant.nome || !isValidDoc(participant.cpf_cnpj) || !participant.uf || !participant.codigo_municipio);
         if (id === "items") return usesOriginItems ? selectedReturnItems.length === 0 : items.some((item) => !item.descricao || !/^\d{8}$/.test(digits(item.ncm)) || !item.cfop);
-        if (id === "transport") return modFrete !== "9" && (!carrierName || !isValidDoc(carrierDoc));
+        if (id === "transport") {
+            const naturezaNormalized = advancedNature.trim().toLowerCase();
+            const isVendaSaida = operation === "advanced" && advancedTpNF === "1" && naturezaNormalized.includes("venda");
+            const hasFreteIssue = (modFrete !== "9" && (!carrierName || !isValidDoc(carrierDoc)))
+                || (modFrete === "9" && Number(valorFrete || 0) > 0);
+            const hasAdvancedTransportFiscalIssue = operation === "advanced" && (
+                (indIntermed === 1 && digits(intermediadorCnpj).length !== 14)
+                || (indIntermed === 0 && (digits(intermediadorCnpj).length > 0 || intermediadorIdCadastro.trim().length > 0))
+                || !meioPagamento
+                || (isVendaSaida && indPres === 0)
+            );
+            return hasFreteIssue || hasAdvancedTransportFiscalIssue;
+        }
         return pending.length > 0;
     };
 
@@ -1179,6 +1394,13 @@ export default function NFeCompletaPage() {
                 cfop: item.cfop,
                 origem: item.origem,
                 csosn: item.csosn,
+                ipi_cst: item.ipi_cst,
+                ipi_aliquota: item.ipi_aliquota,
+                ipi_base: item.ipi_base,
+                pis_cst: item.pis_cst,
+                pis_aliquota: item.pis_aliquota,
+                cofins_cst: item.cofins_cst,
+                cofins_aliquota: item.cofins_aliquota,
                 quantidade: item.quantidade,
                 valor_unitario: item.valor_unitario,
                 valor_total: Number((item.quantidade * item.valor_unitario).toFixed(2)),
@@ -1192,6 +1414,29 @@ export default function NFeCompletaPage() {
             campos_tecnicos: {
                 suggestedCfop,
                 purpose,
+                operacao_fiscal: {
+                    ind_pres: indPres,
+                    ind_intermed: indIntermed,
+                    ind_final: indFinal,
+                    meio_pagamento: meioPagamento,
+                    intermediador: indIntermed === 1
+                        ? {
+                            cnpj: digits(intermediadorCnpj),
+                            id_cadastro: intermediadorIdCadastro || undefined,
+                        }
+                        : undefined,
+                    totais_acessorios: {
+                        valor_frete: Number(valorFrete || 0),
+                        valor_seguro: Number(valorSeguro || 0),
+                        valor_desconto: Number(valorDesconto || 0),
+                        valor_outras_despesas: Number(valorOutrasDespesas || 0),
+                    },
+                },
+                company_fiscal_context: {
+                    ...companyFiscalContext,
+                    uf_emitente: companyUf,
+                    cnpj_base_emitente: companyCnpjBase,
+                },
             },
             observacoes: {
                 infCpl,
@@ -1199,6 +1444,8 @@ export default function NFeCompletaPage() {
             },
             total: Number(totalItems.toFixed(2)),
         };
+
+            setLastAiAuditPayload(payload);
 
             const audit = await auditarNFeAssistidaComIaAction(payload);
             if (!audit.success) {
@@ -1245,6 +1492,17 @@ export default function NFeCompletaPage() {
         setItems(detList.length > 0 ? detList.map((det) => cloneItemFromDet(det)) : [makeItem()]);
         setModFrete(String(infNFe?.transp?.modFrete ?? "9"));
         setInfCpl(String(infNFe?.infAdic?.infCpl || ""));
+        setInfAdFisco(String(infNFe?.infAdic?.infAdFisco || ""));
+        setIndPres(Number(infNFe?.ide?.indPres ?? 9));
+        setIndIntermed(Number(infNFe?.ide?.indIntermed ?? 0) as 0 | 1);
+        setIndFinal(Number(infNFe?.ide?.indFinal ?? 1) as 0 | 1);
+        setMeioPagamento(String(infNFe?.pag?.detPag?.[0]?.tPag || "90"));
+        setIntermediadorCnpj(String(infNFe?.infIntermed?.CNPJ || ""));
+        setIntermediadorIdCadastro(String(infNFe?.infIntermed?.idCadIntTran || ""));
+        setValorFrete(Number(infNFe?.total?.ICMSTot?.vFrete || 0));
+        setValorSeguro(Number(infNFe?.total?.ICMSTot?.vSeg || 0));
+        setValorDesconto(Number(infNFe?.total?.ICMSTot?.vDesc || 0));
+        setValorOutrasDespesas(Number(infNFe?.total?.ICMSTot?.vOutro || 0));
         setAiAudit(null);
         setAiAuditStatus(null);
         setClonedFrom(invoice);
@@ -1787,11 +2045,24 @@ export default function NFeCompletaPage() {
                     cofins_valor: Number(item.cofins_valor || 0),
                 })),
                 valor_total: Number(totalItems.toFixed(2)),
-                meio_pagamento: "90",
+                valor_frete: Number(valorFrete || 0),
+                valor_seguro: Number(valorSeguro || 0),
+                valor_desconto: Number(valorDesconto || 0),
+                valor_outras_despesas: Number(valorOutrasDespesas || 0),
+                meio_pagamento: meioPagamento || "90",
                 environment,
                 tipo_documento: "NFe",
                 observacao: infCpl,
                 modFrete,
+                ind_pres: indPres,
+                ind_intermed: indIntermed,
+                ind_final: indFinal,
+                intermediador: indIntermed === 1
+                    ? {
+                        cnpj: digits(intermediadorCnpj) || undefined,
+                        id_cadastro: intermediadorIdCadastro || undefined,
+                    }
+                    : undefined,
                 natureza_operacao: advancedNature,
                 tipo_nfe: Number(advancedTpNF) as 0 | 1,
                 finalidade_nfe: Number(advancedFinNFe) as 1 | 2 | 3 | 4,
@@ -2627,6 +2898,91 @@ export default function NFeCompletaPage() {
                                 )}
                             </div>
 
+                            {operation === "advanced" && (
+                                <div className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4 space-y-4">
+                                    <div>
+                                        <h3 className="text-sm font-black text-[#1A1A1A]">Parâmetros fiscais da operação</h3>
+                                        <p className="text-xs text-stone-500">Esses dados influenciam a emissão e a auditoria por IA.</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        <div>
+                                            <label className={labelClass}>Tipo da compra (indPres)</label>
+                                            <select value={String(indPres)} onChange={(e) => setIndPres(Number(e.target.value))} className={fieldClass}>
+                                                <option value="0">0 - Não se aplica</option>
+                                                <option value="1">1 - Operação presencial</option>
+                                                <option value="2">2 - Não presencial (internet)</option>
+                                                <option value="3">3 - Teleatendimento</option>
+                                                <option value="4">4 - Entrega em domicílio</option>
+                                                <option value="5">5 - Presencial fora do estabelecimento</option>
+                                                <option value="9">9 - Não presencial (outros)</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className={labelClass}>Tem intermediário? (indIntermed)</label>
+                                            <select value={String(indIntermed)} onChange={(e) => setIndIntermed(Number(e.target.value) as 0 | 1)} className={fieldClass}>
+                                                <option value="0">0 - Sem intermediário</option>
+                                                <option value="1">1 - Com intermediário</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className={labelClass}>Consumidor final (indFinal)</label>
+                                            <select value={String(indFinal)} onChange={(e) => setIndFinal(Number(e.target.value) as 0 | 1)} className={fieldClass}>
+                                                <option value="1">1 - Sim</option>
+                                                <option value="0">0 - Não</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className={labelClass}>Forma de pagamento</label>
+                                            <select value={meioPagamento} onChange={(e) => setMeioPagamento(e.target.value)} className={fieldClass}>
+                                                <option value="90">90 - Sem pagamento</option>
+                                                <option value="01">01 - Dinheiro</option>
+                                                <option value="03">03 - Cartão de crédito</option>
+                                                <option value="04">04 - Cartão de débito</option>
+                                                <option value="05">05 - Crédito loja</option>
+                                                <option value="10">10 - Vale alimentação</option>
+                                                <option value="11">11 - Vale refeição</option>
+                                                <option value="15">15 - Boleto bancário</option>
+                                                <option value="17">17 - PIX</option>
+                                                <option value="18">18 - Transferência/depósito</option>
+                                                <option value="99">99 - Outros</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {indIntermed === 1 && (
+                                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                            <div>
+                                                <label className={labelClass}>CNPJ do intermediador</label>
+                                                <input value={intermediadorCnpj} onChange={(e) => setIntermediadorCnpj(e.target.value)} className={fieldClass} />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>ID cadastro no intermediador</label>
+                                                <input value={intermediadorIdCadastro} onChange={(e) => setIntermediadorIdCadastro(e.target.value)} className={fieldClass} />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        <div>
+                                            <label className={labelClass}>Valor frete</label>
+                                            <input type="number" step="0.01" value={valorFrete} onChange={(e) => setValorFrete(Number(e.target.value || 0))} className={fieldClass} />
+                                        </div>
+                                        <div>
+                                            <label className={labelClass}>Valor seguro</label>
+                                            <input type="number" step="0.01" value={valorSeguro} onChange={(e) => setValorSeguro(Number(e.target.value || 0))} className={fieldClass} />
+                                        </div>
+                                        <div>
+                                            <label className={labelClass}>Valor desconto</label>
+                                            <input type="number" step="0.01" value={valorDesconto} onChange={(e) => setValorDesconto(Number(e.target.value || 0))} className={fieldClass} />
+                                        </div>
+                                        <div>
+                                            <label className={labelClass}>Outras despesas</label>
+                                            <input type="number" step="0.01" value={valorOutrasDespesas} onChange={(e) => setValorOutrasDespesas(Number(e.target.value || 0))} className={fieldClass} />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div>
                                     <label className={labelClass}>Observações comerciais</label>
@@ -2676,12 +3032,7 @@ export default function NFeCompletaPage() {
 
                             {aiAudit && (
                                 <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <p className="font-black text-blue-700">Auditoria por IA</p>
-                                        <span className="rounded-md border border-blue-200 bg-white px-2 py-1 text-[10px] font-black text-blue-700">
-                                            {AUDIT_UI_VERSION}
-                                        </span>
-                                    </div>
+                                    <p className="font-black text-blue-700">Auditoria por IA</p>
                                     <p className="mt-1 whitespace-pre-line text-sm font-medium text-blue-700">{formatAiAuditForDisplay(aiAudit)}</p>
                                     <button
                                         type="button"
@@ -2691,6 +3042,26 @@ export default function NFeCompletaPage() {
                                         <MessageCircle size={14} />
                                         Enviar para contador no WhatsApp
                                     </button>
+                                    {operation === "advanced" && lastAiAuditPayload && (
+                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={copyAiAuditPayload}
+                                                className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-50"
+                                            >
+                                                <Copy size={14} />
+                                                Copiar payload da IA
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={exportAiAuditPayload}
+                                                className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-50"
+                                            >
+                                                <FileText size={14} />
+                                                Exportar payload (.json)
+                                            </button>
+                                        </div>
+                                    )}
                                     <div
                                         className={`mt-3 rounded-lg border px-3 py-2 text-xs font-bold ${
                                             aiAuditStatus === "inconsistente"
@@ -2703,14 +3074,22 @@ export default function NFeCompletaPage() {
                                 </div>
                             )}
                             {operation === "advanced" && advancedAuditReady && !aiAuditLoading && (
-                                <label className="flex items-start gap-2 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm font-medium text-stone-700">
+                                <label
+                                    className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                                        advancedAuditConfirmed
+                                            ? "border-stone-200 bg-stone-50 text-stone-700"
+                                            : "border-amber-300 bg-amber-50/70 text-amber-900"
+                                    }`}
+                                >
                                     <input
                                         type="checkbox"
                                         checked={advancedAuditConfirmed}
                                         onChange={(e) => setAdvancedAuditConfirmed(e.target.checked)}
                                         className="mt-0.5 h-4 w-4 accent-[#1A1A1A]"
                                     />
-                                    Já verifiquei as inconsistências com meu contador e quero emitir a nota.
+                                    <span className={advancedAuditConfirmed ? "" : "animate-pulse font-semibold"}>
+                                        Já verifiquei as inconsistências com meu contador e quero emitir a nota.
+                                    </span>
                                 </label>
                             )}
 
