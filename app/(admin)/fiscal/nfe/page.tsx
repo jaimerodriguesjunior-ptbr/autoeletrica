@@ -3073,6 +3073,9 @@ export default function NFeCompletaPage() {
                                         <MessageCircle size={14} />
                                         Enviar para contador no WhatsApp
                                     </button>
+                                    {/* Debug UI (temporariamente oculto):
+                                        Botões de copiar/exportar payload da auditoria IA.
+                                        Mantido comentado para reativação futura sem retrabalho.
                                     {operation === "advanced" && lastAiAuditPayload && (
                                         <div className="mt-2 flex flex-wrap items-center gap-2">
                                             <button
@@ -3093,6 +3096,7 @@ export default function NFeCompletaPage() {
                                             </button>
                                         </div>
                                     )}
+                                    */}
                                     <div
                                         className={`mt-3 rounded-lg border px-3 py-2 text-xs font-bold ${
                                             aiAuditStatus === "inconsistente"
