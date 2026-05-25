@@ -556,6 +556,7 @@ export default function NFeCompletaPage() {
     const [entrySearch, setEntrySearch] = useState("");
     const [originQuickFilter, setOriginQuickFilter] = useState<"recent" | "all">("recent");
     const [originSelectorExpanded, setOriginSelectorExpanded] = useState(false);
+    const [advancedOriginPanelOpen, setAdvancedOriginPanelOpen] = useState(false);
     const [originSearchStarted, setOriginSearchStarted] = useState(false);
     const [loadingEntryInvoices, setLoadingEntryInvoices] = useState(false);
     const [selectedEntryInvoice, setSelectedEntryInvoice] = useState<EntryInvoiceSummary | null>(null);
@@ -816,6 +817,7 @@ export default function NFeCompletaPage() {
         setEntrySearch("");
         setOriginQuickFilter("recent");
         setOriginSelectorExpanded(false);
+        setAdvancedOriginPanelOpen(false);
         setOriginSearchStarted(false);
         setLegacyGuaranteeInvoices([]);
     }, [operation, purpose]);
@@ -839,6 +841,7 @@ export default function NFeCompletaPage() {
         volumes,
         infCpl,
         infAdFisco,
+        referencedKey,
     ]);
 
     useEffect(() => {
@@ -855,7 +858,7 @@ export default function NFeCompletaPage() {
                     .order("data_emissao", { ascending: false })
                     .limit(80);
 
-                if (operation === "return") {
+                if (operation === "return" || operation === "advanced") {
                     const { data: strictData, error: strictError } = await baseQuery.eq("direction", "entry");
                     if (strictError) {
                         console.warn("[NFe Completa] Falha ao buscar NF-e de entrada (direction=entry):", strictError.message);
@@ -1119,6 +1122,9 @@ export default function NFeCompletaPage() {
             issues.push("Valor de desconto não pode ser maior que o total dos itens.");
         }
         if (operation === "advanced") {
+            if (referencedKey.trim() && digits(referencedKey).length !== 44) {
+                issues.push("A chave da NF-e referenciada precisa ter 44 dígitos.");
+            }
             if (indIntermed === 1 && digits(intermediadorCnpj).length !== 14) {
                 issues.push("Com intermediário ativo, informe CNPJ válido do intermediador.");
             }
@@ -1420,6 +1426,7 @@ export default function NFeCompletaPage() {
             campos_tecnicos: {
                 suggestedCfop,
                 purpose,
+                chave_nfe_referenciada: referencedKey ? digits(referencedKey) : "",
                 operacao_fiscal: {
                     ind_pres: indPres,
                     ind_intermed: indIntermed,
@@ -2351,8 +2358,56 @@ export default function NFeCompletaPage() {
                                 </div>
                             )}
 
-                            {shouldShowOriginSelector && (
+                            {operation === "advanced" && (
                                 <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAdvancedOriginPanelOpen((current) => !current)}
+                                        className="flex w-full items-center justify-between rounded-xl border border-orange-200 bg-white px-3 py-3 text-left text-sm font-black text-orange-800 transition hover:bg-orange-50"
+                                    >
+                                        <span>Nota de origem</span>
+                                        <ChevronRight size={16} className={`transition ${advancedOriginPanelOpen ? "rotate-90" : ""}`} />
+                                    </button>
+
+                                    {advancedOriginPanelOpen && (
+                                        <div className="mt-4 space-y-4">
+                                            <div>
+                                                <label className="ml-1 text-[10px] font-black uppercase text-orange-500">Colar chave de acesso</label>
+                                                <input
+                                                    value={referencedKey}
+                                                    onChange={(e) => setReferencedKey(digits(e.target.value).slice(0, 44))}
+                                                    className="mt-1 w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
+                                                    inputMode="numeric"
+                                                    maxLength={44}
+                                                    placeholder="44 dígitos da NF-e de entrada"
+                                                />
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setOriginSelectorExpanded((current) => !current);
+                                                    setOriginSearchStarted(true);
+                                                }}
+                                                className="flex w-full items-center justify-between rounded-xl border border-orange-200 bg-white px-3 py-3 text-left text-sm font-black text-orange-800 transition hover:bg-orange-50"
+                                            >
+                                                <span>{selectedEntryInvoice ? "Trocar nota importada" : "Buscar nota de origem importada"}</span>
+                                                <ChevronRight size={16} className={`transition ${originSelectorExpanded ? "rotate-90" : ""}`} />
+                                            </button>
+
+                                            {referencedKey && (
+                                                <p className="break-all rounded-xl bg-white/80 p-3 font-mono text-xs font-bold text-stone-600">
+                                                    {referencedKey}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {shouldShowOriginSelector && (operation !== "advanced" || (advancedOriginPanelOpen && originSelectorExpanded)) && (
+                                <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+                                    {operation !== "advanced" && (
                                     <div className="flex flex-col gap-3">
                                         {loadingEntryInvoices && <Loader2 size={18} className="animate-spin text-orange-500" />}
 
@@ -2365,6 +2420,7 @@ export default function NFeCompletaPage() {
                                             <ChevronRight size={16} className={`transition ${originSelectorExpanded ? "rotate-90" : ""}`} />
                                         </button>
                                     </div>
+                                    )}
 
                                     {originSelectorExpanded && (
                                         <div className="mt-4 space-y-3">

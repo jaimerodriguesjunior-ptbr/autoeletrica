@@ -2674,9 +2674,6 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
 
     try {
         const env = payload.environment || "homologation";
-        if (env !== "homologation") {
-            return { success: false, error: "Emissao assistida liberada apenas em homologacao nesta fase." };
-        }
 
         const natOp = String(payload.natureza_operacao || "").trim().toUpperCase();
         if (!natOp) throw new Error("Informe a natureza da operacao para emissao assistida.");
@@ -2684,7 +2681,9 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
         if (![1, 2, 3, 4].includes(Number(payload.finalidade_nfe))) throw new Error("Finalidade NF-e invalida para emissao assistida.");
 
         const token = await getNuvemFiscalToken(env);
-        const baseUrl = process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br";
+        const baseUrl = env === "production"
+            ? process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br"
+            : process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br";
 
         const { data: company } = await supabase
             .from("company_settings")
@@ -2728,7 +2727,7 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
         }
 
         const nfePayload = {
-            ambiente: "homologacao",
+            ambiente: env === "production" ? "producao" : "homologacao",
             infNFe: {
                 versao: "4.00",
                 ide: {
@@ -2743,7 +2742,7 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
                     cMunFG: Number(company.codigo_municipio_ibge),
                     tpImp: 1,
                     tpEmis: 1,
-                    tpAmb: 2,
+                    tpAmb: env === "production" ? 1 : 2,
                     finNFe: Number(payload.finalidade_nfe ?? 1),
                     indFinal: payload.ind_final ?? 1,
                     indPres: payload.ind_pres ?? 9,
