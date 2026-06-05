@@ -112,10 +112,31 @@ export async function POST(req: NextRequest) {
         // Configurar transporter SMTP
         const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
         const smtpPort = parseInt(process.env.SMTP_PORT || "465");
-        const smtpUser = process.env.SMTP_USER || "";
-        const smtpPass = process.env.SMTP_PASS || "";
+        const smtpUser = process.env.SMTP_USER?.trim() || "";
+        const smtpPass = process.env.SMTP_PASS?.trim() || "";
         const smtpFromEmail = process.env.SMTP_FROM_EMAIL || smtpUser;
         const smtpFromName = process.env.SMTP_FROM_NAME || "AutoElétrica Pro";
+
+        if (!smtpUser || !smtpPass) {
+            const missing = [
+                !smtpUser ? "SMTP_USER" : null,
+                !smtpPass ? "SMTP_PASS" : null,
+            ].filter(Boolean).join(" e ");
+
+            console.error("[Email Contador] SMTP não configurado corretamente.", {
+                host: smtpHost,
+                port: smtpPort,
+                hasUser: Boolean(smtpUser),
+                hasPass: Boolean(smtpPass),
+            });
+
+            return NextResponse.json(
+                {
+                    error: `Configuração de e-mail incompleta no servidor (${missing}). Reinicie o sistema após ajustar as variáveis SMTP.`,
+                },
+                { status: 500 }
+            );
+        }
 
         const transporter = nodemailer.createTransport({
             host: smtpHost,

@@ -32,6 +32,7 @@ import { createClient } from "@/src/lib/supabase";
 import { auditarNFeAssistidaComIaAction } from "@/src/actions/fiscal_ai_audit";
 import { emitirNFeAssistidaUiAction, emitirNFeBonificacaoDoacaoUiAction, emitirNFeDevolucaoAction, emitirNFeRemessaConsertoUiAction, emitirNFeRemessaGarantiaUiAction, emitirNFeRetornoConsertoUiAction, emitirNFeRetornoGarantiaUiAction, emitirNFeTransferenciaUiAction, emitirNFeVendaAction } from "@/src/actions/fiscal_emission_actions";
 import { getEntryInvoiceWithItemsAction, getNFeInvoiceWithItemsAction, searchCloneableNFeInvoicesAction, searchProducts, type ParsedNFeItem } from "@/src/actions/fiscal_db";
+import { resolveEntryInvoiceByAccessKeyWithItemsAction } from "@/src/actions/nfe_origin_lookup";
 
 type OperationGroup = "sale" | "return" | "shipment" | "transfer" | "bonus" | "advanced";
 type StepId = "operation" | "participant" | "items" | "transport" | "review";
@@ -299,6 +300,49 @@ function cloneItemFromDet(det: any): DraftItem {
     };
 }
 
+function scaleValue(value: number | undefined, ratio: number) {
+    return Number(((Number(value || 0)) * ratio).toFixed(2));
+}
+
+function cfopForAdvancedOriginItem(item: ParsedNFeItem, advancedFinNFe: "1" | "2" | "3" | "4") {
+    if (advancedFinNFe !== "4") return item.cfop || "";
+    const original = String(item.cfop || "");
+    if (original.startsWith("5")) return "5202";
+    if (original.startsWith("6")) return "6202";
+    return "";
+}
+
+function draftItemFromReturnItem(item: ReturnItemState, advancedFinNFe: "1" | "2" | "3" | "4"): DraftItem {
+    const ratio = item.quantidade > 0 ? item.qtd_devolver / item.quantidade : 0;
+    return {
+        id: `${item.codigo || "origin"}-${item.ncm || "item"}-${crypto.randomUUID()}`,
+        codigo: item.codigo,
+        descricao: item.descricao,
+        ncm: item.ncm,
+        cest: item.cest || "",
+        unidade: item.unidade || "UN",
+        quantidade: item.qtd_devolver,
+        valor_unitario: item.valor_unitario,
+        origem: item.origem || "0",
+        cfop: cfopForAdvancedOriginItem(item, advancedFinNFe),
+        csosn: item.csosn || "102",
+        cbenef: item.cbenef || "",
+        ipi_cst: item.ipi_cst || "",
+        ipi_cenq: item.ipi_cenq || "999",
+        ipi_base: scaleValue(item.ipi_base, ratio),
+        ipi_aliquota: Number(item.ipi_aliquota || 0),
+        ipi_valor: scaleValue(item.ipi_valor, ratio),
+        pis_cst: item.pis_cst || "99",
+        pis_base: scaleValue(item.pis_base, ratio),
+        pis_aliquota: Number(item.pis_aliquota || 0),
+        pis_valor: scaleValue(item.pis_valor, ratio),
+        cofins_cst: item.cofins_cst || "99",
+        cofins_base: scaleValue(item.cofins_base, ratio),
+        cofins_aliquota: Number(item.cofins_aliquota || 0),
+        cofins_valor: scaleValue(item.cofins_valor, ratio),
+    };
+}
+
 function money(value: number) {
     return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -557,6 +601,8 @@ export default function NFeCompletaPage() {
     const [originQuickFilter, setOriginQuickFilter] = useState<"recent" | "all">("recent");
     const [originSelectorExpanded, setOriginSelectorExpanded] = useState(false);
     const [advancedOriginPanelOpen, setAdvancedOriginPanelOpen] = useState(false);
+    const [loadingOriginByKey, setLoadingOriginByKey] = useState(false);
+    const [originLookupMessage, setOriginLookupMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
     const [originSearchStarted, setOriginSearchStarted] = useState(false);
     const [loadingEntryInvoices, setLoadingEntryInvoices] = useState(false);
     const [selectedEntryInvoice, setSelectedEntryInvoice] = useState<EntryInvoiceSummary | null>(null);
@@ -619,6 +665,7 @@ export default function NFeCompletaPage() {
     const requiresReference = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp;
     const allowsAdvancedOriginReference = operation === "advanced";
     const selectedReturnItems = returnItems.filter((item) => item.selected && item.qtd_devolver > 0);
+    const usesAdvancedOriginItems = operation === "advanced" && returnItems.length > 0;
     const returnTotal = selectedReturnItems.reduce((sum, item) => sum + item.qtd_devolver * item.valor_unitario, 0);
     const displayTotal = usesOriginItems ? returnTotal : totalItems;
     const isReferenceSelectionPending = requiresReference && !selectedEntryInvoice;
@@ -818,9 +865,27 @@ export default function NFeCompletaPage() {
         setOriginQuickFilter("recent");
         setOriginSelectorExpanded(false);
         setAdvancedOriginPanelOpen(false);
+        setOriginLookupMessage(null);
         setOriginSearchStarted(false);
         setLegacyGuaranteeInvoices([]);
     }, [operation, purpose]);
+
+    useEffect(() => {
+        if (operation !== "advanced" || returnItems.length === 0) return;
+
+        const selected = returnItems.filter((item) => item.selected && item.qtd_devolver > 0);
+        setItems(selected.map((item) => draftItemFromReturnItem(item, advancedFinNFe)));
+
+        const proportional = (field: keyof ParsedNFeItem) => Number(selected.reduce((sum, item) => {
+            const ratio = item.quantidade > 0 ? item.qtd_devolver / item.quantidade : 0;
+            return sum + Number(item[field] || 0) * ratio;
+        }, 0).toFixed(2));
+
+        setValorFrete(proportional("valor_frete"));
+        setValorSeguro(proportional("valor_seguro"));
+        setValorDesconto(proportional("valor_desconto"));
+        setValorOutrasDespesas(proportional("valor_outras_despesas"));
+    }, [operation, returnItems, advancedFinNFe]);
 
     useEffect(() => {
         if (operation !== "advanced") return;
@@ -1199,10 +1264,6 @@ export default function NFeCompletaPage() {
         setSelectedEntryInvoice(invoice);
         setReferencedKey(invoice.chave_acesso || "");
         setOriginSelectorExpanded(false);
-        if (operation === "advanced") {
-            setReturnItems([]);
-            return;
-        }
 
         setLoadingEntryItems(true);
 
@@ -1234,6 +1295,57 @@ export default function NFeCompletaPage() {
             setReturnItems([]);
         } finally {
             setLoadingEntryItems(false);
+        }
+    };
+
+    const handleLoadOriginByKey = async () => {
+        const cleanKey = digits(referencedKey);
+        if (cleanKey.length !== 44) {
+            setOriginLookupMessage({ type: "error", text: "Informe a chave de acesso com 44 dígitos." });
+            return;
+        }
+
+        setLoadingOriginByKey(true);
+        setOriginLookupMessage(null);
+        setLoadingEntryItems(true);
+        try {
+            const result = await resolveEntryInvoiceByAccessKeyWithItemsAction(cleanKey);
+            if (!result.success) {
+                throw new Error(result.error || "Não foi possível carregar a NF-e de origem.");
+            }
+
+            setReferencedKey(cleanKey);
+            setSelectedEntryInvoice(result.invoice as EntryInvoiceSummary);
+            setReturnItems((result.items || []).map((item: ParsedNFeItem) => ({
+                ...item,
+                selected: true,
+                qtd_devolver: item.quantidade,
+            })));
+
+            const originParticipant = result.originParticipant;
+            if (originParticipant?.nome && originParticipant?.cpf_cnpj) {
+                setParticipant((current) => ({
+                    ...current,
+                    ...originParticipant,
+                    ind_ie_dest: (originParticipant.ind_ie_dest || current.ind_ie_dest) as "1" | "2" | "9",
+                }));
+                setParticipantMode("manual");
+            }
+
+            if (!infCpl.trim()) {
+                setInfCpl(`NF-e referenciada pela chave ${cleanKey}. Operação preenchida conforme XML de origem e orientação do contador.`);
+            }
+
+            setOriginLookupMessage({
+                type: "success",
+                text: `XML carregado. ${result.items?.length || 0} produto(s) disponível(is) para seleção.`,
+            });
+            setStep("items");
+        } catch (error: any) {
+            setOriginLookupMessage({ type: "error", text: error.message || "Erro ao buscar XML da nota de origem." });
+        } finally {
+            setLoadingEntryItems(false);
+            setLoadingOriginByKey(false);
         }
     };
 
@@ -2381,7 +2493,22 @@ export default function NFeCompletaPage() {
                                                     maxLength={44}
                                                     placeholder="44 dígitos da NF-e de entrada"
                                                 />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleLoadOriginByKey}
+                                                    disabled={loadingOriginByKey || digits(referencedKey).length !== 44}
+                                                    className="mt-3 flex w-fit items-center gap-2 rounded-xl bg-orange-600 px-4 py-2 text-xs font-black text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    {loadingOriginByKey ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                                                    Buscar XML e carregar produtos
+                                                </button>
                                             </div>
+
+                                            {originLookupMessage && (
+                                                <p className={`rounded-xl border p-3 text-xs font-bold ${originLookupMessage.type === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}>
+                                                    {originLookupMessage.text}
+                                                </p>
+                                            )}
 
                                             <button
                                                 type="button"
@@ -2764,10 +2891,12 @@ export default function NFeCompletaPage() {
                                     <p className="text-sm text-stone-500">
                                         {usesOriginItems
                                             ? "Selecione os itens da nota de origem e as quantidades desta emissão."
+                                            : usesAdvancedOriginItems
+                                                ? "Selecione os itens carregados da NF-e de origem e ajuste a quantidade devolvida."
                                             : "Tributação e CFOP são tratados por item."}
                                     </p>
                                 </div>
-                                {!usesOriginItems && (
+                                {!usesOriginItems && !usesAdvancedOriginItems && (
                                     <button
                                         type="button"
                                         onClick={() => setItems((current) => [...current, { ...makeItem(), cfop: suggestedCfop }])}
@@ -2778,7 +2907,7 @@ export default function NFeCompletaPage() {
                                 )}
                             </div>
 
-                            {usesOriginItems ? (
+                            {usesOriginItems || usesAdvancedOriginItems ? (
                                 <ReturnItemsTable
                                     items={returnItems}
                                     loading={loadingEntryItems}

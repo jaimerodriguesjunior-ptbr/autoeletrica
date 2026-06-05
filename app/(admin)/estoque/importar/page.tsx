@@ -45,6 +45,14 @@ type DatabaseProduct = {
     data_ultima_compra?: string; // Adicionado
 };
 
+const NFE_PORTAL_CONSULTA_URL = "https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=resumo&tipoConteudo=7PhJ+gAVw2g=";
+
+function buildNFePortalConsultaUrl(chaveAcesso: string) {
+    const url = new URL(NFE_PORTAL_CONSULTA_URL);
+    url.searchParams.set("nfe", chaveAcesso);
+    return url.toString();
+}
+
 export default function ImportarXML() {
     const supabase = createClient();
     const { profile } = useAuth();
@@ -286,14 +294,20 @@ export default function ImportarXML() {
     };
 
     const handleOpenQueueItem = async (queueItem: NfeQueueItem) => {
-        if (!queueItem.resumo && !window.confirm("XML encontrada. Gostaria de importar agora?")) {
+        if (queueItem.xml_completo_disponivel && !window.confirm("XML encontrada. Gostaria de importar agora?")) {
             return;
         }
 
         setLoading(true);
         setSelectedQueueId(queueItem.id);
         try {
-            const result = await getNfeQueueXml(queueItem.id);
+            let result = await getNfeQueueXml(queueItem.id);
+            if ((!result.success || !result.xmlContent) && queueItem.resumo && queueItem.chave_acesso) {
+                const refreshed = await searchNfeByAccessKey(queueItem.chave_acesso);
+                if (refreshed.success && refreshed.found && refreshed.queueId) {
+                    result = await getNfeQueueXml(refreshed.queueId);
+                }
+            }
             if (!result.success || !result.xmlContent) throw new Error(result.error || "XML nao encontrado.");
             await processXmlText(result.xmlContent);
         } catch (error: any) {
@@ -672,7 +686,12 @@ export default function ImportarXML() {
                                                     XML ainda nao disponivel pela SEFAZ. Copie a chave para localizar o XML manualmente ou tente baixar novamente na proxima janela da SEFAZ.
                                                 </p>
                                             )}
-                                            {!note.resumo && (
+                                            {!note.resumo && !note.xml_completo_disponivel && (
+                                                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-2 inline-flex">
+                                                    Documento localizado na SEFAZ. Clique para tentar baixar o XML completo.
+                                                </p>
+                                            )}
+                                            {note.xml_completo_disponivel && (
                                                 <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-2 py-1 mt-2 inline-flex">
                                                     XML encontrada. Voce pode importar esta nota agora.
                                                 </p>
@@ -689,18 +708,30 @@ export default function ImportarXML() {
                                             >
                                                 <Copy size={15} /> Copiar chave
                                             </button>
+                                            <a
+                                                href={buildNFePortalConsultaUrl(note.chave_acesso)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={() => {
+                                                    void navigator.clipboard?.writeText(note.chave_acesso).catch(() => undefined);
+                                                }}
+                                                className="bg-white text-[#1A1A1A] px-4 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-stone-200 hover:border-stone-400"
+                                                title="Abre o Portal NF-e e copia a chave para consulta manual"
+                                            >
+                                                <Search size={15} /> Portal NF-e
+                                            </a>
                                             <button
                                                 type="button"
                                                 onClick={() => handleOpenQueueItem(note)}
                                                 disabled={loading}
-                                                className={`${note.resumo ? "bg-stone-100 text-stone-600 border border-stone-200" : "bg-[#1A1A1A] text-[#FACC15] border border-[#1A1A1A]"} px-4 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-60`}
+                                                className={`${note.xml_completo_disponivel ? "bg-[#1A1A1A] text-[#FACC15] border border-[#1A1A1A]" : "bg-stone-100 text-stone-600 border border-stone-200"} px-4 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-60`}
                                             >
                                                 {loading && selectedQueueId === note.id ? (
                                                     <Loader2 className="animate-spin" size={15} />
                                                 ) : (
                                                     <ArrowRight size={15} />
                                                 )}
-                                                {note.resumo ? "Tentar baixar XML" : "Importar XML"}
+                                                {note.xml_completo_disponivel ? "Importar XML" : "Baixar XML"}
                                             </button>
                                         </div>
                                     </div>

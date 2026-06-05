@@ -13,6 +13,7 @@ export type NfeQueueItem = {
     nuvemfiscal_document_id: string | null;
     nsu: number | null;
     resumo: boolean;
+    xml_completo_disponivel?: boolean;
     status: QueueStatus;
     numero: string | null;
     serie: string | null;
@@ -112,8 +113,12 @@ function extractNfeMetaFromXml(xmlText: string) {
 }
 
 function hasCompleteNfeItems(xmlText: string) {
-    const { infNFe } = parseNfeXml(xmlText);
-    return Boolean(infNFe?.det);
+    try {
+        const { infNFe } = parseNfeXml(xmlText);
+        return Boolean(infNFe?.det);
+    } catch {
+        return false;
+    }
 }
 
 async function downloadDocumentXml(documentId: string, token: string) {
@@ -172,13 +177,47 @@ export async function listNfeImportQueue() {
 
         const { data, error } = await supabaseAdmin
             .from("nfe_import_queue")
-            .select("id, chave_acesso, nuvemfiscal_document_id, nsu, resumo, status, numero, serie, emitente_nome, emitente_cnpj, data_emissao, valor_total, error_message, created_at")
+            .select("id, chave_acesso, nuvemfiscal_document_id, nsu, resumo, status, numero, serie, emitente_nome, emitente_cnpj, data_emissao, valor_total, error_message, created_at, xml_content")
             .eq("organization_id", organizationId)
             .in("status", ["pending", "error"])
             .order("data_emissao", { ascending: false, nullsFirst: false });
 
         if (error) throw error;
-        return { success: true, data: (data || []) as NfeQueueItem[] };
+
+        const queueItems = ((data || []) as any[]).map((item) => {
+            const { xml_content, ...queueItem } = item;
+            return {
+                ...queueItem,
+                xml_completo_disponivel: xml_content ? hasCompleteNfeItems(String(xml_content)) : false,
+            } as NfeQueueItem;
+        });
+        const keys = queueItems.map((item) => item.chave_acesso).filter(Boolean);
+        if (keys.length === 0) return { success: true, data: queueItems };
+
+        const { data: imported, error: importedError } = await supabaseAdmin
+            .from("fiscal_invoices")
+            .select("chave_acesso")
+            .eq("organization_id", organizationId)
+            .in("chave_acesso", keys);
+
+        if (importedError) throw importedError;
+
+        const importedKeys = new Set((imported || []).map((item: any) => item.chave_acesso).filter(Boolean));
+        const pendingItems = queueItems.filter((item) => !importedKeys.has(item.chave_acesso));
+
+        if (importedKeys.size > 0) {
+            await supabaseAdmin
+                .from("nfe_import_queue")
+                .update({
+                    status: "imported",
+                    imported_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("organization_id", organizationId)
+                .in("chave_acesso", Array.from(importedKeys));
+        }
+
+        return { success: true, data: pendingItems };
     } catch (error: any) {
         return { success: false, error: error.message, data: [] as NfeQueueItem[] };
     }
@@ -451,11 +490,12 @@ export async function getNfeQueueXml(queueId: string) {
         if (!queueItem) throw new Error("Nota nao encontrada na fila.");
 
         let xmlContent = queueItem.xml_content as string | null;
-        if (!xmlContent) {
+        const cachedXmlHasItems = xmlContent ? hasCompleteNfeItems(xmlContent) : false;
+        if (!xmlContent || !cachedXmlHasItems) {
             if (!queueItem.nuvemfiscal_document_id) throw new Error("Documento sem identificador na Nuvem Fiscal.");
             const token = await getNuvemFiscalToken(NFE_ENVIRONMENT, "empresa nfe distribuicao-nfe");
 
-            if (queueItem.resumo && queueItem.chave_acesso) {
+            if ((queueItem.resumo || !cachedXmlHasItems) && queueItem.chave_acesso) {
                 await manifestScience(cpfCnpj, queueItem.chave_acesso, token);
             }
 

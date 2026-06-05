@@ -1,6 +1,8 @@
 "use server";
 
 import { createClient } from "@/src/utils/supabase/server";
+import { extractItemsFromInfNFe } from "@/src/lib/nfe_xml";
+import type { ParsedNFeItem } from "@/src/types/nfe";
 
 export async function getPendingWorkOrders(organizationId: string) {
     const supabase = createClient();
@@ -171,30 +173,7 @@ export async function getFiscalInvoices(organizationId: string) {
     return data;
 }
 
-export type ParsedNFeItem = {
-    codigo: string;
-    descricao: string;
-    ncm: string;
-    unidade: string;
-    quantidade: number;
-    valor_unitario: number;
-    valor_total: number;
-};
-
-function extractItemsFromInfNFe(infNFe: any): ParsedNFeItem[] {
-    let dets = infNFe?.det;
-    if (dets && !Array.isArray(dets)) dets = [dets];
-
-    return (dets || []).map((d: any): ParsedNFeItem => ({
-        codigo: String(d.prod?.cProd || ""),
-        descricao: String(d.prod?.xProd || ""),
-        ncm: String(d.prod?.NCM || ""),
-        unidade: String(d.prod?.uCom || "UN"),
-        quantidade: Number(d.prod?.qCom || 0),
-        valor_unitario: Number(d.prod?.vUnCom || 0),
-        valor_total: Number(d.prod?.vProd || 0),
-    }));
-}
+export type { ParsedNFeItem };
 
 export async function getEntryInvoiceWithItems(invoiceId: string) {
     const supabase = createClient();
