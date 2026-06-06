@@ -17,12 +17,12 @@ import {
     AlertCircle,
     X
 } from "lucide-react";
-import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getClosingLog } from "@/src/actions/closing_log";
 import { inutilizarNumeracaoFiscal, listarInutilizacoesFiscais } from "@/src/actions/fiscal_emission";
+import { MONTHS, PAYMENT_METHOD_LABELS } from "@/src/lib/closing-zip";
 
 type ClosingData = {
     faturamento: {
@@ -65,21 +65,6 @@ type InutilizacaoItem = {
     created_at: string;
 };
 
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-    pix: "Pix",
-    cartao_credito: "Cartão de Crédito",
-    cartao_debito: "Cartão de Débito",
-    dinheiro: "Dinheiro",
-    boleto: "Boleto",
-    cheque_pre: "Cheque",
-    outros: "Outros"
-};
-
-const MONTHS = [
-    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-];
-
 export default function FechamentoMensal() {
     const supabase = createClient();
     const { profile } = useAuth();
@@ -97,19 +82,6 @@ export default function FechamentoMensal() {
     });
 
     const [data, setData] = useState<ClosingData | null>(null);
-
-    const fetchXmlText = useCallback(async (xmlUrl?: string | null) => {
-        if (!xmlUrl) return null;
-
-        try {
-            const response = await fetch(xmlUrl);
-            if (!response.ok) return null;
-            return await response.text();
-        } catch (error) {
-            console.warn("Nao foi possivel baixar XML para o ZIP:", error);
-            return null;
-        }
-    }, []);
 
     const fetchClosingData = useCallback(async () => {
         if (!profile?.organization_id) return;
@@ -237,156 +209,27 @@ export default function FechamentoMensal() {
 
     const buildZipBlob = async (): Promise<{ blob: Blob; folderName: string }> => {
         if (!profile?.organization_id || !data) throw new Error("Dados não disponíveis");
-        const zip = new JSZip();
-        const folderName = `Fechamento_${MONTHS[month]}_${year}`;
-        const root = zip.folder(folderName);
-        if (!root) throw new Error("Erro ao criar pasta no ZIP");
 
-        const csvContent = [
-            ["RELATORIO DE FECHAMENTO MENSAL"],
-            ["Periodo", `${MONTHS[month]} / ${year}`],
-            ["Empresa ID", profile.organization_id],
-            [""],
-            ["FATURAMENTO"],
-            ["Venda de Pecas", data.faturamento.total_pecas.toFixed(2)],
-            ["Prestacao de Servicos", data.faturamento.total_servicos.toFixed(2)],
-            ["Total Bruto", (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
-            [""],
-            ["FATURAMENTO POR CFOP"],
-            ...data.faturamento_por_cfop.map(c => [c.cfop, c.total.toFixed(2)]),
-            [""],
-            ["MOVIMENTACAO FISCAL"],
-            ["NFS-e Emitidas (Servicos)", data.fiscal.autorizadas_nfse],
-            ["NFC-e Emitidas (Pecas)", data.fiscal.autorizadas_nfce],
-            ["Canceladas (NFS-e + NFC-e)", data.fiscal.canceladas_nfse + data.fiscal.canceladas_nfce],
-            ["NFe Compras (Qtd)", data.fiscal.entradas_qtd],
-            ["NFe Compras (Valor)", data.fiscal.entradas_valor.toFixed(2)],
-            ["NF-e Devolucoes (Qtd)", data.fiscal.devolucoes_qtd],
-            ["NF-e Devolucoes (Valor)", data.fiscal.devolucoes_valor.toFixed(2)],
-            [""],
-            ["MEIOS DE PAGAMENTO"],
-            ...data.pagamentos.map(p => [PAYMENT_METHOD_LABELS[p.metodo] || p.metodo, p.total.toFixed(2)])
-        ].map(e => e.join(";")).join("\n");
-        root.file("Resumo_Fechamento.csv", "﻿" + csvContent);
-
-        const pdfDoc = new jsPDF();
-        pdfDoc.setFontSize(16);
-        pdfDoc.text("Relatório de Fechamento Mensal", 14, 20);
-        pdfDoc.setFontSize(10);
-        pdfDoc.text(`Período: ${MONTHS[month]} / ${year}`, 14, 28);
-        pdfDoc.text(`Empresa ID: ${profile.organization_id}`, 14, 34);
-        autoTable(pdfDoc, {
-            startY: 42,
-            head: [['Faturamento', 'Valor (R$)']],
-            body: [
-                ['Venda de Peças (Produtos)', data.faturamento.total_pecas.toFixed(2)],
-                ['Prestação de Serviços', data.faturamento.total_servicos.toFixed(2)],
-                ['Total Bruto', (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
-            ]
+        const response = await fetch("/api/closing/zip", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ month: month + 1, year }),
         });
-        autoTable(pdfDoc, {
-            startY: (pdfDoc as any).lastAutoTable.finalY + 10,
-            head: [['Faturamento por CFOP', 'Valor (R$)']],
-            body: data.faturamento_por_cfop.map(c => [c.cfop === '5933' ? '5933 (Serviço)' : c.cfop, c.total.toFixed(2)])
-        });
-        autoTable(pdfDoc, {
-            startY: (pdfDoc as any).lastAutoTable.finalY + 10,
-            head: [['Movimentação Fiscal', 'Quantidade / Valor']],
-            body: [
-                ['NFS-e Emitidas (Serviços)', data.fiscal.autorizadas_nfse.toString()],
-                ['NFC-e Emitidas (Peças)', data.fiscal.autorizadas_nfce.toString()],
-                ['Canceladas (NFS-e + NFC-e)', (data.fiscal.canceladas_nfse + data.fiscal.canceladas_nfce).toString()],
-                ['NFe Compras — Qtd', data.fiscal.entradas_qtd.toString()],
-                ['NFe Compras — Valor (R$)', data.fiscal.entradas_valor.toFixed(2)],
-                ['NF-e Devoluções — Qtd', data.fiscal.devolucoes_qtd.toString()],
-                ['NF-e Devoluções — Valor (R$)', data.fiscal.devolucoes_valor.toFixed(2)],
-            ]
-        });
-        autoTable(pdfDoc, {
-            startY: (pdfDoc as any).lastAutoTable.finalY + 10,
-            head: [['Meios de Pagamento', 'Valor (R$)']],
-            body: data.pagamentos.map(p => [PAYMENT_METHOD_LABELS[p.metodo] || p.metodo, p.total.toFixed(2)])
-        });
-        root.file("Resumo_Fechamento.pdf", pdfDoc.output('arraybuffer'));
 
-        const startDate = new Date(year, month, 1).toISOString();
-        const endDate = new Date(year, month + 1, 1).toISOString();
-        const baseFields = 'id, direction, tipo_documento, xml_content, xml_url, chave_acesso, numero, status, motivo_rejeicao, error_message, data_emissao, created_at';
-        const [{ data: datedFiscalFiles }, { data: fallbackFiscalFiles }] = await Promise.all([
-            supabase.from('fiscal_invoices').select(baseFields)
-                .eq('organization_id', profile.organization_id).neq('environment', 'homologation')
-                .gte('data_emissao', startDate).lt('data_emissao', endDate),
-            supabase.from('fiscal_invoices').select(baseFields)
-                .eq('organization_id', profile.organization_id).neq('environment', 'homologation')
-                .is('data_emissao', null).gte('created_at', startDate).lt('created_at', endDate)
-        ]);
-        const fiscalFiles = [...(datedFiscalFiles || []), ...(fallbackFiscalFiles || [])]
-            .filter((d, i, arr) => arr.findIndex(x => x.id === d.id) === i);
-        const rejectedDocs = fiscalFiles.filter(d => d.status === "rejected" || d.status === "error");
-        const rejectedRows = [
-            ["TIPO", "NUMERO", "STATUS", "MOTIVO", "CHAVE_ACESSO"],
-            ...rejectedDocs.map(d => [
-                d.tipo_documento || "",
-                d.numero || "",
-                d.status || "",
-                (d.motivo_rejeicao || d.error_message || "").replace(/\r?\n/g, " "),
-                d.chave_acesso || "",
-            ])
-        ];
-        root.file("Numeracoes_Rejeitadas.csv", "\ufeff" + rejectedRows.map(r => r.join(";")).join("\n"));
-
-        const { data: inutilizacoesZip } = await supabase
-            .from("fiscal_inutilizations")
-            .select("environment, model, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
-            .eq("organization_id", profile.organization_id)
-            .in("model", ["NFCe", "NFe"])
-            .eq("environment", "production")
-            .eq("year", year)
-            .order("created_at", { ascending: false });
-
-        const inutilRows = [
-            ["MODELO", "AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
-            ...((inutilizacoesZip || []) as any[]).map(i => [
-                i.model || "NFCe",
-                i.environment === "production" ? "producao" : "homologacao",
-                String(i.year),
-                String(i.serie),
-                String(i.numero_inicial),
-                String(i.numero_final),
-                i.protocol || "",
-                i.status || "",
-                new Date(i.created_at).toLocaleString("pt-BR"),
-                (i.justificativa || "").replace(/\r?\n/g, " "),
-            ])
-        ];
-        root.file("Inutilizacoes_Fiscais.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
-
-        if (inutilizacoesZip && inutilizacoesZip.length > 0) {
-            const inutilFolder = root.folder("Inutilizacoes_Comprovantes");
-            for (const i of inutilizacoesZip as any[]) {
-                inutilFolder?.file(
-                    `${i.model || "NFCe"}_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`,
-                    JSON.stringify(i.response_json || {}, null, 2)
-                );
-            }
+        if (!response.ok) {
+            let message = "Erro ao gerar o pacote.";
+            try {
+                const json = await response.json();
+                message = json.error || message;
+            } catch { }
+            throw new Error(message);
         }
 
-        if (fiscalFiles.length > 0) {
-            const outFolder = root.folder("XMLs_Saida_Vendas");
-            const inFolder = root.folder("XMLs_Entrada_Compras");
-            const cancelFolder = root.folder("XMLs_Cancelados");
-            for (const d of fiscalFiles) {
-                let xmlContent = d.xml_content;
-                if (!xmlContent && d.xml_url) xmlContent = await fetchXmlText(d.xml_url);
-                if (xmlContent) {
-                    const xmlFileName = `${d.numero || d.chave_acesso || 'doc'}.xml`;
-                    if (d.status === 'cancelled' && cancelFolder) cancelFolder.file(`Cancelado_${xmlFileName}`, xmlContent);
-                    else if (d.direction === 'output' && outFolder) outFolder.file(xmlFileName, xmlContent);
-                    else if (d.direction === 'entry' && inFolder) inFolder.file(xmlFileName, xmlContent);
-                }
-            }
-        }
-        return { blob: await zip.generateAsync({ type: "blob" }), folderName };
+        const folderName = response.headers.get("X-File-Name")?.replace(/\.zip$/i, "") || `Fechamento_${MONTHS[month]}_${year}`;
+        return {
+            blob: await response.blob(),
+            folderName,
+        };
     };
 
     const handleExportZip = async () => {
@@ -394,199 +237,8 @@ export default function FechamentoMensal() {
         setExporting(true);
 
         try {
-            const zip = new JSZip();
-            const folderName = `Fechamento_${MONTHS[month]}_${year}`;
-            const root = zip.folder(folderName);
-
-            if (!root) throw new Error("Erro ao criar pasta no ZIP");
-
-            // 1. Gerar Relatório CSV de Resumo (Mantido como extra para importar no sistema)
-            const csvContent = [
-                ["RELATORIO DE FECHAMENTO MENSAL"],
-                ["Periodo", `${MONTHS[month]} / ${year}`],
-                ["Empresa ID", profile.organization_id],
-                [""],
-                ["FATURAMENTO"],
-                ["Venda de Pecas", data.faturamento.total_pecas.toFixed(2)],
-                ["Prestacao de Servicos", data.faturamento.total_servicos.toFixed(2)],
-                ["Total Bruto", (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
-                [""],
-                ["FATURAMENTO POR CFOP"],
-                ...data.faturamento_por_cfop.map(c => [c.cfop, c.total.toFixed(2)]),
-                [""],
-                ["MOVIMENTACAO FISCAL"],
-                ["NFS-e Emitidas (Servicos)", data.fiscal.autorizadas_nfse],
-                ["NFC-e Emitidas (Pecas)", data.fiscal.autorizadas_nfce],
-                ["Canceladas (NFS-e + NFC-e)", data.fiscal.canceladas_nfse + data.fiscal.canceladas_nfce],
-                ["NFe Compras (Qtd)", data.fiscal.entradas_qtd],
-                ["NFe Compras (Valor)", data.fiscal.entradas_valor.toFixed(2)],
-                ["NF-e Devolucoes (Qtd)", data.fiscal.devolucoes_qtd],
-                ["NF-e Devolucoes (Valor)", data.fiscal.devolucoes_valor.toFixed(2)],
-                [""],
-                ["MEIOS DE PAGAMENTO"],
-                ...data.pagamentos.map(p => [PAYMENT_METHOD_LABELS[p.metodo] || p.metodo, p.total.toFixed(2)])
-            ].map(e => e.join(";")).join("\n");
-
-            root.file("Resumo_Fechamento.csv", "\ufeff" + csvContent);
-
-            // 1.5 Gerar Relatório PDF em alta qualidade
-            const doc = new jsPDF();
-
-            doc.setFontSize(16);
-            doc.text("Relatório de Fechamento Mensal", 14, 20);
-
-            doc.setFontSize(10);
-            doc.text(`Período: ${MONTHS[month]} / ${year}`, 14, 28);
-            doc.text(`Empresa ID: ${profile.organization_id}`, 14, 34);
-
-            autoTable(doc, {
-                startY: 42,
-                head: [['Faturamento', 'Valor (R$)']],
-                body: [
-                    ['Venda de Peças (Produtos)', data.faturamento.total_pecas.toFixed(2)],
-                    ['Prestação de Serviços', data.faturamento.total_servicos.toFixed(2)],
-                    ['Total Bruto', (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
-                ]
-            });
-
-            autoTable(doc, {
-                startY: (doc as any).lastAutoTable.finalY + 10,
-                head: [['Faturamento por CFOP', 'Valor (R$)']],
-                body: data.faturamento_por_cfop.map(c => [
-                    c.cfop === '5933' ? '5933 (Serviço)' : c.cfop,
-                    c.total.toFixed(2)
-                ])
-            });
-
-            autoTable(doc, {
-                startY: (doc as any).lastAutoTable.finalY + 10,
-                head: [['Movimentação Fiscal', 'Quantidade/Valor']],
-                body: [
-                    ['NFS-e Emitidas (Serviços)', data.fiscal.autorizadas_nfse.toString()],
-                    ['NFC-e Emitidas (Peças)', data.fiscal.autorizadas_nfce.toString()],
-                    ['Canceladas (NFS-e + NFC-e)', (data.fiscal.canceladas_nfse + data.fiscal.canceladas_nfce).toString()],
-                    ['NFe Compras (Qtd)', data.fiscal.entradas_qtd.toString()],
-                    ['NFe Compras (Valor)', data.fiscal.entradas_valor.toFixed(2)],
-                    ['NF-e Devoluções (Qtd)', data.fiscal.devolucoes_qtd.toString()],
-                    ['NF-e Devoluções (Valor R$)', data.fiscal.devolucoes_valor.toFixed(2)],
-                ]
-            });
-
-            autoTable(doc, {
-                startY: (doc as any).lastAutoTable.finalY + 10,
-                head: [['Meios de Pagamento', 'Valor (R$)']],
-                body: data.pagamentos.map(p => [
-                    PAYMENT_METHOD_LABELS[p.metodo] || p.metodo,
-                    p.total.toFixed(2)
-                ])
-            });
-
-            const pdfBuffer = doc.output('arraybuffer');
-            root.file("Resumo_Fechamento.pdf", pdfBuffer);
-
-            // 2. Buscar XMLs de Saída (NFC-e / NFS-e) e Entrada (NFe)
-            const startDate = new Date(year, month, 1).toISOString();
-            const endDate = new Date(year, month + 1, 1).toISOString();
-
-            const baseFields = 'id, direction, tipo_documento, xml_content, xml_url, chave_acesso, numero, status, motivo_rejeicao, error_message, data_emissao, created_at';
-            const [{ data: datedFiscalFiles }, { data: fallbackFiscalFiles }] = await Promise.all([
-                supabase
-                    .from('fiscal_invoices')
-                    .select(baseFields)
-                    .eq('organization_id', profile.organization_id)
-                    .neq('environment', 'homologation')
-                    .gte('data_emissao', startDate)
-                    .lt('data_emissao', endDate),
-                supabase
-                    .from('fiscal_invoices')
-                    .select(baseFields)
-                    .eq('organization_id', profile.organization_id)
-                    .neq('environment', 'homologation')
-                    .is('data_emissao', null)
-                    .gte('created_at', startDate)
-                    .lt('created_at', endDate)
-            ]);
-
-            const fiscalFiles = [...(datedFiscalFiles || []), ...(fallbackFiscalFiles || [])]
-                .filter((doc, index, array) => array.findIndex(item => item.id === doc.id) === index);
-
-            const rejectedDocs = fiscalFiles.filter(doc => doc.status === "rejected" || doc.status === "error");
-            const rejectedRows = [
-                ["TIPO", "NUMERO", "STATUS", "MOTIVO", "CHAVE_ACESSO"],
-                ...rejectedDocs.map(doc => [
-                    doc.tipo_documento || "",
-                    doc.numero || "",
-                    doc.status || "",
-                    (doc.motivo_rejeicao || doc.error_message || "").replace(/\r?\n/g, " "),
-                    doc.chave_acesso || "",
-                ])
-            ];
-            root.file("Numeracoes_Rejeitadas.csv", "\ufeff" + rejectedRows.map(r => r.join(";")).join("\n"));
-
-            const { data: inutilizacoesZip } = await supabase
-                .from("fiscal_inutilizations")
-                .select("environment, model, year, serie, numero_inicial, numero_final, justificativa, protocol, external_id, status, response_json, created_at")
-                .eq("organization_id", profile.organization_id)
-                .in("model", ["NFCe", "NFe"])
-                .eq("environment", "production")
-                .eq("year", year)
-                .order("created_at", { ascending: false });
-
-            const inutilRows = [
-                ["MODELO", "AMBIENTE", "ANO", "SERIE", "NUMERO_INICIAL", "NUMERO_FINAL", "PROTOCOLO", "STATUS", "DATA", "JUSTIFICATIVA"],
-                ...((inutilizacoesZip || []) as any[]).map(i => [
-                    i.model || "NFCe",
-                i.environment === "production" ? "producao" : "homologacao",
-                    String(i.year),
-                    String(i.serie),
-                    String(i.numero_inicial),
-                    String(i.numero_final),
-                    i.protocol || "",
-                    i.status || "",
-                    new Date(i.created_at).toLocaleString("pt-BR"),
-                    (i.justificativa || "").replace(/\r?\n/g, " "),
-                ])
-            ];
-            root.file("Inutilizacoes_Fiscais.csv", "\ufeff" + inutilRows.map(r => r.join(";")).join("\n"));
-
-            if (inutilizacoesZip && inutilizacoesZip.length > 0) {
-                const inutilFolder = root.folder("Inutilizacoes_Comprovantes");
-                for (const i of inutilizacoesZip as any[]) {
-                    inutilFolder?.file(
-                        `${i.model || "NFCe"}_S${i.serie}_${i.numero_inicial}-${i.numero_final}_${i.year}.json`,
-                        JSON.stringify(i.response_json || {}, null, 2)
-                    );
-                }
-            }
-
-            if (fiscalFiles.length > 0) {
-                const outFolder = root.folder("XMLs_Saida_Vendas");
-                const inFolder = root.folder("XMLs_Entrada_Compras");
-                const cancelFolder = root.folder("XMLs_Cancelados");
-
-                for (const doc of fiscalFiles) {
-                    let xmlContent = doc.xml_content;
-                    if (!xmlContent && doc.xml_url) {
-                        xmlContent = await fetchXmlText(doc.xml_url);
-                    }
-
-                    if (xmlContent) {
-                        const fileName = `${doc.numero || doc.chave_acesso || 'doc'}.xml`;
-                        if (doc.status === 'cancelled' && cancelFolder) {
-                            cancelFolder.file(`Cancelado_${fileName}`, xmlContent);
-                        } else if (doc.direction === 'output' && outFolder) {
-                            outFolder.file(fileName, xmlContent);
-                        } else if (doc.direction === 'entry' && inFolder) {
-                            inFolder.file(fileName, xmlContent);
-                        }
-                    }
-                }
-            }
-
-            // 3. Gerar o arquivo final
-            const content = await zip.generateAsync({ type: "blob" });
-            saveAs(content, `${folderName}.zip`);
-
+            const { blob, folderName } = await buildZipBlob();
+            saveAs(blob, `${folderName}.zip`);
         } catch (err) {
             console.error("Erro ao exportar ZIP:", err);
             alert("Erro ao gerar o pacote. Verifique o console.");

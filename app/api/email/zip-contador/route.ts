@@ -165,6 +165,7 @@ export async function POST(req: NextRequest) {
                         • XMLs de saída (vendas)<br/>
                         • XMLs de entrada (compras)<br/>
                         • XMLs cancelados<br/>
+                        • Arquivo TXT de importação das NFS-e<br/>
                         • Resumo em CSV e PDF
                     </p>
                     <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />

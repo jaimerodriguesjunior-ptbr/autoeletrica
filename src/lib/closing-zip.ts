@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { buildNfseAccountingExport } from "@/src/lib/accounting-nfse-export";
 
 export const MONTHS = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -33,7 +34,16 @@ export type ClosingData = {
     };
 };
 
-async function fetchXmlText(xmlUrl: string): Promise<string | null> {
+async function fetchXmlContent(invoiceId: string | number, xmlUrl?: string | null): Promise<string | null> {
+    try {
+        const res = await fetch(`/api/fiscal/print/${invoiceId}?format=xml`);
+        if (res.ok) return await res.text();
+    } catch {
+        // Continua para o fallback abaixo.
+    }
+
+    if (!xmlUrl) return null;
+
     try {
         const res = await fetch(xmlUrl);
         if (!res.ok) return null;
@@ -63,12 +73,12 @@ export async function buildClosingZip(
         ["Periodo", `${MONTHS[month]} / ${year}`],
         ["Empresa ID", organizationId],
         [""],
-        ["FATURAMENTO"],
-        ["Venda de Pecas", data.faturamento.total_pecas.toFixed(2)],
-        ["Prestacao de Servicos", data.faturamento.total_servicos.toFixed(2)],
-        ["Total Bruto", (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
+        ["FATURAMENTO FISCAL AUTORIZADO"],
+        ["NFC-e - Venda de Produtos", data.faturamento.total_pecas.toFixed(2)],
+        ["NFS-e - Prestacao de Servicos", data.faturamento.total_servicos.toFixed(2)],
+        ["Total Fiscal Autorizado", (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
         [""],
-        ["FATURAMENTO POR CFOP"],
+        ["SAIDAS FISCAIS POR CFOP (XML)"],
         ...data.faturamento_por_cfop.map(c => [c.cfop, c.total.toFixed(2)]),
         [""],
         ["MOVIMENTACAO FISCAL"],
@@ -93,16 +103,16 @@ export async function buildClosingZip(
     pdfDoc.text(`Empresa ID: ${organizationId}`, 14, 34);
     autoTable(pdfDoc, {
         startY: 42,
-        head: [["Faturamento", "Valor (R$)"]],
+        head: [["Faturamento Fiscal Autorizado", "Valor (R$)"]],
         body: [
             ["Venda de Peças (Produtos)", data.faturamento.total_pecas.toFixed(2)],
             ["Prestação de Serviços", data.faturamento.total_servicos.toFixed(2)],
-            ["Total Bruto", (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
+            ["Total Fiscal Autorizado", (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
         ]
     });
     autoTable(pdfDoc, {
         startY: (pdfDoc as any).lastAutoTable.finalY + 10,
-        head: [["Faturamento por CFOP", "Valor (R$)"]],
+        head: [["Saidas Fiscais por CFOP (XML)", "Valor (R$)"]],
         body: data.faturamento_por_cfop.map(c => [c.cfop === "5933" ? "5933 (Serviço)" : c.cfop, c.total.toFixed(2)])
     });
     autoTable(pdfDoc, {
@@ -125,11 +135,24 @@ export async function buildClosingZip(
     });
     root.file("Resumo_Fechamento.pdf", pdfDoc.output("arraybuffer"));
 
+    const nfseAccountingExport = await buildNfseAccountingExport(
+        supabase,
+        organizationId,
+        month,
+        year
+    );
+    if (nfseAccountingExport) {
+        root.file(nfseAccountingExport.fileName, nfseAccountingExport.content);
+    }
+
     const startDate = new Date(year, month, 1).toISOString();
     const endDate = new Date(year, month + 1, 1).toISOString();
-    const baseFields = "id, direction, tipo_documento, xml_content, xml_url, chave_acesso, numero, status, motivo_rejeicao, error_message, data_emissao, created_at";
+    const baseFields = "id, direction, tipo_documento, xml_content, xml_url, chave_acesso, numero, status, error_message, data_emissao, created_at";
 
-    const [{ data: datedFiles }, { data: fallbackFiles }] = await Promise.all([
+    const [
+        { data: datedFiles, error: datedFilesError },
+        { data: fallbackFiles, error: fallbackFilesError },
+    ] = await Promise.all([
         supabase.from("fiscal_invoices").select(baseFields)
             .eq("organization_id", organizationId).neq("environment", "homologation")
             .gte("data_emissao", startDate).lt("data_emissao", endDate),
@@ -137,6 +160,11 @@ export async function buildClosingZip(
             .eq("organization_id", organizationId).neq("environment", "homologation")
             .is("data_emissao", null).gte("created_at", startDate).lt("created_at", endDate),
     ]);
+
+    if (datedFilesError || fallbackFilesError) {
+        const message = datedFilesError?.message || fallbackFilesError?.message || "Erro desconhecido";
+        throw new Error(`Erro ao buscar documentos fiscais para o ZIP: ${message}`);
+    }
 
     const fiscalFiles: any[] = [...(datedFiles || []), ...(fallbackFiles || [])]
         .filter((d, i, arr) => arr.findIndex(x => x.id === d.id) === i);
@@ -148,7 +176,7 @@ export async function buildClosingZip(
             f.tipo_documento || "",
             f.numero || "",
             f.status || "",
-            (f.motivo_rejeicao || f.error_message || "").replace(/\r?\n/g, " "),
+            (f.error_message || "").replace(/\r?\n/g, " "),
             f.chave_acesso || "",
         ])
     ];
@@ -196,7 +224,7 @@ export async function buildClosingZip(
         const cancelFolder = root.folder("XMLs_Cancelados");
         for (const f of fiscalFiles) {
             let xmlContent = f.xml_content;
-            if (!xmlContent && f.xml_url) xmlContent = await fetchXmlText(f.xml_url);
+            if (!xmlContent) xmlContent = await fetchXmlContent(f.id, f.xml_url);
             if (xmlContent) {
                 const name = `${f.numero || f.chave_acesso || "doc"}.xml`;
                 if (f.status === "cancelled" && cancelFolder) cancelFolder.file(`Cancelado_${name}`, xmlContent);

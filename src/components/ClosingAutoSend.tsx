@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { createClient } from "@/src/lib/supabase";
 import { getClosingLog, getCompanyFiscalStatus } from "@/src/actions/closing_log";
-import { buildClosingZip } from "@/src/lib/closing-zip";
 
 // Dispara silenciosamente nos dias 1–5 do mês para orgs com módulo fiscal ativo.
 // Usa localStorage para garantir uma única tentativa por mês.
@@ -66,7 +65,18 @@ export function ClosingAutoSend() {
                 });
                 if (error || !closingData) return;
 
-                const { blob, folderName } = await buildClosingZip(supabase, orgId, prevMonth - 1, prevYear, closingData);
+                const zipResponse = await fetch("/api/closing/zip", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ month: prevMonth, year: prevYear }),
+                });
+
+                if (!zipResponse.ok) {
+                    throw new Error("Não foi possível gerar o ZIP do fechamento.");
+                }
+
+                const blob = await zipResponse.blob();
+                const folderName = zipResponse.headers.get("X-File-Name")?.replace(/\.zip$/i, "") || `Fechamento_${prevMonth}_${prevYear}`;
 
                 const base64 = await new Promise<string>((resolve, reject) => {
                     const reader = new FileReader();
