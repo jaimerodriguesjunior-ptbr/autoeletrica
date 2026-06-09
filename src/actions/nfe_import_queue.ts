@@ -42,6 +42,8 @@ type DistribuicaoDocumento = {
 const NFE_IMPORT_LOOKBACK_DAYS = 60;
 const NFE_ENVIRONMENT: "production" = "production";
 const NFE_AMBIENTE = "producao";
+const DISTRIBUTION_POLL_INTERVAL_MS = 750;
+const DISTRIBUTION_POLL_MAX_ATTEMPTS = 12;
 
 function onlyDigits(value?: string | null) {
     return String(value || "").replace(/\D/g, "");
@@ -49,6 +51,64 @@ function onlyDigits(value?: string | null) {
 
 function nfeBaseUrl() {
     return process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br";
+}
+
+function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function requestNfeDistribution(
+    requestPayload: Record<string, unknown>,
+    token: string,
+) {
+    const endpoint = `${nfeBaseUrl()}/distribuicao/nfe`;
+    const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(requestPayload),
+        cache: "no-store",
+    });
+    const responseText = await response.text();
+    const initialResult = responseText ? JSON.parse(responseText) : {};
+
+    if (!response.ok) {
+        throw new Error(initialResult?.error?.message || initialResult?.message || responseText || "Falha ao consultar distribuicao NF-e.");
+    }
+
+    let result = initialResult;
+    let pollAttempts = 0;
+
+    while (String(result?.status || "").toLowerCase() === "processando") {
+        const distributionId = String(result?.id || "").trim();
+        if (!distributionId) {
+            throw new Error("A Nuvem Fiscal iniciou uma consulta assincrona sem retornar o identificador do pedido.");
+        }
+        if (pollAttempts >= DISTRIBUTION_POLL_MAX_ATTEMPTS) {
+            throw new Error("A consulta ainda esta sendo processada pela Nuvem Fiscal. Tente novamente em alguns instantes.");
+        }
+
+        pollAttempts++;
+        await sleep(DISTRIBUTION_POLL_INTERVAL_MS);
+
+        const pollResponse = await fetch(`${endpoint}/${distributionId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
+        });
+        const pollText = await pollResponse.text();
+        const pollResult = pollText ? JSON.parse(pollText) : {};
+
+        if (!pollResponse.ok) {
+            throw new Error(pollResult?.error?.message || pollResult?.message || pollText || "Falha ao acompanhar a consulta de distribuicao NF-e.");
+        }
+
+        result = pollResult;
+    }
+
+    if (String(result?.status || "").toLowerCase() === "erro") {
+        throw new Error(result?.error?.message || result?.mensagem || result?.motivo_status || "A Nuvem Fiscal nao conseguiu concluir a consulta de distribuicao NF-e.");
+    }
+
+    return result;
 }
 
 async function getOrgAndCompany() {
@@ -257,23 +317,13 @@ export async function syncNfeFromSefaz() {
         const token = await getNuvemFiscalToken(NFE_ENVIRONMENT, "empresa nfe distribuicao-nfe");
         await ensureDistributionConfig(cpfCnpj, token);
 
-        const response = await fetch(`${nfeBaseUrl()}/distribuicao/nfe`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-                cpf_cnpj: cpfCnpj,
-                ambiente: NFE_AMBIENTE,
-                tipo_consulta: "dist-nsu",
-                dist_nsu: Number(state.ultimo_nsu || 0),
-                ignorar_tempo_espera: false,
-            }),
-        });
-
-        const responseText = await response.text();
-        const result = responseText ? JSON.parse(responseText) : {};
-        if (!response.ok) {
-            throw new Error(result?.error?.message || result?.message || responseText || "Falha ao consultar distribuicao NF-e.");
-        }
+        const result = await requestNfeDistribution({
+            cpf_cnpj: cpfCnpj,
+            ambiente: NFE_AMBIENTE,
+            tipo_consulta: "dist-nsu",
+            dist_nsu: Number(state.ultimo_nsu || 0),
+            ignorar_tempo_espera: false,
+        }, token);
 
         const minDate = new Date();
         minDate.setDate(minDate.getDate() - NFE_IMPORT_LOOKBACK_DAYS);
@@ -286,7 +336,7 @@ export async function syncNfeFromSefaz() {
         let skippedMissingKey = 0;
 
         for (const doc of docs) {
-            if (doc.tipo_documento && doc.tipo_documento !== "nota") {
+            if (doc.tipo_documento && String(doc.tipo_documento).trim().toLowerCase() !== "nota") {
                 skippedNonNote++;
                 continue;
             }
@@ -383,26 +433,16 @@ export async function searchNfeByAccessKey(chaveAcesso: string) {
         const token = await getNuvemFiscalToken(NFE_ENVIRONMENT, "empresa nfe distribuicao-nfe");
         await ensureDistributionConfig(cpfCnpj, token);
 
-        const response = await fetch(`${nfeBaseUrl()}/distribuicao/nfe`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-                cpf_cnpj: cpfCnpj,
-                ambiente: NFE_AMBIENTE,
-                tipo_consulta: "cons-chave",
-                cons_chave: cleanKey,
-                ignorar_tempo_espera: false,
-            }),
-        });
-
-        const responseText = await response.text();
-        const result = responseText ? JSON.parse(responseText) : {};
-        if (!response.ok) {
-            throw new Error(result?.error?.message || result?.message || responseText || "Falha ao consultar NF-e por chave.");
-        }
+        const result = await requestNfeDistribution({
+            cpf_cnpj: cpfCnpj,
+            ambiente: NFE_AMBIENTE,
+            tipo_consulta: "cons-chave",
+            cons_chave: cleanKey,
+            ignorar_tempo_espera: false,
+        }, token);
 
         const docs = ((result.documentos || []) as DistribuicaoDocumento[])
-            .filter(doc => (!doc.tipo_documento || doc.tipo_documento === "nota") && doc.chave_acesso);
+            .filter(doc => (!doc.tipo_documento || String(doc.tipo_documento).trim().toLowerCase() === "nota") && doc.chave_acesso);
 
         if (docs.length === 0) {
             return {

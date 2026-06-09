@@ -278,9 +278,9 @@ export default function ImportarXML() {
                 message: (result.inserted || 0) > 0
                     ? `${result.inserted} emissao(oes) nova(s) adicionada(s) na fila.`
                     : "Verificacao concluida sem novas emissoes para importar.",
-                details: `CNPJ: ${result.cpfCnpj || "-"} | Status: ${result.codigoStatus || "-"} ${result.motivoStatus || ""} | Recebidas da API: ${result.received || 0} | Eventos/nao-notas: ${result.skippedNonNote || 0} | Sem chave: ${result.skippedMissingKey || 0} | Ja importadas: ${result.skippedDuplicated || 0} | Fora dos 60 dias iniciais: ${result.skippedOld || 0} | ultNSU: ${result.ultimoNsu || 0} | maxNSU: ${result.maxNsu || 0}${loteInfo ? " | Primeira carga ainda em andamento" : ""}`,
+                details: `CNPJ: ${result.cpfCnpj || "-"} | Status: ${result.codigoStatus || "-"} ${result.motivoStatus || ""} | Recebidas da API: ${result.received || 0} | Eventos/nao-notas: ${result.skippedNonNote || 0} | Sem chave: ${result.skippedMissingKey || 0} | Ja importadas: ${result.skippedDuplicated || 0} | Fora dos 60 dias iniciais: ${result.skippedOld || 0}${loteInfo ? " | Primeira carga ainda em andamento" : ""}`,
             });
-            alert(`Verificacao concluida.\nCNPJ: ${result.cpfCnpj || "-"}\nStatus: ${result.codigoStatus || "-"} ${result.motivoStatus || ""}\nRecebidas: ${result.received || 0}\nNovas emissoes na fila: ${result.inserted || 0}\nEventos/nao-notas: ${result.skippedNonNote || 0}\nSem chave: ${result.skippedMissingKey || 0}\nJa importadas: ${result.skippedDuplicated || 0}\nFora dos 60 dias iniciais: ${result.skippedOld || 0}\nultNSU: ${result.ultimoNsu || 0}\nmaxNSU: ${result.maxNsu || 0}${loteInfo}`);
+            alert(`Verificacao concluida.\nCNPJ: ${result.cpfCnpj || "-"}\nStatus: ${result.codigoStatus || "-"} ${result.motivoStatus || ""}\nRecebidas: ${result.received || 0}\nNovas emissoes na fila: ${result.inserted || 0}\nEventos/nao-notas: ${result.skippedNonNote || 0}\nSem chave: ${result.skippedMissingKey || 0}\nJa importadas: ${result.skippedDuplicated || 0}\nFora dos 60 dias iniciais: ${result.skippedOld || 0}${loteInfo}`);
         } catch (error: any) {
             setLastSyncInfo({
                 type: 'error',
@@ -632,17 +632,36 @@ export default function ImportarXML() {
                                     <Inbox size={20} /> Emissoes encontradas
                                 </h2>
                                 <p className="text-xs text-stone-500 mt-1">
-                                    A consulta verifica NF-e emitidas contra o CNPJ da oficina. Quando o XML completo estiver disponivel, voce podera importar; quando vier apenas resumo, use a chave para localizar o XML.
+                                    A consulta verifica NF-e emitidas contra o CNPJ da oficina. Quando vier apenas resumo, cole a chave de acesso abaixo para tentar localizar o XML completo.
                                 </p>
                             </div>
-                            <button
-                                onClick={handleSyncSefaz}
-                                disabled={syncingSefaz || queueLoading}
-                                className="bg-[#1A1A1A] text-[#FACC15] px-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
-                            >
-                                {syncingSefaz ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
-                                Verificar novas emissoes
-                            </button>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                                <div className="flex items-center overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                                    <input
+                                        value={accessKeyInput}
+                                        onChange={(e) => setAccessKeyInput(e.target.value)}
+                                        placeholder="Cole a chave de acesso da NF-e"
+                                        className="w-72 max-w-full bg-transparent px-4 py-3 text-sm text-[#1A1A1A] outline-none placeholder:text-stone-400"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleSearchByKey}
+                                        disabled={searchingKey || accessKeyInput.replace(/\D/g, '').length !== 44}
+                                        className="border-l border-stone-200 px-4 py-3 text-[#1A1A1A] disabled:opacity-40"
+                                        title="Buscar NF-e pela chave"
+                                    >
+                                        {searchingKey ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={handleSyncSefaz}
+                                    disabled={syncingSefaz || queueLoading}
+                                    className="bg-[#1A1A1A] text-[#FACC15] px-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
+                                >
+                                    {syncingSefaz ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
+                                    Verificar novas emissoes
+                                </button>
+                            </div>
                         </div>
 
                         {queueLoading ? (
@@ -683,7 +702,7 @@ export default function ImportarXML() {
                                             </p>
                                             {note.resumo && (
                                                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-2 inline-flex">
-                                                    XML ainda nao disponivel pela SEFAZ. Copie a chave para localizar o XML manualmente ou tente baixar novamente na proxima janela da SEFAZ.
+                                                    XML ainda nao disponivel pela SEFAZ. Cole a chave no campo acima para tentar localizar o XML completo agora ou tente novamente na proxima janela da SEFAZ.
                                                 </p>
                                             )}
                                             {!note.resumo && !note.xml_completo_disponivel && (
