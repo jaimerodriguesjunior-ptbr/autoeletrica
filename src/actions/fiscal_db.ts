@@ -38,7 +38,7 @@ export async function getPendingWorkOrders(organizationId: string) {
             .eq("organization_id", organizationId)
             .in("work_order_id", workOrderIds)
             .not("work_order_id", "is", null)
-            .not("status", "in", "(error,cancelled,rejected)")
+            .eq("status", "authorized")
     ]);
 
     if (itemsError) {

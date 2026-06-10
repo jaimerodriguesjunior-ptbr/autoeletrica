@@ -2,7 +2,7 @@
 
 
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/src/contexts/AuthContext";
 
@@ -122,6 +122,7 @@ export default function EmitirNotaPage() {
     const [loadingOS, setLoadingOS] = useState(true);
 
     const [pendingOS, setPendingOS] = useState<PendingOS[]>([]);
+    const [visibleOsCount, setVisibleOsCount] = useState(30);
 
     const [selectedOS, setSelectedOS] = useState<PendingOS | null>(null);
 
@@ -158,6 +159,7 @@ export default function EmitirNotaPage() {
 
     const [fetchingNCM, setFetchingNCM] = useState<number | null>(null);
     const [ncmModalData, setNcmModalData] = useState<{ idx: number, options: { code: string, description: string }[] } | null>(null);
+    const osLoadMoreRef = useRef<HTMLDivElement | null>(null);
     const destinatarioUF = String(clienteEndereco?.uf || "").trim().toUpperCase();
     const isNFeVendaRapida = produtoDocumento === "NFe";
     const shouldValidateNFeVendaRapida = isNFeVendaRapida && itens.length > 0;
@@ -185,6 +187,20 @@ export default function EmitirNotaPage() {
         if (!emitenteUF) pendencias.push("UF da empresa emissora nao carregada.");
         if (itens.some(i => !/^\d{8}$/.test(String(i.ncm || "")) || i.ncm === "00000000")) {
             pendencias.push("Todos os produtos precisam ter NCM valido.");
+        }
+
+        return pendencias;
+    };
+
+    const getNFSePendencias = () => {
+        if (itensServico.length === 0) return [];
+
+        const pendencias: string[] = [];
+        const docDigits = String(clienteDoc || "").replace(/\D/g, "");
+
+        if (!clienteNome.trim()) pendencias.push("Informe o nome do tomador para emitir NFS-e.");
+        if (docDigits.length !== 11 && docDigits.length !== 14) {
+            pendencias.push("NFS-e exige CPF/CNPJ valido do tomador.");
         }
 
         return pendencias;
@@ -427,7 +443,7 @@ export default function EmitirNotaPage() {
 
             .eq('work_order_id', os.id)
 
-            .not('status', 'in', '(error,cancelled,rejected)');
+            .eq('status', 'authorized');
 
         const hasExistingProductInvoice = (existingInvoices || []).some((invoice: any) => invoice.tipo_documento === 'NFCe' || invoice.tipo_documento === 'NFe');
 
@@ -613,6 +629,33 @@ export default function EmitirNotaPage() {
 
     });
 
+    const visiblePendingOS = filteredPendingOS.slice(0, visibleOsCount);
+    const hasMorePendingOS = visiblePendingOS.length < filteredPendingOS.length;
+
+    useEffect(() => {
+        setVisibleOsCount(30);
+    }, [osSearch, osStartDate, osEndDate, pendingOS]);
+
+    useEffect(() => {
+        if (step !== 1) return;
+        if (!hasMorePendingOS) return;
+
+        const target = osLoadMoreRef.current;
+        if (!target) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const entry = entries[0];
+                if (!entry?.isIntersecting) return;
+                setVisibleOsCount((current) => Math.min(current + 30, filteredPendingOS.length));
+            },
+            { rootMargin: "240px 0px" }
+        );
+
+        observer.observe(target);
+        return () => observer.disconnect();
+    }, [step, hasMorePendingOS, filteredPendingOS.length]);
+
 
 
     const handleEmitir = async () => {
@@ -679,74 +722,83 @@ export default function EmitirNotaPage() {
             // 2. Emissão de NFS-e (Serviços)
 
             if (itensServico.length > 0) {
+                const nfsePendencias = getNFSePendencias();
+                if (nfsePendencias.length > 0) {
+                    results.push({
+                        type: 'NFS-e',
+                        success: false,
+                        error: nfsePendencias.join(' ')
+                    });
+                } else {
 
-                const totalServicos = itensServico.reduce((acc, item) => acc + item.total_price, 0);
+                    const totalServicos = itensServico.reduce((acc, item) => acc + item.total_price, 0);
 
-                const servicosPayload = itensServico.map(s => ({
+                    const servicosPayload = itensServico.map(s => ({
 
-                    codigo: s.product_id || 'SERV',
+                        codigo: s.product_id || 'SERV',
 
-                    descricao: s.name,
+                        descricao: s.name,
 
-                    ncm: '00000000',
+                        ncm: '00000000',
 
-                    cfop: '0000',
+                        cfop: '0000',
 
-                    unidade: 'UN',
+                        unidade: 'UN',
 
-                    quantidade: s.quantity,
+                        quantidade: s.quantity,
 
-                    valor_unitario: s.unit_price,
+                        valor_unitario: s.unit_price,
 
-                    valor_total: s.total_price,
+                        valor_total: s.total_price,
 
-                    codigo_servico: s.codigo_servico, // Passando dados fiscais
+                        codigo_servico: s.codigo_servico, // Passando dados fiscais
 
-                    aliquota_iss: s.aliquota_iss
+                        aliquota_iss: s.aliquota_iss
 
-                }));
+                    }));
 
 
 
-                const resNFSe = await emitirNFSe({
+                    const resNFSe = await emitirNFSe({
 
-                    organization_id: profile.organization_id,
+                        organization_id: profile.organization_id,
 
-                    work_order_id: selectedOS?.id,
+                        work_order_id: selectedOS?.id,
 
-                    cliente: {
+                        cliente: {
 
-                        nome: clienteNome,
+                            nome: clienteNome,
 
-                        cpf_cnpj: clienteDoc,
+                            cpf_cnpj: clienteDoc,
 
-                        endereco: clienteEndereco.logradouro ? clienteEndereco : {
+                            endereco: clienteEndereco.logradouro ? clienteEndereco : {
 
-                            logradouro: "RUA TESTE",
+                                logradouro: "RUA TESTE",
 
-                            numero: "123",
+                                numero: "123",
 
-                            bairro: "CENTRO",
+                                bairro: "CENTRO",
 
-                            codigo_municipio: "",
+                                codigo_municipio: "",
 
-                            cep: ""
+                                cep: ""
 
-                        }
+                            }
 
-                    },
+                        },
 
-                    itens: servicosPayload,
+                        itens: servicosPayload,
 
-                    valor_total: totalServicos,
+                        valor_total: totalServicos,
 
-                    meio_pagamento: '01',
+                        meio_pagamento: '01',
 
-                    environment
+                        environment
 
-                });
+                    });
 
-                results.push({ type: 'NFS-e', ...resNFSe });
+                    results.push({ type: 'NFS-e', ...resNFSe });
+                }
 
             }
 
@@ -918,13 +970,13 @@ export default function EmitirNotaPage() {
 
                         <span>
 
-                            {filteredPendingOS.length} OS exibida(s)
+                            {visiblePendingOS.length} OS exibida(s)
 
                             {pendingOS.length !== filteredPendingOS.length ? ` de ${pendingOS.length}` : ""}
 
                         </span>
 
-                        <span>A lista mostra OS sem nota vinculada nos status pronto ou entregue.</span>
+                        <span>A lista remove apenas OS com nota autorizada nos status pronto ou entregue.</span>
 
                     </div>
 
@@ -946,9 +998,10 @@ export default function EmitirNotaPage() {
 
                     ) : (
 
+                        <>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
 
-                            {filteredPendingOS.map(os => (
+                            {visiblePendingOS.map(os => (
 
                                 <div key={os.id} className="border border-stone-100 p-3 rounded-xl flex justify-between items-center hover:bg-[#F9F8F4] transition cursor-pointer" onClick={() => handleSelectOS(os)}>
 
@@ -983,6 +1036,19 @@ export default function EmitirNotaPage() {
                             ))}
 
                         </div>
+
+                        <div className="pt-4">
+                            {hasMorePendingOS ? (
+                                <div ref={osLoadMoreRef} className="py-4 text-center text-xs text-stone-400">
+                                    Role para carregar mais 30 OS.
+                                </div>
+                            ) : filteredPendingOS.length > 30 ? (
+                                <div className="py-4 text-center text-xs text-stone-400">
+                                    Todas as OS filtradas foram carregadas.
+                                </div>
+                            ) : null}
+                        </div>
+                        </>
 
                     )}
 

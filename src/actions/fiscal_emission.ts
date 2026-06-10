@@ -223,6 +223,43 @@ function isValidBrazilianDocument(value?: string | null) {
     return false;
 }
 
+function parseNfseValidationIssues(result: any): string[] {
+    const rawErrors = Array.isArray(result?.error?.errors) ? result.error.errors : [];
+    const issues: string[] = [];
+
+    for (const item of rawErrors) {
+        const field = String(item?.message || item?.path || "").toLowerCase();
+
+        if (field.includes("infdps.toma.cpf")) {
+            issues.push("CPF do tomador invalido. Informe um CPF com 11 digitos validos.");
+            continue;
+        }
+
+        if (field.includes("infdps.toma.cnpj")) {
+            issues.push("CNPJ do tomador invalido. Informe um CNPJ com 14 digitos validos.");
+            continue;
+        }
+
+        if (item?.message) {
+            issues.push(String(item.message));
+        }
+    }
+
+    return [...new Set(issues)];
+}
+
+function buildNfseProviderErrorMessage(result: any, fallback?: string) {
+    const issues = parseNfseValidationIssues(result);
+    if (issues.length) return `Erro de validacao da NFS-e: ${issues.join(" ")}`;
+
+    const providerMessage = result?.error?.message;
+    if (typeof providerMessage === "string" && providerMessage.trim()) {
+        return providerMessage.trim();
+    }
+
+    return fallback || "Erro na emissao da NFS-e.";
+}
+
 function toMoneyNumber(value: unknown, fallback = 0) {
     if (typeof value === "number" && Number.isFinite(value)) {
         return Number(value.toFixed(2));
@@ -3628,6 +3665,21 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
         if (!servicoPrincipal) throw new Error("Nenhum serviço informado.");
 
+        const clienteDoc = normalizeDocument(payload.cliente.cpf_cnpj) || "";
+        if (!clienteDoc) {
+            throw new Error("Informe o CPF/CNPJ do tomador para emitir a NFS-e.");
+        }
+        if (clienteDoc.length !== 11 && clienteDoc.length !== 14) {
+            throw new Error("CPF/CNPJ do tomador invalido. Informe 11 digitos para CPF ou 14 para CNPJ.");
+        }
+        if (!isValidBrazilianDocument(clienteDoc)) {
+            throw new Error(
+                clienteDoc.length === 11
+                    ? "CPF do tomador invalido. Verifique se o cliente informou um CPF completo e valido."
+                    : "CNPJ do tomador invalido. Verifique se o cliente informou um CNPJ completo e valido."
+            );
+        }
+
 
 
         // Recuperar código de serviço e alíquota do item, ou usar fallback
@@ -3836,7 +3888,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                 },
 
                 toma: (() => {
-                    const cleanDoc = payload.cliente.cpf_cnpj ? payload.cliente.cpf_cnpj.replace(/\D/g, "") : "";
+                    const cleanDoc = clienteDoc;
                     const clientPhone = payload.cliente.telefone?.replace(/\D/g, "") || "";
                     const companyPhone = company?.telefone?.replace(/\D/g, "") || "";
                     const phoneToSend = clientPhone || companyPhone;
@@ -4036,7 +4088,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
         const debugMini = `[DEBUG NFSe vServ=${totalServicosFinal} itens=${payload.itens.map(i => toMoneyNumber(i.valor_total, 0).toFixed(2)).join("+")} cTribNac=${dpsPayload.infDPS.serv.cServ.cTribNac} cTribMun=${dpsPayload.infDPS.serv.cServ.cTribMun}]`;
 
         if (!response.ok) {
-            const errorDetails = result.error?.message || JSON.stringify(result);
+            const errorDetails = buildNfseProviderErrorMessage(result, JSON.stringify(result));
 
             console.error("[NuvemFiscal] Erro detalhado:", errorDetails);
 
