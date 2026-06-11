@@ -76,7 +76,8 @@ export default function ReciboFinanceiroPage() {
     };
 
     const handleWhatsApp = () => {
-        const client = tx?.work_orders?.clients;
+        if (!tx) return;
+        const client = tx.work_orders?.clients;
         if (!client?.whatsapp) return alert("Cliente não possui WhatsApp cadastrado.");
         const numero = client.whatsapp.replace(/\D/g, '');
         const mensagem = `Olá, ${client.nome}! Aqui está o comprovante do seu pagamento na AutoElétrica:\n\n*Recibo*\nReferência: ${tx.description}\nValor: R$ ${Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nObrigado!`;
