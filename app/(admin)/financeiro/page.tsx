@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowUpRight, ArrowDownRight, Wallet,
   Wrench, ShoppingCart, Zap, X, Save, Loader2, Trash2, Calendar,
-  CheckCircle2, Clock, Filter, FileText, FileArchive, PieChart
+  CheckCircle2, Clock, Filter, FileText, FileArchive, PieChart, Pencil, Printer
 } from "lucide-react";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
@@ -50,6 +50,7 @@ export default function Financeiro() {
   const [modalDespesaAberto, setModalDespesaAberto] = useState(false);
   const [modalReceitaAberto, setModalReceitaAberto] = useState(false);
   const [modalEdicaoAberto, setModalEdicaoAberto] = useState(false);
+  const [modalQuitacaoAberto, setModalQuitacaoAberto] = useState(false);
 
   // Estados dos Formulários
   const [desc, setDesc] = useState("");
@@ -66,6 +67,10 @@ export default function Financeiro() {
   const [editCat, setEditCat] = useState("");
   const [editData, setEditData] = useState("");
   const [editEfetivado, setEditEfetivado] = useState(true);
+
+  // Estados de Quitação
+  const [quitacaoData, setQuitacaoData] = useState("");
+  const [quitacaoPaymentMethod, setQuitacaoPaymentMethod] = useState("pix");
 
   useEffect(() => {
     if (authLoading) return;
@@ -178,6 +183,28 @@ export default function Financeiro() {
   const abrirModalEdicao = (item: ExtratoItem) => {
     if (item.origem === 'os') { alert("Este item vem de uma OS. Edite pela tela de OS."); return; }
     setItemParaEditar(item); setEditDesc(item.descricao); setEditValor(item.valor.toString()); setEditCat(item.categoria); setEditData(item.data); setEditEfetivado(item.status === 'paid'); setModalEdicaoAberto(true);
+  };
+
+  const abrirModalQuitacao = (item: ExtratoItem) => {
+    setItemParaEditar(item);
+    setQuitacaoData(new Date().toISOString().split('T')[0]);
+    setQuitacaoPaymentMethod("pix");
+    setModalQuitacaoAberto(true);
+  };
+
+  const handleConfirmarQuitacao = async () => {
+    if (!itemParaEditar || !quitacaoData) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('transactions').update({
+        date: quitacaoData, 
+        status: 'paid',
+        payment_method: itemParaEditar.tipo === 'entrada' ? quitacaoPaymentMethod : null
+      }).eq('id', itemParaEditar.id);
+      if (error) throw error;
+      setModalQuitacaoAberto(false); 
+      fetchFinanceiro();
+    } catch (error: any) { alert("Erro: " + error.message); } finally { setSaving(false); }
   };
 
   const handleUpdateTransacao = async () => {
@@ -320,27 +347,45 @@ export default function Financeiro() {
               <p className="text-center py-10 text-stone-400">Nenhum registro encontrado para este filtro.</p>
             ) : (
               extratoFiltrado.map((item) => (
-                <button
+                <div
                   key={item.id}
-                  onClick={() => abrirModalEdicao(item)}
-                  className={`w-full flex items-center justify-between p-4 rounded-2xl transition text-left group border-2 ${item.status === 'pending' ? 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100' : 'bg-white border-stone-300 hover:bg-stone-100'}`}
+                  className={`w-full flex items-center justify-between p-4 rounded-2xl transition text-left border-2 ${item.status === 'pending' ? 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100/50' : 'bg-white border-stone-300 hover:bg-stone-50'}`}
                 >
                   <div className="flex items-center gap-4">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${item.status === 'pending' ? 'bg-yellow-200 text-yellow-700' : (item.tipo === 'entrada' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600')}`}>
                       {item.status === 'pending' ? <Clock size={18} /> : <item.icone size={18} />}
                     </div>
                     <div>
-                      <p className="font-bold text-[#1A1A1A] text-sm group-hover:underline decoration-stone-400">
+                      <p className="font-bold text-[#1A1A1A] text-sm">
                         {item.descricao}
                         {item.status === 'pending' && <span className="ml-2 text-[10px] bg-yellow-200 text-yellow-800 px-1 rounded uppercase font-bold">Agendado</span>}
                       </p>
                       <p className="text-xs text-stone-400">{item.categoria} • {new Date(item.data).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} {item.origem === 'os' && <span className="ml-2 bg-stone-200 px-1 rounded text-[10px]">OS</span>}</p>
                     </div>
                   </div>
-                  <span className={`font-bold ${item.status === 'pending' ? 'text-yellow-600' : (item.tipo === 'entrada' ? 'text-green-600' : 'text-red-500')}`}>
-                    {item.tipo === 'entrada' ? '+' : '-'} {formatMoney(item.valor)}
-                  </span>
-                </button>
+                  <div className="flex items-center gap-4">
+                    <span className={`font-bold ${item.status === 'pending' ? 'text-yellow-600' : (item.tipo === 'entrada' ? 'text-green-600' : 'text-red-500')}`}>
+                      {item.tipo === 'entrada' ? '+' : '-'} {formatMoney(item.valor)}
+                    </span>
+                    <div className="flex items-center gap-1 ml-2">
+                      <button onClick={() => abrirModalEdicao(item)} className="p-2 text-stone-400 hover:text-[#1A1A1A] hover:bg-stone-200 rounded-lg transition" title="Editar Lançamento">
+                        <Pencil size={18} />
+                      </button>
+                      
+                      {item.status === 'pending' && (
+                        <button onClick={() => abrirModalQuitacao(item)} className="p-2 text-green-500 hover:text-green-700 hover:bg-green-100 rounded-lg transition" title="Dar Quitação">
+                          <CheckCircle2 size={18} />
+                        </button>
+                      )}
+                      
+                      {item.status === 'paid' && (
+                        <Link href={`/financeiro/recibo/${item.id}`} target="_blank" className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition" title="Imprimir Recibo">
+                          <Printer size={18} />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </div>
               ))
             )}
           </div>
@@ -393,10 +438,16 @@ export default function Financeiro() {
                   <label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Calendar size={12} /> DATA</label>
                   <input type="date" value={dataMovimentacao} onChange={e => setDataMovimentacao(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" />
                 </div>
-                <div className="flex items-end">
-                  <button onClick={() => setEfetivado(!efetivado)} className={`w-full p-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${efetivado ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-stone-400 border-stone-200'}`}>
-                    {efetivado ? <CheckCircle2 size={18} /> : <Clock size={18} />} {efetivado ? "Já foi Paga" : "Agendar"}
-                  </button>
+                <div className="flex flex-col justify-end gap-1">
+                  <label className="text-[10px] font-bold text-stone-400 ml-2 uppercase">Status</label>
+                  <div className="flex gap-2">
+                    <button onClick={() => setEfetivado(true)} className={`flex-1 p-3 rounded-2xl font-bold text-[11px] flex items-center justify-center gap-1 transition border-2 ${efetivado ? 'bg-green-100 text-green-700 border-green-200 shadow-sm' : 'bg-[#F8F7F2] text-stone-400 border-transparent hover:bg-stone-200'}`}>
+                      <CheckCircle2 size={14} /> Paga
+                    </button>
+                    <button onClick={() => setEfetivado(false)} className={`flex-1 p-3 rounded-2xl font-bold text-[11px] flex items-center justify-center gap-1 transition border-2 ${!efetivado ? 'bg-yellow-100 text-yellow-700 border-yellow-200 shadow-sm' : 'bg-[#F8F7F2] text-stone-400 border-transparent hover:bg-stone-200'}`}>
+                      <Clock size={14} /> Agendar
+                    </button>
+                  </div>
                 </div>
               </div>
               <div><label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label><input type="text" value={desc} onChange={e => setDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none" placeholder="Ex: Conta de Luz" /></div>
@@ -420,10 +471,16 @@ export default function Financeiro() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Calendar size={12} /> DATA</label><input type="date" value={dataMovimentacao} onChange={e => setDataMovimentacao(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" /></div>
-                <div className="flex items-end">
-                  <button onClick={() => setEfetivado(!efetivado)} className={`w-full p-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${efetivado ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-stone-400 border-stone-200'}`}>
-                    {efetivado ? <CheckCircle2 size={18} /> : <Clock size={18} />} {efetivado ? "Recebido" : "A Receber"}
-                  </button>
+                <div className="flex flex-col justify-end gap-1">
+                  <label className="text-[10px] font-bold text-stone-400 ml-2 uppercase">Status</label>
+                  <div className="flex gap-2">
+                    <button onClick={() => setEfetivado(true)} className={`flex-1 p-3 rounded-2xl font-bold text-[11px] flex items-center justify-center gap-1 transition border-2 ${efetivado ? 'bg-green-100 text-green-700 border-green-200 shadow-sm' : 'bg-[#F8F7F2] text-stone-400 border-transparent hover:bg-stone-200'}`}>
+                      <CheckCircle2 size={14} /> Recebido
+                    </button>
+                    <button onClick={() => setEfetivado(false)} className={`flex-1 p-3 rounded-2xl font-bold text-[11px] flex items-center justify-center gap-1 transition border-2 ${!efetivado ? 'bg-yellow-100 text-yellow-700 border-yellow-200 shadow-sm' : 'bg-[#F8F7F2] text-stone-400 border-transparent hover:bg-stone-200'}`}>
+                      <Clock size={14} /> A Receber
+                    </button>
+                  </div>
                 </div>
               </div>
               <div><label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label><input type="text" value={desc} onChange={e => setDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none" placeholder="Ex: Venda de Sucata" /></div>
@@ -453,10 +510,16 @@ export default function Financeiro() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Calendar size={12} /> DATA</label><input type="date" value={editData} onChange={e => setEditData(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" /></div>
-                <div className="flex items-end">
-                  <button onClick={() => setEditEfetivado(!editEfetivado)} className={`w-full p-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition border-2 ${editEfetivado ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-stone-400 border-stone-200'}`}>
-                    {editEfetivado ? <CheckCircle2 size={18} /> : <Clock size={18} />} {editEfetivado ? "Pago/Recebido" : "Pendente"}
-                  </button>
+                <div className="flex flex-col justify-end gap-1">
+                  <label className="text-[10px] font-bold text-stone-400 ml-2 uppercase">Status</label>
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditEfetivado(true)} className={`flex-1 p-3 rounded-2xl font-bold text-[11px] flex items-center justify-center gap-1 transition border-2 ${editEfetivado ? 'bg-green-100 text-green-700 border-green-200 shadow-sm' : 'bg-[#F8F7F2] text-stone-400 border-transparent hover:bg-stone-200'}`}>
+                      <CheckCircle2 size={14} /> Pago
+                    </button>
+                    <button onClick={() => setEditEfetivado(false)} className={`flex-1 p-3 rounded-2xl font-bold text-[11px] flex items-center justify-center gap-1 transition border-2 ${!editEfetivado ? 'bg-yellow-100 text-yellow-700 border-yellow-200 shadow-sm' : 'bg-[#F8F7F2] text-stone-400 border-transparent hover:bg-stone-200'}`}>
+                      <Clock size={14} /> Pendente
+                    </button>
+                  </div>
                 </div>
               </div>
               <div><label className="text-xs font-bold text-stone-400 ml-2">DESCRIÇÃO</label><input type="text" value={editDesc} onChange={e => setEditDesc(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-medium" /></div>
@@ -472,6 +535,40 @@ export default function Financeiro() {
               <button onClick={handleDeleteTransacao} disabled={deleting} className="p-4 bg-red-100 text-red-500 rounded-2xl hover:bg-red-200 transition disabled:opacity-50">{deleting ? <Loader2 className="animate-spin" /> : <Trash2 size={24} />}</button>
               <button onClick={handleUpdateTransacao} disabled={saving} className="flex-1 bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl flex justify-center gap-2 hover:scale-105 transition">{saving ? <Loader2 className="animate-spin" /> : <Save />} Salvar Alterações</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {modalQuitacaoAberto && itemParaEditar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
+            <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-green-600 flex items-center gap-2"><CheckCircle2 /> Dar Quitação</h2><button onClick={() => setModalQuitacaoAberto(false)}><X /></button></div>
+            <div className="space-y-4">
+              <div className="bg-stone-50 border border-stone-200 p-4 rounded-2xl">
+                <p className="text-xs text-stone-500 font-bold uppercase mb-1">Resumo do Lançamento</p>
+                <p className="font-bold text-[#1A1A1A]">{itemParaEditar.descricao}</p>
+                <p className="text-xl font-black text-green-600 mt-1">{formatMoney(itemParaEditar.valor)}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Calendar size={12} /> DATA QUITAÇÃO</label><input type="date" value={quitacaoData} onChange={e => setQuitacaoData(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" /></div>
+                {itemParaEditar.tipo === 'entrada' && (
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2">FORMA DE PGTO</label>
+                    <select value={quitacaoPaymentMethod} onChange={e => setQuitacaoPaymentMethod(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none text-sm">
+                      <option value="pix">Pix</option>
+                      <option value="dinheiro">Dinheiro</option>
+                      <option value="cartao_debito">Cartão de Débito</option>
+                      <option value="cartao_credito">Cartão de Crédito</option>
+                      <option value="boleto">Boleto</option>
+                      <option value="cheque_pre">Cheque</option>
+                      <option value="outros">Outros</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+            <button onClick={handleConfirmarQuitacao} disabled={saving} className="w-full bg-green-600 text-white font-bold py-4 rounded-2xl flex justify-center gap-2 hover:bg-green-700 transition">{saving ? <Loader2 className="animate-spin" /> : <CheckCircle2 />} Confirmar Quitação</button>
           </div>
         </div>
       )}

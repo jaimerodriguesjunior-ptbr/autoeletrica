@@ -1,4 +1,5 @@
 "use client";
+// Force rebuild
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -44,6 +45,8 @@ export default function EditarCliente() {
   const [publicToken, setPublicToken] = useState<string | null>(null);
   const [saldoDevedor, setSaldoDevedor] = useState(0);
   const [totalPago, setTotalPago] = useState(0);
+  const [parcelasAbertas, setParcelasAbertas] = useState<any[]>([]);
+  const [parcelasPagas, setParcelasPagas] = useState<any[]>([]);
   const [loadingFinanceiro, setLoadingFinanceiro] = useState(true);
 
   // --- Estados para Edição/Criação de Veículo ---
@@ -144,13 +147,15 @@ export default function EditarCliente() {
       if (woIds.length === 0) {
         setSaldoDevedor(0);
         setTotalPago(0);
+        setParcelasAbertas([]);
+        setParcelasPagas([]);
         setLoadingFinanceiro(false);
         return;
       }
 
       const { data: txs } = await supabase
         .from('transactions')
-        .select('amount, status, type')
+        .select('id, amount, status, type, date, description')
         .in('work_order_id', woIds)
         .eq('type', 'income');
 
@@ -158,10 +163,53 @@ export default function EditarCliente() {
       const pendente = (txs || []).filter(t => t.status === 'pending').reduce((s, t) => s + (t.amount || 0), 0);
       setTotalPago(pago);
       setSaldoDevedor(pendente);
+
+      const pendentesList = (txs || []).filter(t => t.status === 'pending');
+      const pagasList = (txs || []).filter(t => t.status === 'paid');
+
+      const safeGetTime = (d: any) => {
+        if (!d) return 0;
+        const time = new Date(d).getTime();
+        return isNaN(time) ? 0 : time;
+      };
+
+      setParcelasAbertas(pendentesList.sort((a, b) => safeGetTime(a.date) - safeGetTime(b.date)));
+      setParcelasPagas(pagasList.sort((a, b) => safeGetTime(b.date) - safeGetTime(a.date)).slice(0, 3));
     } catch (err) {
       console.error('Erro financeiro:', err);
     } finally {
       setLoadingFinanceiro(false);
+    }
+  }
+
+  const handleQuitarParcela = async (txId: string) => {
+    if (!confirm("Confirmar o recebimento desta parcela?")) return;
+    
+    // Atualização Otimista da Interface
+    const txToMove = parcelasAbertas.find(p => p.id === txId);
+    if (txToMove) {
+      const updatedTx = { ...txToMove, status: 'paid' };
+      setParcelasAbertas(prev => prev.filter(p => p.id !== txId));
+      setParcelasPagas(prev => {
+        const safeGetTime = (d: any) => { if (!d) return 0; const t = new Date(d).getTime(); return isNaN(t) ? 0 : t; };
+        const newPagas = [updatedTx, ...prev].sort((a, b) => safeGetTime(b.date) - safeGetTime(a.date));
+        return newPagas.slice(0, 3);
+      });
+      setTotalPago(prev => prev + Number(txToMove.amount));
+      setSaldoDevedor(prev => prev - Number(txToMove.amount));
+    }
+
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ status: 'paid' })
+        .eq('id', txId);
+      
+      if (error) throw error;
+      fetchFinanceiro();
+    } catch (err: any) {
+      alert("Erro ao quitar: " + err.message);
+      fetchFinanceiro(); // Reverte estado se der erro
     }
   }
 
@@ -459,6 +507,54 @@ export default function EditarCliente() {
                 <p className={`text-lg font-black mt-1 ${saldoDevedor > 0 ? 'text-red-600' : 'text-stone-400'}`}>
                   R$ {saldoDevedor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </p>
+              </div>
+            </div>
+
+            {/* Listagem de Parcelas */}
+            <div className="border-t border-stone-100 pt-4 space-y-4">
+              {parcelasAbertas.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider flex items-center gap-1"><Clock size={12}/> Parcelas em Aberto</p>
+                  <div className="space-y-2">
+                    {parcelasAbertas.map(p => (
+                      <div key={p.id} className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 flex justify-between items-center">
+                        <div>
+                          <p className="font-bold text-sm text-[#1A1A1A]">{p.description || "Parcela"}</p>
+                          <p className="text-xs text-stone-500">Vencimento: {new Date(p.date + 'T12:00:00Z').toLocaleDateString('pt-BR')}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-yellow-600">R$ {Number(p.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          <button 
+                            onClick={() => handleQuitarParcela(p.id)}
+                            className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-lg transition"
+                            title="Dar Quitação"
+                          >
+                            <CheckCircle size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider flex items-center gap-1"><CheckCircle size={12}/> Últimas Pagas</p>
+                {parcelasPagas.length === 0 ? (
+                  <p className="text-xs text-stone-400 italic">Nenhuma parcela paga vinculada a este cliente.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {parcelasPagas.map(p => (
+                      <div key={p.id} className="bg-stone-50 border border-stone-200 rounded-xl p-3 flex justify-between items-center opacity-70">
+                        <div>
+                          <p className="font-bold text-sm text-stone-600">{p.description || "Parcela"}</p>
+                          <p className="text-xs text-stone-400">Data: {p.date ? new Date(p.date + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'N/D'}</p>
+                        </div>
+                        <span className="font-bold text-green-600">R$ {Number(p.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
