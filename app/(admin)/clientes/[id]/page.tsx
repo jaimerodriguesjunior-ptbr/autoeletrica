@@ -9,7 +9,7 @@ import { useAuth } from "../../../../src/contexts/AuthContext";
 import {
   ArrowLeft, MapPin,
   Car, Save, Phone, FileText, Trash2, Loader2, Edit, X, Plus,
-  DollarSign, MessageCircle, ExternalLink, Clock, CheckCircle
+  DollarSign, MessageCircle, ExternalLink, Clock, CheckCircle, Printer
 } from "lucide-react";
 
 export default function EditarCliente() {
@@ -23,7 +23,7 @@ export default function EditarCliente() {
   const [deleting, setDeleting] = useState(false);
   const [loadingCep, setLoadingCep] = useState(false);
 
-  // Estados do FormulÃ¡rio Cliente
+  // Estados do Formulário Cliente
   const [nome, setNome] = useState("");
   const [cpfCnpj, setCpfCnpj] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -48,6 +48,12 @@ export default function EditarCliente() {
   const [parcelasAbertas, setParcelasAbertas] = useState<any[]>([]);
   const [parcelasPagas, setParcelasPagas] = useState<any[]>([]);
   const [loadingFinanceiro, setLoadingFinanceiro] = useState(true);
+
+  // Estados de Quitação Modal
+  const [modalQuitacaoAberto, setModalQuitacaoAberto] = useState(false);
+  const [itemParaEditar, setItemParaEditar] = useState<any>(null);
+  const [quitacaoData, setQuitacaoData] = useState("");
+  const [quitacaoPaymentMethod, setQuitacaoPaymentMethod] = useState("pix");
 
   // --- Estados para Edição/Criação de Veículo ---
   const [modalVeiculoOpen, setModalVeiculoOpen] = useState(false);
@@ -182,13 +188,22 @@ export default function EditarCliente() {
     }
   }
 
-  const handleQuitarParcela = async (txId: string) => {
-    if (!confirm("Confirmar o recebimento desta parcela?")) return;
+  const abrirModalQuitacao = (parcela: any) => {
+    setItemParaEditar(parcela);
+    setQuitacaoData(new Date().toISOString().split('T')[0]);
+    setQuitacaoPaymentMethod("pix");
+    setModalQuitacaoAberto(true);
+  };
+
+  const handleConfirmarQuitacaoModal = async () => {
+    if (!itemParaEditar || !quitacaoData) return;
+    setSaving(true);
     
     // Atualização Otimista da Interface
+    const txId = itemParaEditar.id;
     const txToMove = parcelasAbertas.find(p => p.id === txId);
     if (txToMove) {
-      const updatedTx = { ...txToMove, status: 'paid' };
+      const updatedTx = { ...txToMove, status: 'paid', date: quitacaoData };
       setParcelasAbertas(prev => prev.filter(p => p.id !== txId));
       setParcelasPagas(prev => {
         const safeGetTime = (d: any) => { if (!d) return 0; const t = new Date(d).getTime(); return isNaN(t) ? 0 : t; };
@@ -200,16 +215,20 @@ export default function EditarCliente() {
     }
 
     try {
-      const { error } = await supabase
-        .from('transactions')
-        .update({ status: 'paid' })
-        .eq('id', txId);
+      const { error } = await supabase.from('transactions').update({
+        date: quitacaoData, 
+        status: 'paid',
+        payment_method: itemParaEditar.type === 'income' ? quitacaoPaymentMethod : null
+      }).eq('id', txId);
       
       if (error) throw error;
+      setModalQuitacaoAberto(false);
       fetchFinanceiro();
     } catch (err: any) {
       alert("Erro ao quitar: " + err.message);
       fetchFinanceiro(); // Reverte estado se der erro
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -306,7 +325,7 @@ export default function EditarCliente() {
   };
 
   const abrirModalEdicao = (v: any) => {
-    setEditingVehicleId(v.id); // Modo EdiÃ§Ã£o
+    setEditingVehicleId(v.id); // Modo Edição
     setVPlaca(v.placa);
     setVModelo(v.modelo);
     setVFabricante(v.fabricante);
@@ -361,7 +380,7 @@ export default function EditarCliente() {
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-32">
 
-      {/* 1. CABEÃ‡ALHO */}
+      {/* 1. CABEÇALHO */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link href="/clientes">
@@ -382,7 +401,7 @@ export default function EditarCliente() {
       {/* 2. DADOS PESSOAIS */}
       <div className="bg-white rounded-[32px] p-6 shadow-sm border border-stone-100 space-y-4 relative overflow-hidden">
         <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2">
-          <FileText size={18} /> Dados BÃ¡sicos
+          <FileText size={18} /> Dados Básicos
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -525,7 +544,7 @@ export default function EditarCliente() {
                         <div className="flex items-center gap-3">
                           <span className="font-bold text-yellow-600">R$ {Number(p.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                           <button 
-                            onClick={() => handleQuitarParcela(p.id)}
+                            onClick={() => abrirModalQuitacao(p)}
                             className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-lg transition"
                             title="Dar Quitação"
                           >
@@ -550,7 +569,12 @@ export default function EditarCliente() {
                           <p className="font-bold text-sm text-stone-600">{p.description || "Parcela"}</p>
                           <p className="text-xs text-stone-400">Data: {p.date ? new Date(p.date + 'T12:00:00Z').toLocaleDateString('pt-BR') : 'N/D'}</p>
                         </div>
-                        <span className="font-bold text-green-600">R$ {Number(p.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-green-600">R$ {Number(p.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          <Link href={`/financeiro/recibo/${p.id}`} target="_blank" className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition" title="Imprimir Recibo">
+                            <Printer size={16} />
+                          </Link>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -637,9 +661,44 @@ export default function EditarCliente() {
           className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-full shadow-lg flex justify-center items-center gap-2 hover:scale-105 transition active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
         >
           {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-          {saving ? "Salvando..." : "Salvar AlteraÃ§Ãµes"}
+          {saving ? "Salvando..." : "Salvar Alterações"}
         </button>
       </div>
+
+      {/* --- MODAL DE QUITAÇÃO --- */}
+      {modalQuitacaoAberto && itemParaEditar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl space-y-6">
+            <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-green-600 flex items-center gap-2"><CheckCircle /> Dar Quitação</h2><button onClick={() => setModalQuitacaoAberto(false)}><X /></button></div>
+            <div className="space-y-4">
+              <div className="bg-stone-50 border border-stone-200 p-4 rounded-2xl">
+                <p className="text-xs text-stone-500 font-bold uppercase mb-1">Resumo do Lançamento</p>
+                <p className="font-bold text-[#1A1A1A]">{itemParaEditar.description || "Parcela"}</p>
+                <p className="text-xl font-black text-green-600 mt-1">R$ {Number(itemParaEditar.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-xs font-bold text-stone-400 ml-2 flex items-center gap-1"><Clock size={12} /> DATA QUITAÇÃO</label><input type="date" value={quitacaoData} onChange={e => setQuitacaoData(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none font-bold text-[#1A1A1A]" /></div>
+                {itemParaEditar.type === 'income' && (
+                  <div>
+                    <label className="text-xs font-bold text-stone-400 ml-2">FORMA DE PGTO</label>
+                    <select value={quitacaoPaymentMethod} onChange={e => setQuitacaoPaymentMethod(e.target.value)} className="w-full bg-[#F8F7F2] rounded-2xl p-4 outline-none text-sm">
+                      <option value="pix">Pix</option>
+                      <option value="dinheiro">Dinheiro</option>
+                      <option value="cartao_debito">Cartão de Débito</option>
+                      <option value="cartao_credito">Cartão de Crédito</option>
+                      <option value="boleto">Boleto</option>
+                      <option value="cheque_pre">Cheque</option>
+                      <option value="outros">Outros</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+            <button onClick={handleConfirmarQuitacaoModal} disabled={saving} className="w-full bg-green-600 text-white font-bold py-4 rounded-2xl flex justify-center gap-2 hover:bg-green-700 transition">{saving ? <Loader2 className="animate-spin" /> : <CheckCircle />} Confirmar Quitação</button>
+          </div>
+        </div>
+      )}
 
       {/* --- MODAL DE EDIÇÃO DE VEÍCULO --- */}
       {
@@ -707,7 +766,7 @@ export default function EditarCliente() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-stone-400 ml-2">OBSERVAÃ‡Ã•ES</label>
+                  <label className="text-xs font-bold text-stone-400 ml-2">OBSERVAÇÕES</label>
                   <input
                     type="text"
                     value={vObs}
