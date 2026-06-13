@@ -259,10 +259,12 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
 
         // 3. Executar configurações na Nuvem Fiscal APENAS se tiver CNPJ
         if (data.cpf_cnpj) {
-            const envResults = await Promise.allSettled([
-                configureEnvironment('production'),
-                configureEnvironment('homologation')
-            ]);
+            const syncTasks = [configureEnvironment('homologation')];
+            if (process.env.NUVEMFISCAL_SYNC_PRODUCTION === "true") {
+                syncTasks.push(configureEnvironment('production'));
+            }
+
+            const envResults = await Promise.allSettled(syncTasks);
             const failures = envResults
                 .filter((r): r is PromiseRejectedResult => r.status === "rejected")
                 .map((r) => String(r.reason?.message || r.reason));

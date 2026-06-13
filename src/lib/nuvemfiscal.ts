@@ -6,8 +6,17 @@ type CachedToken = {
 };
 
 const TOKEN_EXPIRY_SAFETY_MS = 60_000;
+const OFFICIAL_AUTH_URL = "https://auth.nuvemfiscal.com.br/oauth/token";
 const tokenCache: Record<string, CachedToken | undefined> = {};
 const tokenRequests: Record<string, Promise<string> | undefined> = {};
+
+function resolveAuthUrl(environment: 'production' | 'homologation') {
+  const explicitAuthUrl = environment === 'production'
+    ? process.env.NUVEMFISCAL_PROD_AUTH_URL
+    : process.env.NUVEMFISCAL_HOM_AUTH_URL;
+
+  return (explicitAuthUrl || OFFICIAL_AUTH_URL).replace(/\/$/, '');
+}
 
 export async function getNuvemFiscalToken(
   environment: 'production' | 'homologation' = 'production',
@@ -52,8 +61,7 @@ async function fetchNuvemFiscalToken(
     clientSecret = process.env.NUVEMFISCAL_HOM_CLIENT_SECRET;
   }
 
-  // URL de autenticação é fixa e separada da API
-  const authUrl = "https://auth.nuvemfiscal.com.br/oauth/token";
+  const authUrl = resolveAuthUrl(environment);
 
   console.log(`[NuvemFiscal] Tentando autenticar em ${environment.toUpperCase()}...`);
   // console.log('[NuvemFiscal] Client ID:', clientId);

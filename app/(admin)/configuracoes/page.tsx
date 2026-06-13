@@ -383,7 +383,7 @@ export default function Configuracoes() {
       formData.append("file", certFile);
       formData.append("cnpj", company.cnpj);
       formData.append("password", certPassword);
-      formData.append("environment", "production");
+      formData.append("environment", "homologation");
 
       const res = await fetch("/api/fiscal/certificado", {
         method: "POST",

@@ -23,16 +23,26 @@ export async function POST(req: NextRequest) {
         const baseUrl = environment === "production"
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
             : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+        const isLocalFiscal = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(?:\/|$)/i.test(baseUrl) ||
+            baseUrl.includes("fiscal.mentebinaria.com");
+        const body = isLocalFiscal
+            ? {
+                fileName: file.name,
+                pfxBase64: base64Cert,
+                password
+            }
+            : {
+                certificado: base64Cert,
+                password
+            };
+
         const response = await fetch(`${baseUrl}/empresas/${cnpj.replace(/\D/g, "")}/certificado`, {
             method: "PUT",
             headers: {
                 "Authorization": `Bearer ${token}`,
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({
-                certificado: base64Cert,
-                password: password
-            })
+            body: JSON.stringify(body)
         });
 
         if (!response.ok) {
