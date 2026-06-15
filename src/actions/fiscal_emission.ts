@@ -718,6 +718,18 @@ function getNFeVendaCFOP(_itemCfop: string | undefined, isSameState: boolean) {
     return isSameState ? "5102" : "6102";
 }
 
+function getNFCeVendaDestination(companyUf?: string | null, clienteUf?: string | null) {
+    const emitenteUf = String(companyUf || "").trim().toUpperCase();
+    const destinatarioUf = String(clienteUf || "").trim().toUpperCase();
+    const mesmoEstado = !emitenteUf || !destinatarioUf || emitenteUf === destinatarioUf;
+
+    return {
+        mesmoEstado,
+        idDest: mesmoEstado ? 1 : 2,
+        cfop: mesmoEstado ? "5102" : "6102",
+    };
+}
+
 function buildNFeDest(cliente: EmissionPayload["cliente"]) {
     const cleanDoc = normalizeDocument(cliente.cpf_cnpj) || "";
     const endereco = cliente.endereco || {};
@@ -926,6 +938,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
         }
 
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
+        const nfceDestination = getNFCeVendaDestination(company.uf, payload.cliente.endereco?.uf);
 
         // 2.5 Buscar próxima numeração sequencial
         // Buscamos a série ativa para a organização
@@ -979,7 +992,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                     tpNF: 1, // 1 = Saída
 
-                    idDest: 1, // 1 = Interna
+                    idDest: nfceDestination.idDest, // 1 = Interna, 2 = Interestadual
 
                     cMunFG: Number(company.codigo_municipio_ibge),
 
@@ -1066,7 +1079,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                         NCM: item.ncm || "00000000", // Fallback perigoso, ideal validar antes
 
-                        CFOP: item.cfop || "5102",
+                        CFOP: nfceDestination.cfop,
 
                         uCom: item.unidade,
 

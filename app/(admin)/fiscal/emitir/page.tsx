@@ -1223,6 +1223,18 @@ export default function EmitirNotaPage() {
                                 </div>
                             )}
 
+                            {produtoDocumento === "NFCe" && (
+                                <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                        <span className="font-bold">NFC-e com CFOP automatico</span>
+                                        <span className="font-bold">Baseado na UF do destinatario</span>
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-sky-800">
+                                        Na NFC-e, o CFOP enviado nao depende do cadastro do produto. O sistema calcula 5102/6102 pela UF no momento da emissao.
+                                    </p>
+                                </div>
+                            )}
+
                             <div className="space-y-2">
 
                                 {itens.map((item, idx) => (
