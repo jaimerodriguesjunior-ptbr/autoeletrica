@@ -15,6 +15,7 @@ type ExtratoData = {
     created_at: string;
     total: number;
     description: string;
+    status: string;
     clients: {
         id: string;
         nome: string;
@@ -28,6 +29,8 @@ type ExtratoData = {
         quantity: number;
         unit_price: number;
         total_price: number;
+        product_id: string | null;
+        peca_cliente: boolean | null;
     }[];
     transactions: {
         id: string;
@@ -53,6 +56,8 @@ export default function ReciboVendaPage() {
 
     const [loading, setLoading] = useState(true);
     const [wo, setWo] = useState<ExtratoData | null>(null);
+    const [cancelando, setCancelando] = useState(false);
+    const [modalCancelarAberto, setModalCancelarAberto] = useState(false);
 
     useEffect(() => {
         if (!id) return;
@@ -64,9 +69,9 @@ export default function ReciboVendaPage() {
             const { data, error } = await supabase
                 .from('work_orders')
                 .select(`
-                    id, created_at, total, description,
+                    id, created_at, total, description, status,
                     clients ( id, nome, whatsapp, cpf_cnpj, public_token ),
-                    work_order_items ( id, name, quantity, unit_price, total_price ),
+                    work_order_items ( id, name, quantity, unit_price, total_price, product_id, peca_cliente ),
                     transactions ( id, amount, payment_method, status, date )
                 `)
                 .eq('id', id)
@@ -89,6 +94,52 @@ export default function ReciboVendaPage() {
         window.open(`https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`, '_blank');
     };
 
+    const handleCancelarVenda = async () => {
+        if (!wo) return;
+        setCancelando(true);
+        try {
+            // 1. Devolver estoque de cada peça (que não é do cliente)
+            for (const item of wo.work_order_items) {
+                if (item.product_id && !item.peca_cliente) {
+                    const { data: prodData } = await supabase
+                        .from('products')
+                        .select('estoque_atual')
+                        .eq('id', item.product_id)
+                        .single();
+
+                    if (prodData) {
+                        await supabase
+                            .from('products')
+                            .update({ estoque_atual: (prodData.estoque_atual || 0) + item.quantity })
+                            .eq('id', item.product_id);
+                    }
+                }
+            }
+
+            // 2. Excluir as transações financeiras vinculadas
+            if (wo.transactions && wo.transactions.length > 0) {
+                const txIds = wo.transactions.map(t => t.id);
+                await supabase.from('transactions').delete().in('id', txIds);
+            }
+
+            // 3. Marcar a OS como cancelada
+            const { error } = await supabase
+                .from('work_orders')
+                .update({ status: 'cancelado' })
+                .eq('id', wo.id);
+
+            if (error) throw error;
+
+            setModalCancelarAberto(false);
+            setWo({ ...wo, status: 'cancelado', transactions: [] });
+
+        } catch (error: any) {
+            alert("Erro ao cancelar venda: " + error.message);
+        } finally {
+            setCancelando(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex-1 flex items-center justify-center min-h-screen">
@@ -105,6 +156,8 @@ export default function ReciboVendaPage() {
         );
     }
 
+    const isCancelada = wo.status === 'cancelado';
+
     return (
         <div className="max-w-2xl mx-auto pb-32">
             {/* Header */}
@@ -118,17 +171,19 @@ export default function ReciboVendaPage() {
                     </button>
                     <div>
                         <h1 className="text-2xl font-black text-[#1A1A1A] flex items-center gap-2">
-                            <Receipt className="text-[#FACC15]" size={28} />
+                            <Receipt className={isCancelada ? "text-red-400" : "text-[#FACC15]"} size={28} />
                             Recibo de Venda
                         </h1>
                         <p className="text-stone-500 text-sm">Comprovante de venda no balcão</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Link href={`/imprimir/os/${wo.id}`} target="_blank" className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition">
-                        <Printer size={16} /> Imprimir
-                    </Link>
-                    {wo.clients?.whatsapp && (
+                    {!isCancelada && (
+                        <Link href={`/imprimir/os/${wo.id}`} target="_blank" className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition">
+                            <Printer size={16} /> Imprimir
+                        </Link>
+                    )}
+                    {wo.clients?.whatsapp && !isCancelada && (
                         <button onClick={handleWhatsApp} className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition shadow-lg shadow-green-500/20">
                             <MessageCircle size={16} /> WhatsApp
                         </button>
@@ -136,9 +191,22 @@ export default function ReciboVendaPage() {
                 </div>
             </div>
 
+            {/* Banner de cancelamento */}
+            {isCancelada && (
+                <div className="mb-6 bg-red-50 border-2 border-red-200 rounded-[24px] p-5 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center shrink-0">
+                        <span className="text-2xl">🚫</span>
+                    </div>
+                    <div>
+                        <p className="font-black text-red-700 text-base">Venda Cancelada</p>
+                        <p className="text-red-600 text-sm">Esta venda foi cancelada. O estoque foi devolvido e as transações financeiras foram removidas.</p>
+                    </div>
+                </div>
+            )}
+
             {/* Recibo Card */}
-            <div className="bg-white rounded-[32px] p-8 shadow-sm border border-stone-200 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-2 bg-[#FACC15]" />
+            <div className={`bg-white rounded-[32px] p-8 shadow-sm border relative overflow-hidden ${isCancelada ? 'border-red-200 opacity-75' : 'border-stone-200'}`}>
+                <div className={`absolute top-0 left-0 w-full h-2 ${isCancelada ? 'bg-red-400' : 'bg-[#FACC15]'}`} />
 
                 <div className="flex flex-col md:flex-row justify-between mb-8 pb-8 border-b border-dashed border-stone-200">
                     <div>
@@ -181,14 +249,16 @@ export default function ReciboVendaPage() {
                 </div>
 
                 {/* Totais e Pagamentos */}
-                <div className="bg-[#1A1A1A] text-white rounded-[24px] p-6">
+                <div className={`${isCancelada ? 'bg-red-900' : 'bg-[#1A1A1A]'} text-white rounded-[24px] p-6`}>
                     <div className="flex justify-between items-center mb-6 pb-6 border-b border-white/10">
                         <p className="text-stone-400 font-bold uppercase text-xs tracking-widest">Valor Pago</p>
-                        <p className="text-3xl font-black text-[#FACC15]">R$ {wo.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                        <p className={`text-3xl font-black ${isCancelada ? 'text-red-400 line-through' : 'text-[#FACC15]'}`}>R$ {wo.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                     </div>
 
                     <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-3">Formas de Pagamento Registradas</p>
-                    {wo.transactions && wo.transactions.length > 0 ? (
+                    {isCancelada ? (
+                        <p className="text-stone-500 text-sm italic">Transações removidas após o cancelamento.</p>
+                    ) : wo.transactions && wo.transactions.length > 0 ? (
                         <div className="space-y-2">
                             {wo.transactions.map((tx) => (
                                 <div key={tx.id} className="flex justify-between text-sm">
@@ -212,6 +282,68 @@ export default function ReciboVendaPage() {
                     </div>
                 )}
             </div>
+
+            {/* Botão Cancelar */}
+            {!isCancelada && (
+                <div className="mt-8 text-center">
+                    <button
+                        onClick={() => setModalCancelarAberto(true)}
+                        className="text-red-400 text-xs font-bold hover:text-red-600 hover:underline transition"
+                    >
+                        Cancelar esta venda
+                    </button>
+                </div>
+            )}
+
+            {/* MODAL DE CONFIRMAÇÃO DE CANCELAMENTO */}
+            {modalCancelarAberto && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-5">
+                        <div className="text-center">
+                            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span className="text-3xl">⚠️</span>
+                            </div>
+                            <h2 className="text-xl font-black text-[#1A1A1A] mb-2">Cancelar Venda?</h2>
+                            <p className="text-stone-500 text-sm leading-relaxed">
+                                Esta ação irá:
+                            </p>
+                        </div>
+
+                        <ul className="space-y-2 text-sm">
+                            <li className="flex items-start gap-2 text-stone-700">
+                                <span className="text-red-500 font-bold shrink-0 mt-0.5">•</span>
+                                <span>Devolver todos os itens ao estoque</span>
+                            </li>
+                            <li className="flex items-start gap-2 text-stone-700">
+                                <span className="text-red-500 font-bold shrink-0 mt-0.5">•</span>
+                                <span>Remover os lançamentos financeiros desta venda</span>
+                            </li>
+                            <li className="flex items-start gap-2 text-stone-700">
+                                <span className="text-red-500 font-bold shrink-0 mt-0.5">•</span>
+                                <span>Marcar a venda como <strong>cancelada</strong> (irreversível)</span>
+                            </li>
+                        </ul>
+
+                        <div className="flex gap-3 pt-2">
+                            <button
+                                onClick={() => setModalCancelarAberto(false)}
+                                disabled={cancelando}
+                                className="flex-1 py-3 rounded-2xl border-2 border-stone-200 font-bold text-stone-600 hover:bg-stone-50 transition disabled:opacity-50"
+                            >
+                                Voltar
+                            </button>
+                            <button
+                                onClick={handleCancelarVenda}
+                                disabled={cancelando}
+                                className="flex-1 py-3 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-bold transition flex items-center justify-center gap-2 disabled:opacity-70 shadow-lg shadow-red-500/20"
+                            >
+                                {cancelando ? <Loader2 size={16} className="animate-spin" /> : null}
+                                {cancelando ? "Cancelando..." : "Sim, cancelar"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <style jsx global>{`
                 @media print {

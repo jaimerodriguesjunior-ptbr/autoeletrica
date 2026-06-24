@@ -6,7 +6,7 @@ import { getFiscalInvoices, backfillEntryInvoicesChave } from "@/src/actions/fis
 import { consultarNFSe, cancelarNota } from "@/src/actions/fiscal_emission";
 import {
     FileText, Plus, Search, Loader2, AlertCircle,
-    CheckCircle, XCircle, Clock, Download, RefreshCw, Edit, Ban, Printer, MessageCircle, RotateCcw
+    CheckCircle, XCircle, Clock, Download, RefreshCw, Edit, Ban, Printer, MessageCircle, Undo2
 } from "lucide-react";
 import Link from "next/link";
 
@@ -494,7 +494,7 @@ export default function FiscalDashboard() {
                                                             className="p-2 bg-orange-50 text-orange-600 hover:bg-orange-100 rounded-lg transition"
                                                             title="Emitir nota de devolução"
                                                         >
-                                                            <RotateCcw size={16} />
+                                                            <Undo2 size={16} />
                                                         </button>
                                                     </Link>
                                                 )}
