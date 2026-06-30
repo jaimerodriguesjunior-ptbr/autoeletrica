@@ -1,4 +1,9 @@
 type CreateBillingInput = {
+  store: {
+    id: string;
+    name: string;
+    document?: string;
+  };
   customerId?: string;
   customer?: {
     name: string;

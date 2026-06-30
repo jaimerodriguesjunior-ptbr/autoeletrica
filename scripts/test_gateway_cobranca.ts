@@ -9,6 +9,11 @@ async function main() {
   console.log("[Gateway] URL:", config.baseUrl);
 
   const payload = {
+    store: {
+      id: "autoeletrica-dkabroski",
+      name: "D. Kabroski Automotiva",
+      document: "10894359000103"
+    },
     customer: {
       name: "Cliente Teste",
       cpfCnpj: "58212043134",
