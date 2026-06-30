@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:cobranca": "tsx scripts/test_gateway_cobranca.ts"
   },
   "dependencies": {
     "@fontsource/plus-jakarta-sans": "^5.2.8",
