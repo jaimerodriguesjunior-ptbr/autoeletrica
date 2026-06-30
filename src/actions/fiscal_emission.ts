@@ -281,6 +281,27 @@ function toMoneyNumber(value: unknown, fallback = 0) {
     return fallback;
 }
 
+function sanitizeFiscalText(value: unknown, maxLength?: number) {
+    if (value === null || value === undefined) return undefined;
+
+    let text = String(value)
+        .normalize("NFC")
+        .replace(/[\u0000-\u001F\u007F]/g, " ")
+        .replace(/[\u00A0\u2000-\u200D\u202F\u205F\u3000]/g, " ")
+        .replace(/[‘’‚‛`´]/g, "'")
+        .replace(/[“”„‟]/g, "\"")
+        .replace(/[–—−]/g, "-")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (typeof maxLength === "number" && maxLength > 0) {
+        text = text.slice(0, maxLength).trim();
+    }
+
+    return text || undefined;
+}
+
 function getSaoPauloDatePartsWithSafety() {
     const now = new Date();
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -433,6 +454,9 @@ function buildNFeTransp(payload: EmissionPayload) {
     const transporte = payload.transporte || {};
     const transportDoc = normalizeDocument(transporte.cpf_cnpj);
     const vol = transporte.volumes;
+    const transportName = sanitizeFiscalText(transporte.nome, 60);
+    const transportStreet = sanitizeFiscalText(transporte.endereco, 60);
+    const transportCity = sanitizeFiscalText(transporte.municipio, 60);
 
     if (modFrete !== 9 && !isValidBrazilianDocument(transportDoc)) {
         throw new Error("CPF/CNPJ da transportadora invalido.");
@@ -440,14 +464,14 @@ function buildNFeTransp(payload: EmissionPayload) {
 
     return {
         modFrete,
-        ...(modFrete !== 9 && (transporte.nome || transportDoc) ? {
+        ...(modFrete !== 9 && (transportName || transportDoc) ? {
             transporta: {
                 CNPJ: transportDoc && transportDoc.length === 14 ? transportDoc : undefined,
                 CPF: transportDoc && transportDoc.length === 11 ? transportDoc : undefined,
-                xNome: transporte.nome || undefined,
+                xNome: transportName,
                 IE: transporte.ie ? String(transporte.ie).replace(/\D/g, "") : undefined,
-                xEnder: transporte.endereco || undefined,
-                xMun: transporte.municipio || undefined,
+                xEnder: transportStreet,
+                xMun: transportCity,
                 UF: transporte.uf || undefined,
             },
         } : {}),
@@ -476,8 +500,13 @@ function buildNFeEnderecoAux(address: any) {
     const doc = normalizeDocument(address.cpf_cnpj);
     const codigoMunicipio = String(address.codigo_municipio || address.codigo_municipio_ibge || "").replace(/\D/g, "");
     const uf = String(address.uf || "").toUpperCase();
+    const nome = sanitizeFiscalText(address.nome, 60);
+    const logradouro = sanitizeFiscalText(address.logradouro, 60);
+    const complemento = sanitizeFiscalText(address.complemento, 60);
+    const bairro = sanitizeFiscalText(address.bairro, 60);
+    const cidade = sanitizeFiscalText(address.cidade, 60);
 
-    if (!doc || !codigoMunicipio || !address.logradouro || !address.numero || !address.bairro || !address.cidade || !uf || !address.cep) {
+    if (!doc || !codigoMunicipio || !logradouro || !address.numero || !bairro || !cidade || !uf || !address.cep) {
         return undefined;
     }
 
@@ -489,13 +518,13 @@ function buildNFeEnderecoAux(address: any) {
     return {
         CNPJ: doc.length === 14 ? doc : undefined,
         CPF: doc.length === 11 ? doc : undefined,
-        xNome: address.nome || undefined,
-        xLgr: address.logradouro,
+        xNome: nome,
+        xLgr: logradouro,
         nro: String(address.numero),
-        xCpl: address.complemento || undefined,
-        xBairro: address.bairro,
+        xCpl: complemento,
+        xBairro: bairro,
         cMun: Number(codigoMunicipio),
-        xMun: address.cidade,
+        xMun: cidade,
         UF: uf,
         CEP: String(address.cep).replace(/\D/g, ""),
         cPais: "1058",
@@ -736,6 +765,11 @@ function buildNFeDest(cliente: EmissionPayload["cliente"]) {
     const uf = String(endereco.uf || "").trim().toUpperCase();
     const codigoMunicipio = String(endereco.codigo_municipio || endereco.codigo_municipio_ibge || "")
         .replace(/\D/g, "");
+    const nome = sanitizeFiscalText(cliente.nome, 60);
+    const logradouro = sanitizeFiscalText(endereco.logradouro, 60);
+    const complemento = sanitizeFiscalText(endereco.complemento, 60);
+    const bairro = sanitizeFiscalText(endereco.bairro, 60);
+    const cidade = sanitizeFiscalText(endereco.cidade, 60);
 
     if (!cleanDoc) {
         throw new Error("Informe CPF/CNPJ do destinatario para emitir NF-e.");
@@ -749,11 +783,11 @@ function buildNFeDest(cliente: EmissionPayload["cliente"]) {
         throw new Error("CPF/CNPJ do destinatario invalido para emitir NF-e.");
     }
 
-    if (!cliente.nome) {
+    if (!nome) {
         throw new Error("Informe o nome do destinatario para emitir NF-e.");
     }
 
-    if (!endereco.logradouro || !endereco.numero || !endereco.bairro || !endereco.cidade || !uf || !codigoMunicipio || !endereco.cep) {
+    if (!logradouro || !endereco.numero || !bairro || !cidade || !uf || !codigoMunicipio || !endereco.cep) {
         throw new Error("Endereco completo do destinatario e obrigatorio para emitir NF-e.");
     }
 
@@ -767,14 +801,14 @@ function buildNFeDest(cliente: EmissionPayload["cliente"]) {
     return {
         CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
         CPF: cleanDoc.length <= 11 ? cleanDoc : undefined,
-        xNome: cliente.nome,
+        xNome: nome,
         enderDest: {
-            xLgr: endereco.logradouro,
+            xLgr: logradouro,
             nro: String(endereco.numero),
-            xCpl: endereco.complemento || undefined,
-            xBairro: endereco.bairro,
+            xCpl: complemento,
+            xBairro: bairro,
             cMun: Number(codigoMunicipio),
-            xMun: endereco.cidade,
+            xMun: cidade,
             UF: uf,
             CEP: String(endereco.cep).replace(/\D/g, ""),
             cPais: "1058",
@@ -1018,23 +1052,23 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                     CNPJ: cnpj.replace(/\D/g, ""),
 
-                    xNome: company.razao_social,
+                    xNome: sanitizeFiscalText(company.razao_social, 60),
 
-                    xFant: company.nome_fantasia,
+                    xFant: sanitizeFiscalText(company.nome_fantasia, 60),
 
                     enderEmit: {
 
-                        xLgr: company.logradouro,
+                        xLgr: sanitizeFiscalText(company.logradouro, 60),
 
                         nro: company.numero,
 
-                        xCpl: company.complemento || undefined,
+                        xCpl: sanitizeFiscalText(company.complemento, 60),
 
-                        xBairro: company.bairro,
+                        xBairro: sanitizeFiscalText(company.bairro, 60),
 
                         cMun: Number(company.codigo_municipio_ibge),
 
-                        xMun: company.cidade,
+                        xMun: sanitizeFiscalText(company.cidade, 60),
 
                         UF: company.uf,
 
@@ -1059,7 +1093,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     return {
                         CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
                         CPF: cleanDoc.length <= 11 ? cleanDoc : undefined,
-                        xNome: payload.cliente.nome,
+                        xNome: sanitizeFiscalText(payload.cliente.nome, 60),
                         indIEDest: 9, // 9 = Não Contribuinte
                         email: payload.cliente.email
                     };
@@ -1075,7 +1109,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                         cEAN: "SEM GTIN",
 
-                        xProd: item.descricao,
+                        xProd: sanitizeFiscalText(item.descricao, 120),
 
                         NCM: item.ncm || "00000000", // Fallback perigoso, ideal validar antes
 
@@ -1535,8 +1569,8 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                 },
                 emit: {
                     CNPJ: cnpjEmit,
-                    xNome: company.razao_social,
-                    xFant: company.nome_fantasia,
+                    xNome: sanitizeFiscalText(company.razao_social, 60),
+                    xFant: sanitizeFiscalText(company.nome_fantasia, 60),
                     enderEmit: {
                         xLgr: company.logradouro,
                         nro: company.numero,
@@ -1559,7 +1593,7 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                     prod: {
                         cProd: item.codigo || String(index + 1),
                         cEAN: "SEM GTIN",
-                        xProd: item.descricao,
+                        xProd: sanitizeFiscalText(item.descricao, 120),
                         NCM: item.ncm || "00000000",
                         CFOP: getNFeVendaCFOP(item.cfop, mesmoEstado),
                         cBenef: item.cbenef?.trim() || undefined,
@@ -1814,8 +1848,8 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
                 },
                 emit: {
                     CNPJ: cnpjEmit,
-                    xNome: company.razao_social,
-                    xFant: company.nome_fantasia,
+                    xNome: sanitizeFiscalText(company.razao_social, 60),
+                    xFant: sanitizeFiscalText(company.nome_fantasia, 60),
                     enderEmit: {
                         xLgr: company.logradouro,
                         nro: company.numero,
@@ -1838,7 +1872,7 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
                     prod: {
                         cProd: item.codigo || String(index + 1),
                         cEAN: "SEM GTIN",
-                        xProd: item.descricao,
+                        xProd: sanitizeFiscalText(item.descricao, 120),
                         NCM: item.ncm || "00000000",
                         CFOP: cfopRemessa,
                         cBenef: item.cbenef?.trim() || undefined,
@@ -2072,8 +2106,8 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
                 },
                 emit: {
                     CNPJ: cnpjEmit,
-                    xNome: company.razao_social,
-                    xFant: company.nome_fantasia,
+                    xNome: sanitizeFiscalText(company.razao_social, 60),
+                    xFant: sanitizeFiscalText(company.nome_fantasia, 60),
                     enderEmit: {
                         xLgr: company.logradouro,
                         nro: company.numero,
@@ -2096,7 +2130,7 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
                     prod: {
                         cProd: item.codigo || String(index + 1),
                         cEAN: "SEM GTIN",
-                        xProd: item.descricao,
+                        xProd: sanitizeFiscalText(item.descricao, 120),
                         NCM: item.ncm || "00000000",
                         CFOP: cfopRemessa,
                         cBenef: item.cbenef?.trim() || undefined,
@@ -2336,8 +2370,8 @@ export async function emitirNFeTransferencia(payload: EmissionPayload & { observ
                 },
                 emit: {
                     CNPJ: cnpjEmit,
-                    xNome: company.razao_social,
-                    xFant: company.nome_fantasia,
+                    xNome: sanitizeFiscalText(company.razao_social, 60),
+                    xFant: sanitizeFiscalText(company.nome_fantasia, 60),
                     enderEmit: {
                         xLgr: company.logradouro,
                         nro: company.numero,
@@ -2360,7 +2394,7 @@ export async function emitirNFeTransferencia(payload: EmissionPayload & { observ
                     prod: {
                         cProd: item.codigo || String(index + 1),
                         cEAN: "SEM GTIN",
-                        xProd: item.descricao,
+                        xProd: sanitizeFiscalText(item.descricao, 120),
                         NCM: item.ncm || "00000000",
                         CFOP: cfopTransferencia,
                         cBenef: item.cbenef?.trim() || undefined,
@@ -2592,8 +2626,8 @@ export async function emitirNFeBonificacaoDoacao(payload: EmissionPayload & { ob
                 },
                 emit: {
                     CNPJ: cnpjEmit,
-                    xNome: company.razao_social,
-                    xFant: company.nome_fantasia,
+                    xNome: sanitizeFiscalText(company.razao_social, 60),
+                    xFant: sanitizeFiscalText(company.nome_fantasia, 60),
                     enderEmit: {
                         xLgr: company.logradouro,
                         nro: company.numero,
@@ -2616,7 +2650,7 @@ export async function emitirNFeBonificacaoDoacao(payload: EmissionPayload & { ob
                     prod: {
                         cProd: item.codigo || String(index + 1),
                         cEAN: "SEM GTIN",
-                        xProd: item.descricao,
+                        xProd: sanitizeFiscalText(item.descricao, 120),
                         NCM: item.ncm || "00000000",
                         CFOP: cfop,
                         cBenef: item.cbenef?.trim() || undefined,
@@ -2803,8 +2837,8 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
                 },
                 emit: {
                     CNPJ: cnpjEmit,
-                    xNome: company.razao_social,
-                    xFant: company.nome_fantasia,
+                    xNome: sanitizeFiscalText(company.razao_social, 60),
+                    xFant: sanitizeFiscalText(company.nome_fantasia, 60),
                     enderEmit: {
                         xLgr: company.logradouro,
                         nro: company.numero,
@@ -2827,7 +2861,7 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
                     prod: {
                         cProd: item.codigo || String(index + 1),
                         cEAN: "SEM GTIN",
-                        xProd: item.descricao,
+                        xProd: sanitizeFiscalText(item.descricao, 120),
                         NCM: item.ncm || "00000000",
                         CFOP: item.cfop,
                         cBenef: item.cbenef?.trim() || undefined,
@@ -3100,8 +3134,8 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
                 },
                 emit: {
                     CNPJ: cnpjEmit,
-                    xNome: company.razao_social,
-                    xFant: company.nome_fantasia,
+                    xNome: sanitizeFiscalText(company.razao_social, 60),
+                    xFant: sanitizeFiscalText(company.nome_fantasia, 60),
                     enderEmit: {
                         xLgr: company.logradouro,
                         nro: company.numero,
@@ -3124,7 +3158,7 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
                     prod: {
                         cProd: item.codigo || String(index + 1),
                         cEAN: "SEM GTIN",
-                        xProd: item.descricao,
+                        xProd: sanitizeFiscalText(item.descricao, 120),
                         NCM: item.ncm || "00000000",
                         CFOP: cfopRetorno,
                         cBenef: item.cbenef?.trim() || undefined,
@@ -3368,8 +3402,8 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
                 },
                 emit: {
                     CNPJ: cnpjEmit,
-                    xNome: company.razao_social,
-                    xFant: company.nome_fantasia,
+                    xNome: sanitizeFiscalText(company.razao_social, 60),
+                    xFant: sanitizeFiscalText(company.nome_fantasia, 60),
                     enderEmit: {
                         xLgr: company.logradouro,
                         nro: company.numero,
@@ -3392,7 +3426,7 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
                     prod: {
                         cProd: item.codigo || String(index + 1),
                         cEAN: "SEM GTIN",
-                        xProd: item.descricao,
+                        xProd: sanitizeFiscalText(item.descricao, 120),
                         NCM: item.ncm || "00000000",
                         CFOP: cfopRetorno,
                         cBenef: item.cbenef?.trim() || undefined,
@@ -3935,7 +3969,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                     return {
                         CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
                         CPF: cleanDoc.length <= 11 ? cleanDoc : undefined,
-                        xNome: payload.cliente.nome,
+                        xNome: sanitizeFiscalText(payload.cliente.nome, 60),
                         email: clientEmail || undefined,
                         fone: phoneToSend || undefined,
                         end: blockEnd
@@ -5291,7 +5325,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     prod: {
                         cProd: item.codigo || String(idx + 1),
                         cEAN: "SEM GTIN",
-                        xProd: item.descricao,
+                        xProd: sanitizeFiscalText(item.descricao, 120),
                         NCM: item.ncm || "00000000",
                         CFOP: cfopDevolucao,
                         uCom: item.unidade,
@@ -5346,8 +5380,8 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 },
                 emit: {
                     CNPJ: cnpjEmit,
-                    xNome: company.razao_social,
-                    xFant: company.nome_fantasia,
+                    xNome: sanitizeFiscalText(company.razao_social, 60),
+                    xFant: sanitizeFiscalText(company.nome_fantasia, 60),
                     enderEmit: {
                         xLgr: company.logradouro,
                         nro: company.numero,
@@ -5365,7 +5399,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 },
                 dest: {
                     CNPJ: (entryInvoice.emitente_cnpj || "").replace(/\D/g, ""),
-                    xNome: entryInvoice.emitente_nome,
+                    xNome: sanitizeFiscalText(entryInvoice.emitente_nome, 60),
                     ...(fornecedorEnd ? { enderDest: fornecedorEnd } : {}),
                     indIEDest: fornecedorIE ? 1 : 9,
                     ...(fornecedorIE ? { IE: fornecedorIE } : {}),
