@@ -1,14 +1,20 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Cliente Admin para ler dados sem estar logado
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY ou NEXT_PUBLIC_SUPABASE_URL nao configuradas');
+  }
+
+  return createClient(supabaseUrl, supabaseServiceKey);
+}
 
 export async function POST(req: Request) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const { email } = await req.json();
 
     if (!email) {
@@ -54,6 +60,9 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("Erro Recover:", error);
+    if (String(error?.message || '').includes('SUPABASE_SERVICE_ROLE_KEY') || String(error?.message || '').includes('NEXT_PUBLIC_SUPABASE_URL')) {
+      return NextResponse.json({ type: 'error', message: 'Configuracao do Supabase ausente no ambiente.' }, { status: 500 });
+    }
     return NextResponse.json({ type: 'error', message: 'Erro interno ao processar pedido.' }, { status: 500 });
   }
 }
