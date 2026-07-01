@@ -48,6 +48,57 @@ export type CobrancaStoreBillingStatus = {
   blockScope: "none" | "new_operations_only";
 };
 
+function getUnregisteredStoreStatus(storeId: string): CobrancaStoreBillingStatus {
+  return {
+    store: {
+      store_id: storeId,
+      store_name: "",
+      monthly_amount: 0,
+      paid_until: null,
+      payment_qr_code: null,
+      payment_copy_paste: null
+    },
+    status: "ativo",
+    reason: "store_not_registered",
+    effectiveAccessUntil: null,
+    overdueSince: null,
+    blockAfter: null,
+    daysPastDue: 0,
+    daysUntilDue: null,
+    paymentDueSoon: false,
+    shouldShowBillingReminder: false,
+    shouldBlockNewOperations: false,
+    blockScope: "none"
+  };
+}
+
+function normalizeBillingStatus(storeId: string, data: any): CobrancaStoreBillingStatus {
+  if (data?.reason === "store_not_registered") {
+    return getUnregisteredStoreStatus(storeId);
+  }
+
+  const validStatuses = new Set(["ativo", "pendente", "bloqueado", "liberado", "vip"]);
+  const validBlockScopes = new Set(["none", "new_operations_only"]);
+
+  if (!validStatuses.has(data?.status)) {
+    throw new Error("Gateway retornou status de cobranca invalido.");
+  }
+
+  if (typeof data?.shouldBlockNewOperations !== "boolean") {
+    throw new Error("Gateway retornou regra de bloqueio invalida.");
+  }
+
+  if (typeof data?.shouldShowBillingReminder !== "boolean") {
+    throw new Error("Gateway retornou regra de aviso invalida.");
+  }
+
+  if (!validBlockScopes.has(data?.blockScope)) {
+    throw new Error("Gateway retornou escopo de bloqueio invalido.");
+  }
+
+  return data as CobrancaStoreBillingStatus;
+}
+
 function getRequiredEnv(name: string) {
   const value = process.env[name];
 
@@ -109,5 +160,5 @@ export async function getStoreBillingStatus(storeId: string): Promise<CobrancaSt
     throw new Error(message);
   }
 
-  return data as CobrancaStoreBillingStatus;
+  return normalizeBillingStatus(storeId, data);
 }

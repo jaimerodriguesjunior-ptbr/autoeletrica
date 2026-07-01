@@ -11,6 +11,20 @@ export class BillingBlockedError extends Error {
   }
 }
 
+export class BillingAuthenticationError extends Error {
+  constructor(message = "Nao autenticado.") {
+    super(message);
+    this.name = "BillingAuthenticationError";
+  }
+}
+
+export class BillingProfileError extends Error {
+  constructor(message = "Organizacao nao encontrada.") {
+    super(message);
+    this.name = "BillingProfileError";
+  }
+}
+
 type CurrentProfileAccess = {
   userId: string;
   organizationId: string;
@@ -28,7 +42,7 @@ async function getProfileAccessByUserId(
     .single();
 
   if (profileError || !profile?.organization_id) {
-    throw new Error("Organizacao nao encontrada.");
+    throw new BillingProfileError("Organizacao nao encontrada.");
   }
 
   return {
@@ -46,7 +60,7 @@ export async function getCurrentProfileAccess(): Promise<CurrentProfileAccess> {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    throw new Error("Nao autenticado.");
+    throw new BillingAuthenticationError("Nao autenticado.");
   }
 
   return getProfileAccessByUserId(user.id, supabase);
@@ -60,7 +74,7 @@ export async function getProfileAccessFromBearerToken(token: string): Promise<Cu
   } = await supabaseAdmin.auth.getUser(token);
 
   if (userError || !user) {
-    throw new Error("Nao autenticado.");
+    throw new BillingAuthenticationError("Nao autenticado.");
   }
 
   return getProfileAccessByUserId(user.id, supabaseAdmin);
