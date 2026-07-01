@@ -28,6 +28,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import heic2any from "heic2any";
 import { createClient } from "../../../../src/lib/supabase";
+import { ensureBillingAllowsNewOperations, getBillingAuthHeaders } from "@/src/lib/cobrancaGuardClient";
 import { useAuth } from "../../../../src/contexts/AuthContext";
 
 // Speech Recognition type for TypeScript
@@ -466,25 +467,33 @@ export default function NovaOS() {
     setSaving(true);
 
     try {
-      const { data: osData, error: osError } = await supabase
-        .from("work_orders")
-        .insert({
-          organization_id: profile?.organization_id,
-          client_id: clienteSelecionado.id,
-          vehicle_id: veiculoConfirmado.id,
-          status: "orcamento",
-          tipo: "os",
-          description: defeito,
-          odometro: odometro || null,
-          nivel_combustivel: nivelCombustivel || null,
-          temperatura_motor: temperaturaMotor || null,
-          painel_obs: painelObs || null,
-          employee_id: profile?.id || null,
-        })
-        .select()
-        .single();
+      await ensureBillingAllowsNewOperations();
+      const billingHeaders = await getBillingAuthHeaders();
 
-      if (osError) throw osError;
+      const osResponse = await fetch("/api/os/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...billingHeaders
+        },
+        body: JSON.stringify({
+          clientId: clienteSelecionado.id,
+          vehicleId: veiculoConfirmado.id,
+          description: defeito,
+          odometro,
+          nivelCombustivel,
+          temperaturaMotor,
+          painelObs
+        })
+      });
+
+      const osPayload = await osResponse.json().catch(() => null);
+
+      if (!osResponse.ok || !osPayload?.workOrder) {
+        throw new Error(osPayload?.error || "Erro ao criar OS.");
+      }
+
+      const osData = osPayload.workOrder;
 
       await supabase
         .from("vehicles")

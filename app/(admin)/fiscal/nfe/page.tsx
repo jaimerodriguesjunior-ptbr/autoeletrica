@@ -33,6 +33,7 @@ import { auditarNFeAssistidaComIaAction } from "@/src/actions/fiscal_ai_audit";
 import { emitirNFeAssistidaUiAction, emitirNFeBonificacaoDoacaoUiAction, emitirNFeDevolucaoAction, emitirNFeRemessaConsertoUiAction, emitirNFeRemessaGarantiaUiAction, emitirNFeRetornoConsertoUiAction, emitirNFeRetornoGarantiaUiAction, emitirNFeTransferenciaUiAction, emitirNFeVendaAction } from "@/src/actions/fiscal_emission_actions";
 import { getEntryInvoiceWithItemsAction, getNFeInvoiceWithItemsAction, searchCloneableNFeInvoicesAction, searchProducts, type ParsedNFeItem } from "@/src/actions/fiscal_db";
 import { resolveEntryInvoiceByAccessKeyWithItemsAction } from "@/src/actions/nfe_origin_lookup";
+import { useBillingEmissionBlock } from "@/src/lib/useBillingEmissionBlock";
 
 type OperationGroup = "sale" | "return" | "shipment" | "transfer" | "bonus" | "advanced";
 type StepId = "operation" | "participant" | "items" | "transport" | "review";
@@ -559,6 +560,7 @@ function mapRegimeToCrt(regimeRaw: unknown): string {
 
 export default function NFeCompletaPage() {
     const { profile } = useAuth();
+    const { isLoading: billingLoading, isBlocked: billingBlocked, message: billingMessage } = useBillingEmissionBlock();
     const supabase = useMemo(() => createClient(), []);
 
     const [step, setStep] = useState<StepId>("operation");
@@ -2295,7 +2297,37 @@ export default function NFeCompletaPage() {
         : items;
 
     return (
-        <div className="mx-auto max-w-7xl space-y-5 pb-32">
+        <div className="mx-auto max-w-7xl space-y-5 pb-32 relative">
+            {(billingLoading || billingBlocked) && (
+                <div className="absolute inset-0 z-40 rounded-[28px] bg-[#F8F7F2]/96 backdrop-blur-sm flex items-start justify-center px-4 py-24">
+                    <div className="w-full max-w-2xl rounded-[28px] border border-red-200 bg-white shadow-xl p-8 text-center">
+                        {billingLoading ? (
+                            <>
+                                <Loader2 className="mx-auto animate-spin text-[#FACC15]" size={30} />
+                                <p className="mt-4 text-sm font-bold text-stone-700">Validando bloqueio de cobranca...</p>
+                            </>
+                        ) : (
+                            <>
+                                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600">
+                                    <FileText size={24} />
+                                </div>
+                                <p className="mt-4 text-xs font-bold uppercase tracking-wide text-red-600">Emissao Fiscal Bloqueada</p>
+                                <h2 className="mt-2 text-2xl font-bold text-[#1A1A1A]">NF-e completa indisponivel para esta loja</h2>
+                                <p className="mt-3 text-sm text-stone-600">{billingMessage || "As emissoes fiscais estao temporariamente bloqueadas por atraso na mensalidade."}</p>
+                                <div className="mt-6">
+                                    <Link href="/fiscal">
+                                        <button className="rounded-full bg-[#1A1A1A] px-6 py-3 text-sm font-bold text-[#FACC15] transition hover:bg-black">
+                                            Voltar ao Fiscal
+                                        </button>
+                                    </Link>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            <div className={billingBlocked ? "pointer-events-none select-none opacity-40" : ""}>
             <div className="space-y-3">
                 <div className="flex items-center gap-3">
                     <Link href="/fiscal">
@@ -3474,6 +3506,7 @@ export default function NFeCompletaPage() {
                     onSelect={applyCloneInvoice}
                 />
             )}
+        </div>
         </div>
     );
 }

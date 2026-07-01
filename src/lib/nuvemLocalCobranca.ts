@@ -26,6 +26,28 @@ type CreateBillingInput = {
   externalReference?: string;
 };
 
+export type CobrancaStoreBillingStatus = {
+  store?: {
+    store_id: string;
+    store_name: string;
+    monthly_amount: number;
+    paid_until: string | null;
+    payment_qr_code?: string | null;
+    payment_copy_paste?: string | null;
+  };
+  status: "ativo" | "pendente" | "bloqueado" | "liberado" | "vip";
+  reason?: string;
+  effectiveAccessUntil?: string | null;
+  overdueSince?: string | null;
+  blockAfter?: string | null;
+  daysPastDue?: number;
+  daysUntilDue?: number | null;
+  paymentDueSoon?: boolean;
+  shouldShowBillingReminder: boolean;
+  shouldBlockNewOperations: boolean;
+  blockScope: "none" | "new_operations_only";
+};
+
 function getRequiredEnv(name: string) {
   const value = process.env[name];
 
@@ -66,4 +88,26 @@ export async function createGatewayBilling(input: CreateBillingInput) {
   }
 
   return data;
+}
+
+export async function getStoreBillingStatus(storeId: string): Promise<CobrancaStoreBillingStatus> {
+  const { baseUrl, clientKey, clientSecret } = getCobrancaGatewayConfig();
+
+  const response = await fetch(`${baseUrl}/api/stores/${encodeURIComponent(storeId)}/status`, {
+    method: "GET",
+    headers: {
+      "x-client-key": clientKey,
+      "x-client-secret": clientSecret
+    },
+    cache: "no-store"
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok && data?.reason !== "store_not_registered") {
+    const message = data?.error || `Gateway respondeu com status ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data as CobrancaStoreBillingStatus;
 }

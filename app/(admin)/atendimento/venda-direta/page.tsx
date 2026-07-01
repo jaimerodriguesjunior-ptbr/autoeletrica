@@ -18,6 +18,7 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "../../../../src/lib/supabase";
+import { ensureBillingAllowsNewOperations } from "@/src/lib/cobrancaGuardClient";
 import { useAuth } from "../../../../src/contexts/AuthContext";
 
 type Client = { id: string; nome: string; whatsapp: string | null };
@@ -125,6 +126,7 @@ export default function VendaDiretaWizard() {
         if (!clienteSelecionado) return;
         setSaving(true);
         try {
+            await ensureBillingAllowsNewOperations();
             // 1. Cria OS sem veículo, direto no status 'aprovado' (Fila)
             const { data: osData, error: osError } = await supabase
                 .from('work_orders')

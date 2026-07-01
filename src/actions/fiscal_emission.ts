@@ -6,6 +6,8 @@ import { createClient } from "@/src/utils/supabase/server";
 
 import { cookies } from "next/headers";
 
+import { BillingBlockedError, assertOrganizationCanCreateNewOperations } from "@/src/lib/billing-guard";
+
 import { getNuvemFiscalToken } from "@/src/lib/nuvemfiscal";
 
 
@@ -759,6 +761,20 @@ function getNFCeVendaDestination(companyUf?: string | null, clienteUf?: string |
     };
 }
 
+async function assertBillingAllowsFiscalEmission(organizationId: string) {
+    try {
+        await assertOrganizationCanCreateNewOperations(organizationId);
+    } catch (error) {
+        if (error instanceof BillingBlockedError) {
+            throw new Error(
+                "Sua loja esta com emissoes fiscais bloqueadas por atraso na mensalidade. Consulte o banner de cobranca ou fale com o suporte."
+            );
+        }
+
+        throw error;
+    }
+}
+
 function buildNFeDest(cliente: EmissionPayload["cliente"]) {
     const cleanDoc = normalizeDocument(cliente.cpf_cnpj) || "";
     const endereco = cliente.endereco || {};
@@ -909,6 +925,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
         // 1. Buscar Token Nuvem Fiscal
 
+        await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || 'production';
 
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFCe", env);
@@ -1492,6 +1509,7 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
     let invoiceId: string | null = null;
 
     try {
+        await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || "production";
 
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFe", env);
@@ -1769,6 +1787,7 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
     let invoiceId: string | null = null;
 
     try {
+        await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || "production";
 
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFe", env);
@@ -2027,6 +2046,7 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
     let invoiceId: string | null = null;
 
     try {
+        await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || "production";
 
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFe", env);
@@ -2285,6 +2305,7 @@ export async function emitirNFeTransferencia(payload: EmissionPayload & { observ
     let invoiceId: string | null = null;
 
     try {
+        await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || "production";
 
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFe", env);
@@ -2545,6 +2566,7 @@ export async function emitirNFeBonificacaoDoacao(payload: EmissionPayload & { ob
     let invoiceId: string | null = null;
 
     try {
+        await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || "production";
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFe", env);
         if (duplicateError) return { success: false, error: duplicateError };
@@ -2757,6 +2779,7 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
     let invoiceId: string | null = null;
 
     try {
+        await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || "homologation";
 
         const natOp = String(payload.natureza_operacao || "").trim().toUpperCase();
@@ -3046,6 +3069,7 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
     let invoiceId: string | null = null;
 
     try {
+        await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || "production";
 
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFe", env);
@@ -3314,6 +3338,7 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
     let invoiceId: string | null = null;
 
     try {
+        await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || "production";
 
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFe", env);
@@ -3597,6 +3622,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
         // 1. Buscar Token Nuvem Fiscal
 
+        await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || 'production';
 
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFSe", env);
@@ -5145,6 +5171,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
     let invoiceId: string | null = null;
 
     try {
+        await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || "production";
         const duplicateError = await ensureNoActiveDevolucaoForEntryInvoice(
             supabase,

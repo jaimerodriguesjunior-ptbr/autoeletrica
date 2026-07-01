@@ -25,6 +25,7 @@ import {
 import { useAuth } from "../../src/contexts/AuthContext";
 import { GlobalAppointmentAlert } from "../../src/components/GlobalAppointmentAlert";
 import { ClosingAutoSend } from "../../src/components/ClosingAutoSend";
+import { BillingStatusBanner } from "../../src/components/BillingStatusBanner";
 
 export default function AdminLayout({
   children,
@@ -282,6 +283,7 @@ export default function AdminLayout({
         </header>
 
         <div className={`flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-700 ${isOwner ? "pb-32 lg:pb-24" : "pb-32"}`}>
+          {isOwner && <BillingStatusBanner />}
           {children}
         </div>
       </main>
