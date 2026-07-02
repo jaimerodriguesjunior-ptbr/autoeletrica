@@ -687,13 +687,6 @@ function shouldSendRtcHomologationGroup(environment: "production" | "homologatio
     return environment === "homologation";
 }
 
-function buildRtcHomologationIde(company: any, environment: "production" | "homologation") {
-    if (!shouldSendRtcHomologationGroup(environment)) return {};
-
-    const cMunFGIBS = Number(company.codigo_municipio_ibge);
-    return Number.isFinite(cMunFGIBS) && cMunFGIBS > 0 ? { cMunFGIBS } : {};
-}
-
 function buildRtcHomologationItemImposto(environment: "production" | "homologation") {
     if (!shouldSendRtcHomologationGroup(environment)) return {};
 
@@ -1077,8 +1070,6 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     idDest: nfceDestination.idDest, // 1 = Interna, 2 = Interestadual
 
                     cMunFG: Number(company.codigo_municipio_ibge),
-
-                    ...buildRtcHomologationIde(company, env),
 
                     tpImp: 4, // 4 = DANFE NFC-e
 
