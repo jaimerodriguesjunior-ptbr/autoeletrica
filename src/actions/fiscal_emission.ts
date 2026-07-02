@@ -1014,6 +1014,9 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
         const nfceDestination = getNFCeVendaDestination(company.uf, payload.cliente.endereco?.uf);
+        if (!nfceDestination.mesmoEstado) {
+            throw new Error("NFC-e nao permite operacao interestadual. Para cliente de outra UF, emita NF-e.");
+        }
 
         // 2.5 Buscar próxima numeração sequencial
         // Buscamos a série ativa para a organização

@@ -161,7 +161,9 @@ export default function EmitirNotaPage() {
     const [ncmModalData, setNcmModalData] = useState<{ idx: number, options: { code: string, description: string }[] } | null>(null);
     const osLoadMoreRef = useRef<HTMLDivElement | null>(null);
     const destinatarioUF = String(clienteEndereco?.uf || "").trim().toUpperCase();
+    const isNFCeVendaRapida = produtoDocumento === "NFCe";
     const isNFeVendaRapida = produtoDocumento === "NFe";
+    const shouldValidateNFCeVendaRapida = isNFCeVendaRapida && itens.length > 0;
     const shouldValidateNFeVendaRapida = isNFeVendaRapida && itens.length > 0;
     const nfeDestinoLabel = !isNFeVendaRapida
         ? ""
@@ -171,6 +173,18 @@ export default function EmitirNotaPage() {
                 ? "Venda interna"
                 : "Venda interestadual";
     const nfeCfopRigido = destinatarioUF && emitenteUF && destinatarioUF !== emitenteUF ? "6102" : "5102";
+
+    const getNFCeVendaRapidaPendencias = () => {
+        if (!shouldValidateNFCeVendaRapida) return [];
+
+        const pendencias: string[] = [];
+
+        if (emitenteUF && destinatarioUF && destinatarioUF !== emitenteUF) {
+            pendencias.push("NFC-e nao permite venda interestadual. Para cliente de outra UF, selecione NF-e.");
+        }
+
+        return pendencias;
+    };
 
     const getNFeVendaRapidaPendencias = () => {
         if (!shouldValidateNFeVendaRapida) return [];
@@ -665,6 +679,12 @@ export default function EmitirNotaPage() {
         if (itens.length === 0 && itensServico.length === 0) return alert("Adicione pelo menos um item ou serviço.");
 
 
+
+        const nfcePendencias = getNFCeVendaRapidaPendencias();
+        if (nfcePendencias.length > 0) {
+            alert(`NFC-e bloqueada:\n${nfcePendencias.join("\n")}`);
+            return;
+        }
 
         const nfePendencias = getNFeVendaRapidaPendencias();
         if (nfePendencias.length > 0) {
