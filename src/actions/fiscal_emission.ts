@@ -683,12 +683,36 @@ function buildNFeItemImposto(item: EmissionPayload["itens"][number], fallbackCso
     };
 }
 
-function shouldSendRtcHomologationGroup(environment: "production" | "homologation") {
-    return environment === "homologation";
+type RtcHomologationContext = {
+    model: 55 | 65;
+    finality: 1 | 2 | 3 | 4;
+    cfop: string;
+    sameState: boolean;
+};
+
+function shouldSendRtcHomologationGroup(
+    environment: "production" | "homologation",
+    context?: RtcHomologationContext
+) {
+    if (environment !== "homologation") return false;
+    if (!context) return true;
+
+    if (context.model === 65) {
+        return context.finality === 1 && context.sameState;
+    }
+
+    return (
+        context.model === 55 &&
+        context.finality === 1 &&
+        ["5101", "5102", "6101", "6102"].includes(context.cfop)
+    );
 }
 
-function buildRtcHomologationItemImposto(environment: "production" | "homologation") {
-    if (!shouldSendRtcHomologationGroup(environment)) return {};
+function buildRtcHomologationItemImposto(
+    environment: "production" | "homologation",
+    context?: RtcHomologationContext
+) {
+    if (!shouldSendRtcHomologationGroup(environment, context)) return {};
 
     return {
         IBSCBS: {
@@ -714,8 +738,11 @@ function buildRtcHomologationItemImposto(environment: "production" | "homologati
     };
 }
 
-function buildRtcHomologationTotal(environment: "production" | "homologation") {
-    if (!shouldSendRtcHomologationGroup(environment)) return {};
+function buildRtcHomologationTotal(
+    environment: "production" | "homologation",
+    context?: RtcHomologationContext
+) {
+    if (!shouldSendRtcHomologationGroup(environment, context)) return {};
 
     return {
         IBSCBSTot: {
@@ -1227,7 +1254,12 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                         },
 
-                        ...buildRtcHomologationItemImposto(env)
+                        ...buildRtcHomologationItemImposto(env, {
+                            model: 65,
+                            finality: 1,
+                            cfop: nfceDestination.cfop,
+                            sameState: nfceDestination.mesmoEstado,
+                        })
 
                     }
 
@@ -1277,7 +1309,12 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                     },
 
-                    ...buildRtcHomologationTotal(env)
+                    ...buildRtcHomologationTotal(env, {
+                        model: 65,
+                        finality: 1,
+                        cfop: nfceDestination.cfop,
+                        sameState: nfceDestination.mesmoEstado,
+                    })
 
                 },
 
@@ -1636,30 +1673,48 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                 },
                 dest,
                 ...buildNFeEntregaRetirada(payload),
-                det: payload.itens.map((item, index) => ({
-                    nItem: index + 1,
-                    prod: {
-                        cProd: item.codigo || String(index + 1),
-                        cEAN: "SEM GTIN",
-                        xProd: sanitizeFiscalText(item.descricao, 120),
-                        NCM: item.ncm || "00000000",
-                        CFOP: getNFeVendaCFOP(item.cfop, mesmoEstado),
-                        cBenef: item.cbenef?.trim() || undefined,
-                        uCom: item.unidade || "UN",
-                        qCom: item.quantidade,
-                        vUnCom: toMoneyNumber(item.valor_unitario),
-                        vProd: toMoneyNumber(item.valor_total),
-                        ...buildNFeItemTotalAdjustments(payload, index, valorTotal),
-                        cEANTrib: "SEM GTIN",
-                        uTrib: item.unidade || "UN",
-                        qTrib: item.quantidade,
-                        vUnTrib: toMoneyNumber(item.valor_unitario),
-                        indTot: 1,
-                    },
-                    imposto: buildNFeItemImposto(item, "102"),
-                })),
+                det: payload.itens.map((item, index) => {
+                    const cfopVenda = getNFeVendaCFOP(item.cfop, mesmoEstado);
+
+                    return {
+                        nItem: index + 1,
+                        prod: {
+                            cProd: item.codigo || String(index + 1),
+                            cEAN: "SEM GTIN",
+                            xProd: sanitizeFiscalText(item.descricao, 120),
+                            NCM: item.ncm || "00000000",
+                            CFOP: cfopVenda,
+                            cBenef: item.cbenef?.trim() || undefined,
+                            uCom: item.unidade || "UN",
+                            qCom: item.quantidade,
+                            vUnCom: toMoneyNumber(item.valor_unitario),
+                            vProd: toMoneyNumber(item.valor_total),
+                            ...buildNFeItemTotalAdjustments(payload, index, valorTotal),
+                            cEANTrib: "SEM GTIN",
+                            uTrib: item.unidade || "UN",
+                            qTrib: item.quantidade,
+                            vUnTrib: toMoneyNumber(item.valor_unitario),
+                            indTot: 1,
+                        },
+                        imposto: {
+                            ...buildNFeItemImposto(item, "102"),
+                            ...buildRtcHomologationItemImposto(env, {
+                                model: 55,
+                                finality: 1,
+                                cfop: cfopVenda,
+                                sameState: mesmoEstado,
+                            }),
+                        },
+                    };
+                }),
                 total: {
                     ICMSTot: buildNFeIcmsTot(payload, valorTotal),
+                    ...buildRtcHomologationTotal(env, {
+                        model: 55,
+                        finality: 1,
+                        cfop: mesmoEstado ? "5102" : "6102",
+                        sameState: mesmoEstado,
+                    }),
                 },
                 transp: buildNFeTransp(payload),
                 pag: { detPag: buildNFeDetPag(payload, getNFeValorNota(payload, valorTotal), "01") },
