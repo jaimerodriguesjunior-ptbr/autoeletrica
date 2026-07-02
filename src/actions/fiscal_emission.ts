@@ -697,7 +697,7 @@ function buildRtcHomologationItemImposto(environment: "production" | "homologati
             gIBSCBS: {
                 vBC: 0,
                 gIBSUF: {
-                    pIBSUF: "0",
+                    pIBSUF: "0.10",
                     vIBSUF: 0,
                 },
                 gIBSMun: {
@@ -706,7 +706,7 @@ function buildRtcHomologationItemImposto(environment: "production" | "homologati
                 },
                 vIBS: 0,
                 gCBS: {
-                    pCBS: "0",
+                    pCBS: "0.90",
                     vCBS: 0,
                 },
             },
