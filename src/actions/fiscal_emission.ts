@@ -683,6 +683,54 @@ function buildNFeItemImposto(item: EmissionPayload["itens"][number], fallbackCso
     };
 }
 
+function shouldSendRtcHomologationGroup(environment: "production" | "homologation") {
+    return environment === "homologation";
+}
+
+function buildRtcHomologationIde(company: any, environment: "production" | "homologation") {
+    if (!shouldSendRtcHomologationGroup(environment)) return {};
+
+    const cMunFGIBS = Number(company.codigo_municipio_ibge);
+    return Number.isFinite(cMunFGIBS) && cMunFGIBS > 0 ? { cMunFGIBS } : {};
+}
+
+function buildRtcHomologationItemImposto(environment: "production" | "homologation") {
+    if (!shouldSendRtcHomologationGroup(environment)) return {};
+
+    return {
+        IBSCBS: {
+            CST: "000",
+            cClassTrib: "000001",
+            gIBSCBS: {
+                vBC: 0,
+                gIBSUF: {
+                    pIBSUF: 0.10,
+                    vIBSUF: 0,
+                },
+                gIBSMun: {
+                    pIBSMun: 0.10,
+                    vIBSMun: 0,
+                },
+                vIBS: 0,
+                gCBS: {
+                    pCBS: 0.90,
+                    vCBS: 0,
+                },
+            },
+        },
+    };
+}
+
+function buildRtcHomologationTotal(environment: "production" | "homologation") {
+    if (!shouldSendRtcHomologationGroup(environment)) return {};
+
+    return {
+        IBSCBSTot: {
+            vBCIBSCBS: 0,
+        },
+    };
+}
+
 function getNFeValorNota(payload: EmissionPayload, valorProdutos: number) {
     const vIPI = toMoneyNumber(payload.itens.reduce((sum, item) => sum + toMoneyNumber(item.ipi_valor), 0));
     const vFrete = toMoneyNumber(payload.valor_frete);
@@ -1030,6 +1078,8 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                     cMunFG: Number(company.codigo_municipio_ibge),
 
+                    ...buildRtcHomologationIde(company, env),
+
                     tpImp: 4, // 4 = DANFE NFC-e
 
                     tpEmis: 1, // 1 = Normal
@@ -1181,7 +1231,9 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                             }
 
-                        }
+                        },
+
+                        ...buildRtcHomologationItemImposto(env)
 
                     }
 
@@ -1229,7 +1281,9 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                         vNF: payload.valor_total
 
-                    }
+                    },
+
+                    ...buildRtcHomologationTotal(env)
 
                 },
 
