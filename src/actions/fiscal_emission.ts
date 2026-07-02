@@ -1627,6 +1627,12 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
         const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
         const valorTotal = toMoneyNumber(payload.valor_total);
+        const rtcNFeVendaContext: RtcHomologationContext = {
+            model: 55,
+            finality: 1,
+            cfop: getNFeVendaCFOP(undefined, mesmoEstado),
+            sameState: mesmoEstado,
+        };
 
         const nfePayload = {
             ambiente: env === "production" ? "producao" : "homologacao",
@@ -1642,6 +1648,9 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                     tpNF: 1,
                     idDest: mesmoEstado ? 1 : 2,
                     cMunFG: Number(company.codigo_municipio_ibge),
+                    ...(shouldSendRtcHomologationGroup(env, rtcNFeVendaContext)
+                        ? { cMunFGIBS: Number(company.codigo_municipio_ibge) }
+                        : {}),
                     tpImp: 1,
                     tpEmis: 1,
                     tpAmb: env === "production" ? 1 : 2,
@@ -1699,22 +1708,15 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                         imposto: {
                             ...buildNFeItemImposto(item, "102"),
                             ...buildRtcHomologationItemImposto(env, {
-                                model: 55,
-                                finality: 1,
+                                ...rtcNFeVendaContext,
                                 cfop: cfopVenda,
-                                sameState: mesmoEstado,
                             }),
                         },
                     };
                 }),
                 total: {
                     ICMSTot: buildNFeIcmsTot(payload, valorTotal),
-                    ...buildRtcHomologationTotal(env, {
-                        model: 55,
-                        finality: 1,
-                        cfop: mesmoEstado ? "5102" : "6102",
-                        sameState: mesmoEstado,
-                    }),
+                    ...buildRtcHomologationTotal(env, rtcNFeVendaContext),
                 },
                 transp: buildNFeTransp(payload),
                 pag: { detPag: buildNFeDetPag(payload, getNFeValorNota(payload, valorTotal), "01") },
