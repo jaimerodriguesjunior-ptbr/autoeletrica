@@ -694,6 +694,10 @@ type RtcHomologationContext = {
     sameState: boolean;
 };
 
+const RTC_IBS_UF_RATE = 0.10;
+const RTC_IBS_MUN_RATE = 0;
+const RTC_CBS_RATE = 0.90;
+
 function shouldSendRtcHomologationGroup(
     environment: "production" | "homologation",
     context?: RtcHomologationContext
@@ -716,28 +720,35 @@ function shouldSendRtcHomologationGroup(
 
 function buildRtcHomologationItemImposto(
     environment: "production" | "homologation",
-    context?: RtcHomologationContext
+    context?: RtcHomologationContext,
+    baseValue?: number
 ) {
     if (!shouldSendRtcHomologationGroup(environment, context)) return {};
+
+    const vBC = toMoneyNumber(baseValue);
+    const vIBSUF = toMoneyNumber(vBC * RTC_IBS_UF_RATE / 100);
+    const vIBSMun = toMoneyNumber(vBC * RTC_IBS_MUN_RATE / 100);
+    const vIBS = toMoneyNumber(vIBSUF + vIBSMun);
+    const vCBS = toMoneyNumber(vBC * RTC_CBS_RATE / 100);
 
     return {
         IBSCBS: {
             CST: "000",
             cClassTrib: "000001",
             gIBSCBS: {
-                vBC: 0,
+                vBC,
                 gIBSUF: {
                     pIBSUF: "0.10",
-                    vIBSUF: 0,
+                    vIBSUF,
                 },
                 gIBSMun: {
                     pIBSMun: "0",
-                    vIBSMun: 0,
+                    vIBSMun,
                 },
-                vIBS: 0,
+                vIBS,
                 gCBS: {
                     pCBS: "0.90",
-                    vCBS: 0,
+                    vCBS,
                 },
             },
         },
@@ -746,13 +757,42 @@ function buildRtcHomologationItemImposto(
 
 function buildRtcHomologationTotal(
     environment: "production" | "homologation",
-    context?: RtcHomologationContext
+    context?: RtcHomologationContext,
+    baseValue?: number
 ) {
     if (!shouldSendRtcHomologationGroup(environment, context)) return {};
 
+    const vBCIBSCBS = toMoneyNumber(baseValue);
+    const vIBSUF = toMoneyNumber(vBCIBSCBS * RTC_IBS_UF_RATE / 100);
+    const vIBSMun = toMoneyNumber(vBCIBSCBS * RTC_IBS_MUN_RATE / 100);
+    const vIBS = toMoneyNumber(vIBSUF + vIBSMun);
+    const vCBS = toMoneyNumber(vBCIBSCBS * RTC_CBS_RATE / 100);
+
     return {
         IBSCBSTot: {
-            vBCIBSCBS: 0,
+            vBCIBSCBS,
+            gIBS: {
+                gIBSUF: {
+                    vDif: 0,
+                    vDevTrib: 0,
+                    vIBSUF,
+                },
+                gIBSMun: {
+                    vDif: 0,
+                    vDevTrib: 0,
+                    vIBSMun,
+                },
+                vIBS,
+                vCredPres: 0,
+                vCredPresCondSus: 0,
+            },
+            gCBS: {
+                vDif: 0,
+                vDevTrib: 0,
+                vCBS,
+                vCredPres: 0,
+                vCredPresCondSus: 0,
+            },
         },
     };
 }
@@ -797,6 +837,27 @@ function buildNFeItemTotalAdjustments(payload: EmissionPayload, itemIndex: numbe
         ...(desconto > 0 ? { vDesc: desconto } : {}),
         ...(outras > 0 ? { vOutro: outras } : {}),
     };
+}
+
+function getNFeItemRtcBase(payload: EmissionPayload, itemIndex: number, valorProdutos: number) {
+    const item = payload.itens[itemIndex];
+    const itemValue = toMoneyNumber(item?.valor_total);
+    const adjustments = buildNFeItemTotalAdjustments(payload, itemIndex, valorProdutos);
+    return toMoneyNumber(
+        itemValue
+        + toMoneyNumber((adjustments as any).vFrete)
+        + toMoneyNumber((adjustments as any).vSeg)
+        + toMoneyNumber((adjustments as any).vOutro)
+        - toMoneyNumber((adjustments as any).vDesc)
+    );
+}
+
+function getNFeRtcTotalBase(payload: EmissionPayload, valorProdutos: number) {
+    return toMoneyNumber(
+        payload.itens.reduce((sum, _item, index) => {
+            return sum + getNFeItemRtcBase(payload, index, valorProdutos);
+        }, 0)
+    );
 }
 
 function buildNFeIcmsTot(payload: EmissionPayload, valorProdutos: number) {
@@ -914,6 +975,37 @@ async function getNextNFeNumber(
     return Number(nextNumber);
 }
 
+
+function extractNFeNumberFromAccessKey(accessKey?: string | null) {
+    const key = String(accessKey || "").replace(/\D/g, "");
+    if (key.length !== 44) return null;
+    const number = Number(key.slice(25, 34));
+    return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+async function ensureNFeSequenceAtLeast(
+    supabase: any,
+    organizationId: string,
+    environment: "production" | "homologation",
+    serie: number,
+    number: number,
+) {
+    if (!Number.isFinite(number) || number <= 0) return;
+
+    const { error } = await supabase
+        .from("nfe_sequences")
+        .upsert({
+            organization_id: organizationId,
+            serie,
+            environment,
+            last_number: number,
+            updated_at: new Date().toISOString(),
+        }, { onConflict: "organization_id,serie,environment" });
+
+    if (error) {
+        console.warn("[NFe] Nao foi possivel ajustar sequencia apos rejeicao:", error);
+    }
+}
 function buildNFeInfRespTec(company: any, cnpjEmit: string, environment: "production" | "homologation") {
     const isProduction = environment === "production";
     const rtCnpj = String(
@@ -1265,7 +1357,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                             finality: 1,
                             cfop: nfceDestination.cfop,
                             sameState: nfceDestination.mesmoEstado,
-                        })
+                        }, toMoneyNumber(item.valor_total))
 
                     }
 
@@ -1320,7 +1412,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                         finality: 1,
                         cfop: nfceDestination.cfop,
                         sameState: nfceDestination.mesmoEstado,
-                    })
+                    }, toMoneyNumber(payload.valor_total))
 
                 },
 
@@ -1716,13 +1808,13 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                             ...buildRtcHomologationItemImposto(env, {
                                 ...rtcNFeVendaContext,
                                 cfop: cfopVenda,
-                            }),
+                            }, getNFeItemRtcBase(payload, index, valorTotal)),
                         },
                     };
                 }),
                 total: {
                     ICMSTot: buildNFeIcmsTot(payload, valorTotal),
-                    ...buildRtcHomologationTotal(env, rtcNFeVendaContext),
+                    ...buildRtcHomologationTotal(env, rtcNFeVendaContext, getNFeRtcTotalBase(payload, valorTotal)),
                 },
                 transp: buildNFeTransp(payload),
                 pag: { detPag: buildNFeDetPag(payload, getNFeValorNota(payload, valorTotal), "01") },
@@ -1791,22 +1883,29 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
         }
 
         const realStatus = result.status;
+        const providerStatus = String(result.status || "").toLowerCase();
 
-        if (realStatus === "rejeitado") {
-            const codigoErro = result.autorizacao?.codigo_status || "N/A";
-            const motivoErro = result.autorizacao?.motivo_status || "Motivo nao informado";
+        if (["erro", "rejeitado", "denegado"].includes(providerStatus)) {
+            const codigoErro = result.autorizacao?.codigo_status || result.motivo_status || "N/A";
+            const motivoErro = result.autorizacao?.motivo_status || result.motivo || "Motivo nao informado";
+            const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || nfeNumber;
+            if (String(codigoErro) === "539") {
+                await ensureNFeSequenceAtLeast(supabase, payload.organization_id, env, nfeSerie, rejectedNumber);
+            }
             await supabase
                 .from("fiscal_invoices")
                 .update({
                     status: "rejected",
                     nuvemfiscal_uuid: result.id,
                     chave_acesso: result.chave,
-                    numero: String(result.numero || ""),
-                    serie: String(result.serie || ""),
+                    numero: String(rejectedNumber || ""),
+                    serie: String(nfeSerie || ""),
                     error_message: `Erro ${codigoErro}: ${motivoErro}`,
+                    motivo_rejeicao: `Erro ${codigoErro}: ${motivoErro}`,
                 })
                 .eq("id", invoice.id);
-            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`, invoiceId: invoice.id };
+            const retryHint = String(codigoErro) === "539" ? " A numeracao local foi ajustada; tente emitir novamente para usar o proximo numero." : "";
+            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}${retryHint}`, invoiceId: invoice.id };
         }
 
         if (realStatus === "autorizado") {
@@ -2070,22 +2169,29 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
         }
 
         const realStatus = result.status;
+        const providerStatus = String(result.status || "").toLowerCase();
 
-        if (realStatus === "rejeitado") {
-            const codigoErro = result.autorizacao?.codigo_status || "N/A";
-            const motivoErro = result.autorizacao?.motivo_status || "Motivo nao informado";
+        if (["erro", "rejeitado", "denegado"].includes(providerStatus)) {
+            const codigoErro = result.autorizacao?.codigo_status || result.motivo_status || "N/A";
+            const motivoErro = result.autorizacao?.motivo_status || result.motivo || "Motivo nao informado";
+            const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || nfeNumber;
+            if (String(codigoErro) === "539") {
+                await ensureNFeSequenceAtLeast(supabase, payload.organization_id, env, nfeSerie, rejectedNumber);
+            }
             await supabase
                 .from("fiscal_invoices")
                 .update({
                     status: "rejected",
                     nuvemfiscal_uuid: result.id,
                     chave_acesso: result.chave,
-                    numero: String(result.numero || ""),
-                    serie: String(result.serie || ""),
+                    numero: String(rejectedNumber || ""),
+                    serie: String(nfeSerie || ""),
                     error_message: `Erro ${codigoErro}: ${motivoErro}`,
+                    motivo_rejeicao: `Erro ${codigoErro}: ${motivoErro}`,
                 })
                 .eq("id", invoice.id);
-            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`, invoiceId: invoice.id };
+            const retryHint = String(codigoErro) === "539" ? " A numeracao local foi ajustada; tente emitir novamente para usar o proximo numero." : "";
+            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}${retryHint}`, invoiceId: invoice.id };
         }
 
         if (realStatus === "autorizado") {
@@ -2328,22 +2434,29 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
         }
 
         const realStatus = result.status;
+        const providerStatus = String(result.status || "").toLowerCase();
 
-        if (realStatus === "rejeitado") {
-            const codigoErro = result.autorizacao?.codigo_status || "N/A";
-            const motivoErro = result.autorizacao?.motivo_status || "Motivo nao informado";
+        if (["erro", "rejeitado", "denegado"].includes(providerStatus)) {
+            const codigoErro = result.autorizacao?.codigo_status || result.motivo_status || "N/A";
+            const motivoErro = result.autorizacao?.motivo_status || result.motivo || "Motivo nao informado";
+            const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || nfeNumber;
+            if (String(codigoErro) === "539") {
+                await ensureNFeSequenceAtLeast(supabase, payload.organization_id, env, nfeSerie, rejectedNumber);
+            }
             await supabase
                 .from("fiscal_invoices")
                 .update({
                     status: "rejected",
                     nuvemfiscal_uuid: result.id,
                     chave_acesso: result.chave,
-                    numero: String(result.numero || ""),
-                    serie: String(result.serie || ""),
+                    numero: String(rejectedNumber || ""),
+                    serie: String(nfeSerie || ""),
                     error_message: `Erro ${codigoErro}: ${motivoErro}`,
+                    motivo_rejeicao: `Erro ${codigoErro}: ${motivoErro}`,
                 })
                 .eq("id", invoice.id);
-            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`, invoiceId: invoice.id };
+            const retryHint = String(codigoErro) === "539" ? " A numeracao local foi ajustada; tente emitir novamente para usar o proximo numero." : "";
+            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}${retryHint}`, invoiceId: invoice.id };
         }
 
         if (realStatus === "autorizado") {
@@ -2589,21 +2702,28 @@ export async function emitirNFeTransferencia(payload: EmissionPayload & { observ
         }
 
         const realStatus = result.status;
-        if (realStatus === "rejeitado") {
-            const codigoErro = result.autorizacao?.codigo_status || "N/A";
-            const motivoErro = result.autorizacao?.motivo_status || "Motivo nao informado";
+        const providerStatus = String(result.status || "").toLowerCase();
+        if (["erro", "rejeitado", "denegado"].includes(providerStatus)) {
+            const codigoErro = result.autorizacao?.codigo_status || result.motivo_status || "N/A";
+            const motivoErro = result.autorizacao?.motivo_status || result.motivo || "Motivo nao informado";
+            const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || nfeNumber;
+            if (String(codigoErro) === "539") {
+                await ensureNFeSequenceAtLeast(supabase, payload.organization_id, env, nfeSerie, rejectedNumber);
+            }
             await supabase
                 .from("fiscal_invoices")
                 .update({
                     status: "rejected",
                     nuvemfiscal_uuid: result.id,
                     chave_acesso: result.chave,
-                    numero: String(result.numero || ""),
-                    serie: String(result.serie || ""),
+                    numero: String(rejectedNumber || ""),
+                    serie: String(nfeSerie || ""),
                     error_message: `Erro ${codigoErro}: ${motivoErro}`,
+                    motivo_rejeicao: `Erro ${codigoErro}: ${motivoErro}`,
                 })
                 .eq("id", invoice.id);
-            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`, invoiceId: invoice.id };
+            const retryHint = String(codigoErro) === "539" ? " A numeracao local foi ajustada; tente emitir novamente para usar o proximo numero." : "";
+            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}${retryHint}`, invoiceId: invoice.id };
         }
 
         if (realStatus === "autorizado") {
@@ -3003,13 +3123,17 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
                     },
                     imposto: {
                         ...buildNFeItemImposto(item, item.csosn || "400"),
-                        ...buildRtcHomologationItemImposto(env, rtcNFeAssistidaContexts[index]),
+                        ...buildRtcHomologationItemImposto(
+                            env,
+                            rtcNFeAssistidaContexts[index],
+                            getNFeItemRtcBase(payload, index, valorTotal)
+                        ),
                     },
                 })),
                 total: {
                     ICMSTot: buildNFeIcmsTot(payload, valorTotal),
                     ...(rtcNFeAssistidaTotalContext
-                        ? buildRtcHomologationTotal(env, rtcNFeAssistidaTotalContext)
+                        ? buildRtcHomologationTotal(env, rtcNFeAssistidaTotalContext, getNFeRtcTotalBase(payload, valorTotal))
                         : {}),
                 },
                 transp: buildNFeTransp(payload),
@@ -3377,22 +3501,29 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
         }
 
         const realStatus = result.status;
+        const providerStatus = String(result.status || "").toLowerCase();
 
-        if (realStatus === "rejeitado") {
-            const codigoErro = result.autorizacao?.codigo_status || "N/A";
-            const motivoErro = result.autorizacao?.motivo_status || "Motivo nao informado";
+        if (["erro", "rejeitado", "denegado"].includes(providerStatus)) {
+            const codigoErro = result.autorizacao?.codigo_status || result.motivo_status || "N/A";
+            const motivoErro = result.autorizacao?.motivo_status || result.motivo || "Motivo nao informado";
+            const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || nfeNumber;
+            if (String(codigoErro) === "539") {
+                await ensureNFeSequenceAtLeast(supabase, payload.organization_id, env, nfeSerie, rejectedNumber);
+            }
             await supabase
                 .from("fiscal_invoices")
                 .update({
                     status: "rejected",
                     nuvemfiscal_uuid: result.id,
                     chave_acesso: result.chave,
-                    numero: String(result.numero || ""),
-                    serie: String(result.serie || ""),
+                    numero: String(rejectedNumber || ""),
+                    serie: String(nfeSerie || ""),
                     error_message: `Erro ${codigoErro}: ${motivoErro}`,
+                    motivo_rejeicao: `Erro ${codigoErro}: ${motivoErro}`,
                 })
                 .eq("id", invoice.id);
-            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`, invoiceId: invoice.id };
+            const retryHint = String(codigoErro) === "539" ? " A numeracao local foi ajustada; tente emitir novamente para usar o proximo numero." : "";
+            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}${retryHint}`, invoiceId: invoice.id };
         }
 
         if (realStatus === "autorizado") {
@@ -3645,22 +3776,29 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
         }
 
         const realStatus = result.status;
+        const providerStatus = String(result.status || "").toLowerCase();
 
-        if (realStatus === "rejeitado") {
-            const codigoErro = result.autorizacao?.codigo_status || "N/A";
-            const motivoErro = result.autorizacao?.motivo_status || "Motivo nao informado";
+        if (["erro", "rejeitado", "denegado"].includes(providerStatus)) {
+            const codigoErro = result.autorizacao?.codigo_status || result.motivo_status || "N/A";
+            const motivoErro = result.autorizacao?.motivo_status || result.motivo || "Motivo nao informado";
+            const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || nfeNumber;
+            if (String(codigoErro) === "539") {
+                await ensureNFeSequenceAtLeast(supabase, payload.organization_id, env, nfeSerie, rejectedNumber);
+            }
             await supabase
                 .from("fiscal_invoices")
                 .update({
                     status: "rejected",
                     nuvemfiscal_uuid: result.id,
                     chave_acesso: result.chave,
-                    numero: String(result.numero || ""),
-                    serie: String(result.serie || ""),
+                    numero: String(rejectedNumber || ""),
+                    serie: String(nfeSerie || ""),
                     error_message: `Erro ${codigoErro}: ${motivoErro}`,
+                    motivo_rejeicao: `Erro ${codigoErro}: ${motivoErro}`,
                 })
                 .eq("id", invoice.id);
-            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`, invoiceId: invoice.id };
+            const retryHint = String(codigoErro) === "539" ? " A numeracao local foi ajustada; tente emitir novamente para usar o proximo numero." : "";
+            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}${retryHint}`, invoiceId: invoice.id };
         }
 
         if (realStatus === "autorizado") {
@@ -5480,7 +5618,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         ICMS: icmsImposto,
                         PIS: { PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 } },
                         COFINS: { COFINSOutr: { CST: "99", vBC: 0, pCOFINS: 0, vCOFINS: 0 } },
-                        ...buildRtcHomologationItemImposto(env, rtcNFeDevolucaoContext),
+                        ...buildRtcHomologationItemImposto(env, rtcNFeDevolucaoContext, itemVProd),
                     },
                 },
                 vBC: vBC_item,
@@ -5555,7 +5693,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         vIPI: 0, vIPIDevol: 0, vPIS: 0, vCOFINS: 0,
                         vOutro: 0, vNF: toMoneyNumber(payload.valor_total),
                     },
-                    ...buildRtcHomologationTotal(env, rtcNFeDevolucaoContext),
+                    ...buildRtcHomologationTotal(env, rtcNFeDevolucaoContext, toMoneyNumber(payload.valor_total)),
                 },
                 transp: { modFrete: 9 },
                 pag: { detPag: [{ tPag: "90", vPag: 0 }] },
@@ -5620,26 +5758,29 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         }
 
         const realStatus = result.status;
+        const providerStatus = String(result.status || "").toLowerCase();
 
-        if (realStatus === "rejeitado") {
-            const codigoErro = result.autorizacao?.codigo_status || "N/A";
-            const motivoErro = result.autorizacao?.motivo_status || "Motivo não informado";
+        if (["erro", "rejeitado", "denegado"].includes(providerStatus)) {
+            const codigoErro = result.autorizacao?.codigo_status || result.motivo_status || "N/A";
+            const motivoErro = result.autorizacao?.motivo_status || result.motivo || "Motivo nao informado";
+            const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || nfeNumber;
+            if (String(codigoErro) === "539") {
+                await ensureNFeSequenceAtLeast(supabase, payload.organization_id, env, nfeSerie, rejectedNumber);
+            }
             await supabase
                 .from("fiscal_invoices")
                 .update({
                     status: "rejected",
                     nuvemfiscal_uuid: result.id,
                     chave_acesso: result.chave,
-                    numero: String(result.numero || ""),
-                    serie: String(result.serie || ""),
+                    numero: String(rejectedNumber || ""),
+                    serie: String(nfeSerie || ""),
                     error_message: `Erro ${codigoErro}: ${motivoErro}`,
+                    motivo_rejeicao: `Erro ${codigoErro}: ${motivoErro}`,
                 })
                 .eq("id", invoice.id);
-            return {
-                success: false,
-                error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`,
-                invoiceId: invoice.id,
-            };
+            const retryHint = String(codigoErro) === "539" ? " A numeracao local foi ajustada; tente emitir novamente para usar o proximo numero." : "";
+            return { success: false, error: `NF-e Rejeitada: Erro ${codigoErro} - ${motivoErro}${retryHint}`, invoiceId: invoice.id };
         }
 
         if (realStatus === "autorizado") {
