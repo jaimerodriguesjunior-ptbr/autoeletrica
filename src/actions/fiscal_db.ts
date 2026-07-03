@@ -188,6 +188,7 @@ export async function getEntryInvoiceWithItems(invoiceId: string) {
     if (error || !invoice) return null;
 
     let items: ParsedNFeItem[] = [];
+    let parsedInfNFe: any = null;
 
     if (invoice.xml_content) {
         try {
@@ -197,12 +198,17 @@ export async function getEntryInvoiceWithItems(invoiceId: string) {
             const nfeProc = xml.nfeProc || xml.NFe;
             const infNFe = nfeProc?.NFe?.infNFe || xml.infNFe;
             items = extractItemsFromInfNFe(infNFe);
+            parsedInfNFe = infNFe;
         } catch (e) {
             console.warn("[getEntryInvoiceWithItems] Erro ao parsear XML:", e);
         }
     }
 
-    return { invoice, items };
+    if (!parsedInfNFe && invoice.payload_json?.infNFe) {
+        parsedInfNFe = invoice.payload_json.infNFe;
+    }
+
+    return { invoice, items, parsedInfNFe };
 }
 
 export async function getNFeInvoiceWithItems(invoiceId: string) {
@@ -218,6 +224,7 @@ export async function getNFeInvoiceWithItems(invoiceId: string) {
     if (error || !invoice) return null;
 
     let items: ParsedNFeItem[] = [];
+    let parsedInfNFe: any = null;
 
     let xmlContent = invoice.xml_content;
 
@@ -244,6 +251,7 @@ export async function getNFeInvoiceWithItems(invoiceId: string) {
             const nfeProc = xml.nfeProc || xml.NFe;
             const infNFe = nfeProc?.NFe?.infNFe || xml.infNFe;
             items = extractItemsFromInfNFe(infNFe);
+            parsedInfNFe = infNFe;
         } catch (e) {
             console.warn("[getNFeInvoiceWithItems] Erro ao parsear XML:", e);
         }
@@ -252,8 +260,11 @@ export async function getNFeInvoiceWithItems(invoiceId: string) {
     if (items.length === 0 && invoice.payload_json?.infNFe) {
         items = extractItemsFromInfNFe(invoice.payload_json.infNFe);
     }
+    if (!parsedInfNFe && invoice.payload_json?.infNFe) {
+        parsedInfNFe = invoice.payload_json.infNFe;
+    }
 
-    return { invoice, items };
+    return { invoice, items, parsedInfNFe };
 }
 
 export async function getEntryInvoiceWithItemsAction(invoiceId: string) {

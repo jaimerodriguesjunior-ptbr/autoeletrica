@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
@@ -253,6 +253,25 @@ function participantFromNFeDest(dest: any): Participant {
         cidade: end?.xMun || "",
         uf: String(end?.UF || "").toUpperCase(),
         codigo_municipio: String(end?.cMun || ""),
+    };
+}
+
+function participantFromNFeEmit(emit: any): Participant {
+    const end = emit?.enderEmit || {};
+    return {
+        nome: emit?.xNome ? String(emit.xNome) : "",
+        cpf_cnpj: emit?.CNPJ || emit?.CPF ? String(emit.CNPJ || emit.CPF) : "",
+        inscricao_estadual: emit?.IE ? String(emit.IE) : "",
+        ind_ie_dest: emit?.IE ? "1" : "9",
+        email: emit?.email ? String(emit.email) : "",
+        telefone: end?.fone ? String(end.fone) : "",
+        cep: end?.CEP ? String(end.CEP) : "",
+        logradouro: end?.xLgr ? String(end.xLgr) : "",
+        numero: end?.nro ? String(end.nro) : "",
+        bairro: end?.xBairro ? String(end.xBairro) : "",
+        cidade: end?.xMun ? String(end.xMun) : "",
+        uf: end?.UF ? String(end.UF).toUpperCase() : "",
+        codigo_municipio: end?.cMun ? String(end.cMun) : "",
     };
 }
 
@@ -609,6 +628,7 @@ export default function NFeCompletaPage() {
     const [returnItems, setReturnItems] = useState<ReturnItemState[]>([]);
     const [loadingEntryItems, setLoadingEntryItems] = useState(false);
     const [items, setItems] = useState<DraftItem[]>([makeItem()]);
+    const [advancedExtraItems, setAdvancedExtraItems] = useState<DraftItem[]>([]);
     const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
     const [modFrete, setModFrete] = useState("9");
     const [carrierName, setCarrierName] = useState("");
@@ -662,12 +682,13 @@ export default function NFeCompletaPage() {
             ? "Operação interna"
             : "Operação interestadual";
     const totalItems = items.reduce((sum, item) => sum + item.quantidade * item.valor_unitario, 0);
+    const advancedExtraTotal = advancedExtraItems.reduce((sum, item) => sum + item.quantidade * item.valor_unitario, 0);
     const requiresReference = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp;
     const allowsAdvancedOriginReference = operation === "advanced";
     const selectedReturnItems = returnItems.filter((item) => item.selected && item.qtd_devolver > 0);
     const usesAdvancedOriginItems = operation === "advanced" && returnItems.length > 0;
     const returnTotal = selectedReturnItems.reduce((sum, item) => sum + item.qtd_devolver * item.valor_unitario, 0);
-    const displayTotal = usesOriginItems ? returnTotal : totalItems;
+    const displayTotal = usesOriginItems ? returnTotal : usesAdvancedOriginItems ? totalItems + advancedExtraTotal : totalItems;
     const isReferenceSelectionPending = requiresReference && !selectedEntryInvoice;
     const shouldShowOriginSelector = (requiresReference && !isReturnPurposeUnavailable) || allowsAdvancedOriginReference;
     const participantCnpjBase = cnpjBase(participant.cpf_cnpj);
@@ -861,6 +882,7 @@ export default function NFeCompletaPage() {
         setSelectedEntryInvoice(null);
         setReferencedKey("");
         setReturnItems([]);
+        setAdvancedExtraItems([]);
         setEntrySearch("");
         setOriginQuickFilter("recent");
         setOriginSelectorExpanded(false);
@@ -1154,8 +1176,11 @@ export default function NFeCompletaPage() {
                 issues.push("Complete o endereco do participante.");
             }
             if (!isRetornoConsertoMvp && !isRetornoGarantiaMvp && !isRetornoDepositoMvp) {
-                if (items.length === 0) issues.push("Adicione ao menos um item.");
-                items.forEach((item, index) => {
+                const allItems = (operation === "advanced" && returnItems.length > 0)
+                    ? [...items, ...advancedExtraItems]
+                    : items;
+                if (allItems.length === 0) issues.push("Adicione ao menos um item.");
+                allItems.forEach((item, index) => {
                     if (!item.descricao.trim()) issues.push(`Item ${index + 1}: informe a descrição.`);
                     if (!/^\d{8}$/.test(digits(item.ncm))) issues.push(`Item ${index + 1}: informe NCM válido.`);
                     if (!item.cfop || digits(item.cfop).length !== 4) issues.push(`Item ${index + 1}: CFOP pendente.`);
@@ -1211,12 +1236,16 @@ export default function NFeCompletaPage() {
         }
 
         return issues;
-    }, [operation, purpose, isEmissionSupported, isRetornoConsertoMvp, isRetornoGarantiaMvp, isRetornoDepositoMvp, selectedEntryInvoice, referencedKey, selectedReturnItems.length, participant, items, modFrete, carrierName, carrierDoc, isTransferBetweenBranches, transferHasDifferentRoot, advancedNature, advancedTpNF, advancedFinNFe, indPres, indIntermed, intermediadorCnpj, intermediadorIdCadastro, meioPagamento, valorFrete, valorSeguro, valorDesconto, valorOutrasDespesas, totalItems]);
+    }, [operation, purpose, isEmissionSupported, isRetornoConsertoMvp, isRetornoGarantiaMvp, isRetornoDepositoMvp, selectedEntryInvoice, referencedKey, selectedReturnItems.length, returnItems.length, participant, items, advancedExtraItems, modFrete, carrierName, carrierDoc, isTransferBetweenBranches, transferHasDifferentRoot, advancedNature, advancedTpNF, advancedFinNFe, indPres, indIntermed, intermediadorCnpj, intermediadorIdCadastro, meioPagamento, valorFrete, valorSeguro, valorDesconto, valorOutrasDespesas, totalItems]);
 
     const stepHasPending = (id: StepId) => {
         if (id === "operation") return !operation || !purpose || (requiresReference && (!selectedEntryInvoice || digits(referencedKey).length !== 44));
         if (id === "participant") return operation !== "return" && (!participant.nome || !isValidDoc(participant.cpf_cnpj) || !participant.uf || !participant.codigo_municipio);
-        if (id === "items") return usesOriginItems ? selectedReturnItems.length === 0 : items.some((item) => !item.descricao || !/^\d{8}$/.test(digits(item.ncm)) || !item.cfop);
+        if (id === "items") {
+            if (usesOriginItems) return selectedReturnItems.length === 0;
+            const allItems = usesAdvancedOriginItems ? [...items, ...advancedExtraItems] : items;
+            return allItems.length === 0 || allItems.some((item) => !item.descricao || !/^\d{8}$/.test(digits(item.ncm)) || !item.cfop);
+        }
         if (id === "transport") {
             const naturezaNormalized = advancedNature.trim().toLowerCase();
             const isVendaSaida = operation === "advanced" && advancedTpNF === "1" && naturezaNormalized.includes("venda");
@@ -1277,10 +1306,20 @@ export default function NFeCompletaPage() {
                 return;
             }
 
+            const parsedInfNFe = (data as any).parsedInfNFe;
+
+            // Para retorno de conserto/garantia/depósito: usa destinatário da nota de saída
             if (isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) {
-                const dest = data.invoice?.payload_json?.infNFe?.dest;
+                const dest = parsedInfNFe?.dest ?? data.invoice?.payload_json?.infNFe?.dest;
                 if (dest) {
                     setParticipant(participantFromNFeDest(dest));
+                    setParticipantMode("manual");
+                }
+            } else {
+                // Para devolução e outra operação (advanced): usa emitente da nota de entrada
+                const emit = parsedInfNFe?.emit ?? data.invoice?.payload_json?.infNFe?.emit;
+                if (emit?.xNome) {
+                    setParticipant(participantFromNFeEmit(emit));
                     setParticipantMode("manual");
                 }
             }
@@ -1356,6 +1395,16 @@ export default function NFeCompletaPage() {
                 ? { ...item, qtd_devolver: Math.min(Math.max(0, quantity), item.quantidade) }
                 : item
         )));
+    };
+
+    const updateReturnCfop = (index: number, cfop: string) => {
+        setReturnItems((current) => current.map((item, itemIndex) => (
+            itemIndex === index ? { ...item, cfop } : item
+        )));
+    };
+
+    const updateAdvancedExtraItem = (id: string, patch: Partial<DraftItem>) => {
+        setAdvancedExtraItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
     };
 
     const toggleReturnItem = (index: number) => {
@@ -1460,14 +1509,19 @@ export default function NFeCompletaPage() {
     };
 
     const selectProductForItem = (itemId: string, product: ProductResult) => {
-        updateItem(itemId, {
+        const patch = {
             codigo: product.id,
             descricao: product.nome || "",
             ncm: product.ncm || "",
             unidade: product.unidade || "UN",
             valor_unitario: Number(product.preco_venda || 0),
             cfop: operation === "advanced" ? (product.cfop || "") : suggestedCfop,
-        });
+        };
+        if (advancedExtraItems.some((i) => i.id === itemId)) {
+            updateAdvancedExtraItem(itemId, patch);
+        } else {
+            updateItem(itemId, patch);
+        }
         setFocusedItemId(null);
     };
 
@@ -1503,6 +1557,8 @@ export default function NFeCompletaPage() {
         setAiAuditStatus(null);
         setAiAudit("Contador virtual analisando a nota...");
         try {
+            const allItems = [...items, ...advancedExtraItems];
+            const allItemsTotal = Number((totalItems + advancedExtraTotal).toFixed(2));
             const payload = {
             ambiente: environment,
             operacao: operation,
@@ -1511,7 +1567,7 @@ export default function NFeCompletaPage() {
             finalidade_nfe: advancedFinNFe,
             classificacao_destino: destinationLabel,
             participante: participant,
-            itens: items.map((item) => ({
+            itens: allItems.map((item) => ({
                 codigo: item.codigo,
                 descricao: item.descricao,
                 ncm: item.ncm,
@@ -1567,7 +1623,7 @@ export default function NFeCompletaPage() {
                 infCpl,
                 infAdFisco,
             },
-            total: Number(totalItems.toFixed(2)),
+            total: allItemsTotal,
         };
 
             setLastAiAuditPayload(payload);
@@ -2133,11 +2189,13 @@ export default function NFeCompletaPage() {
             `Natureza: ${advancedNature}\n` +
             `Tipo NF-e: ${advancedTpNF === "1" ? "Saída" : "Entrada"}\n` +
             `Finalidade: ${advancedFinNFe}\n` +
-            `Itens: ${items.length}\n` +
-            `Total: ${money(totalItems)}`;
+            `Itens: ${items.length + advancedExtraItems.length}\n` +
+            `Total: ${money(totalItems + advancedExtraTotal)}`;
         if (!confirm(confirmMessage)) return;
 
         setEmitting(true);
+        const allItems = [...items, ...advancedExtraItems];
+        const allItemsTotal = Number((totalItems + advancedExtraTotal).toFixed(2));
         try {
             const result = await emitirNFeAssistidaUiAction({
                 organization_id: profile.organization_id,
@@ -2158,7 +2216,7 @@ export default function NFeCompletaPage() {
                         ind_ie_dest: participant.ind_ie_dest,
                     },
                 },
-                itens: items.map((item, index) => ({
+                itens: allItems.map((item, index) => ({
                     codigo: item.codigo || `ITEM-${index + 1}`,
                     descricao: item.descricao,
                     ncm: digits(item.ncm),
@@ -2185,7 +2243,7 @@ export default function NFeCompletaPage() {
                     cofins_aliquota: Number(item.cofins_aliquota || 0),
                     cofins_valor: Number(item.cofins_valor || 0),
                 })),
-                valor_total: Number(totalItems.toFixed(2)),
+                valor_total: allItemsTotal,
                 valor_frete: Number(valorFrete || 0),
                 valor_seguro: Number(valorSeguro || 0),
                 valor_desconto: Number(valorDesconto || 0),
@@ -2292,7 +2350,9 @@ export default function NFeCompletaPage() {
             cfop: suggestedCfop,
             csosn: "espelho",
         }))
-        : items;
+        : usesAdvancedOriginItems
+            ? [...items, ...advancedExtraItems]
+            : items;
 
     return (
         <div className="mx-auto max-w-7xl space-y-5 pb-32">
@@ -2892,7 +2952,7 @@ export default function NFeCompletaPage() {
                                         {usesOriginItems
                                             ? "Selecione os itens da nota de origem e as quantidades desta emissão."
                                             : usesAdvancedOriginItems
-                                                ? "Selecione os itens carregados da NF-e de origem e ajuste a quantidade devolvida."
+                                                ? "Selecione e edite o CFOP dos itens da NF-e de origem. Adicione itens extras abaixo se necessário."
                                             : "Tributação e CFOP são tratados por item."}
                                     </p>
                                 </div>
@@ -2908,13 +2968,136 @@ export default function NFeCompletaPage() {
                             </div>
 
                             {usesOriginItems || usesAdvancedOriginItems ? (
-                                <ReturnItemsTable
-                                    items={returnItems}
-                                    loading={loadingEntryItems}
-                                    toggleItem={toggleReturnItem}
-                                    updateQty={updateReturnQty}
-                                    mode={(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? "retorno" : "devolucao"}
-                                />
+                                <>
+                                    <ReturnItemsTable
+                                        items={returnItems}
+                                        loading={loadingEntryItems}
+                                        toggleItem={toggleReturnItem}
+                                        updateQty={updateReturnQty}
+                                        updateCfop={usesAdvancedOriginItems ? updateReturnCfop : undefined}
+                                        mode={(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? "retorno" : "devolucao"}
+                                    />
+                                    {usesAdvancedOriginItems && (
+                                        <div className="mt-2 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm font-black text-[#1A1A1A]">Itens adicionais</p>
+                                                    <p className="text-xs text-stone-500">Itens extras além dos carregados da nota de origem.</p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAdvancedExtraItems((current) => [...current, makeItem()])}
+                                                    className="flex w-fit items-center gap-2 rounded-xl bg-[#1A1A1A] px-4 py-2 text-xs font-black text-[#FACC15] transition hover:bg-black"
+                                                >
+                                                    <Package size={16} /> Adicionar item
+                                                </button>
+                                            </div>
+                                            {advancedExtraItems.length === 0 ? (
+                                                <p className="rounded-xl border border-stone-100 bg-stone-50 p-4 text-sm font-medium text-stone-400">
+                                                    Nenhum item adicional. Clique em &quot;Adicionar item&quot; para incluir.
+                                                </p>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {advancedExtraItems.map((item, index) => (
+                                                        <div key={item.id} className="rounded-2xl border border-stone-100 bg-[#F8F7F2] p-4">
+                                                            <div className="mb-3 flex items-center justify-between">
+                                                                <p className="text-sm font-black text-[#1A1A1A]">Item adicional {index + 1}</p>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setAdvancedExtraItems((current) => current.filter((i) => i.id !== item.id))}
+                                                                    className="text-xs font-black text-red-500"
+                                                                >
+                                                                    Remover
+                                                                </button>
+                                                            </div>
+                                                            <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
+                                                                <div className="xl:col-span-12">
+                                                                    <label className={itemLabelClass}>Descrição</label>
+                                                                    <div className="relative">
+                                                                        <input
+                                                                            value={item.descricao}
+                                                                            onChange={(e) => updateAdvancedExtraItem(item.id, { descricao: e.target.value, codigo: item.codigo && item.descricao !== e.target.value ? "" : item.codigo })}
+                                                                            onFocus={() => setFocusedItemId(item.id)}
+                                                                            onBlur={() => setTimeout(() => setFocusedItemId(null), 180)}
+                                                                            className={`${itemFieldClass} !border-amber-300 !bg-amber-100`}
+                                                                            placeholder="Buscar peça do estoque..."
+                                                                        />
+                                                                        {focusedItemId === item.id && (
+                                                                            <div className="absolute left-0 top-full z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-stone-200 bg-white p-2 shadow-xl">
+                                                                                <ProductLookup
+                                                                                    query={item.descricao}
+                                                                                    onSelect={(product) => selectProductForItem(item.id, product)}
+                                                                                />
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="xl:col-span-3">
+                                                                    <label className={itemLabelClass}>NCM</label>
+                                                                    <input value={item.ncm} onChange={(e) => updateAdvancedExtraItem(item.id, { ncm: digits(e.target.value).slice(0, 8) })} className={itemFieldClass} />
+                                                                </div>
+                                                                <div className="xl:col-span-3">
+                                                                    <label className={itemLabelClass}>CFOP</label>
+                                                                    <input value={item.cfop} onChange={(e) => updateAdvancedExtraItem(item.id, { cfop: digits(e.target.value).slice(0, 4) })} className={itemFieldClass} />
+                                                                </div>
+                                                                <div className="xl:col-span-2">
+                                                                    <label className={itemLabelClass}>UN</label>
+                                                                    <input value={item.unidade} onChange={(e) => updateAdvancedExtraItem(item.id, { unidade: e.target.value.toUpperCase().slice(0, 6) })} className={itemFieldClass} />
+                                                                </div>
+                                                                <div className="xl:col-span-2">
+                                                                    <label className={itemLabelClass}>Qtd</label>
+                                                                    <input type="number" value={item.quantidade} onChange={(e) => updateAdvancedExtraItem(item.id, { quantidade: Number(e.target.value) })} className={itemFieldClass} />
+                                                                </div>
+                                                                <div className="xl:col-span-2">
+                                                                    <label className={itemLabelClass}>Valor</label>
+                                                                    <input type="number" step="0.01" value={item.valor_unitario} onChange={(e) => updateAdvancedExtraItem(item.id, { valor_unitario: Number(e.target.value) })} className={itemFieldClass} />
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-12">
+                                                                <div className="xl:col-span-3">
+                                                                    <label className={itemLabelClass}>CSOSN/CST</label>
+                                                                    <input value={item.csosn} onChange={(e) => updateAdvancedExtraItem(item.id, { csosn: e.target.value })} className={itemFieldClass} />
+                                                                </div>
+                                                                <div className="xl:col-span-5">
+                                                                    <label className={itemLabelClass}>Origem</label>
+                                                                    <select value={item.origem} onChange={(e) => updateAdvancedExtraItem(item.id, { origem: e.target.value })} className={itemFieldClass}>
+                                                                        <option value="0">0 - Nacional</option>
+                                                                        <option value="1">1 - Estrangeira direta</option>
+                                                                        <option value="2">2 - Estrangeira mercado interno</option>
+                                                                    </select>
+                                                                </div>
+                                                                <div className="rounded-xl bg-white p-4 xl:col-span-4">
+                                                                    <p className="text-[10px] font-black uppercase text-stone-400">Total do item</p>
+                                                                    <p className="mt-1 text-2xl font-black text-[#1A1A1A]">{money(item.quantidade * item.valor_unitario)}</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-4 space-y-3 rounded-xl border border-stone-200 bg-white p-3">
+                                                                <p className="text-[11px] font-black uppercase tracking-wide text-stone-500">Tributação avançada</p>
+                                                                <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>CEST</label><input value={item.cest || ""} onChange={(e) => updateAdvancedExtraItem(item.id, { cest: e.target.value })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>cBenef</label><input value={item.cbenef || ""} onChange={(e) => updateAdvancedExtraItem(item.id, { cbenef: e.target.value })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>IPI CST</label><input value={item.ipi_cst || ""} onChange={(e) => updateAdvancedExtraItem(item.id, { ipi_cst: e.target.value })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>IPI cEnq</label><input value={item.ipi_cenq || ""} onChange={(e) => updateAdvancedExtraItem(item.id, { ipi_cenq: e.target.value })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-4"><label className={itemLabelClass}>Base IPI</label><input type="number" step="0.01" value={item.ipi_base ?? 0} onChange={(e) => updateAdvancedExtraItem(item.id, { ipi_base: Number(e.target.value) })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-4"><label className={itemLabelClass}>Alíquota IPI</label><input type="number" step="0.01" value={item.ipi_aliquota ?? 0} onChange={(e) => updateAdvancedExtraItem(item.id, { ipi_aliquota: Number(e.target.value) })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-4"><label className={itemLabelClass}>Valor IPI</label><input type="number" step="0.01" value={item.ipi_valor ?? 0} onChange={(e) => updateAdvancedExtraItem(item.id, { ipi_valor: Number(e.target.value) })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>PIS CST</label><input value={item.pis_cst || "99"} onChange={(e) => updateAdvancedExtraItem(item.id, { pis_cst: e.target.value })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>Base PIS</label><input type="number" step="0.01" value={item.pis_base ?? 0} onChange={(e) => updateAdvancedExtraItem(item.id, { pis_base: Number(e.target.value) })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>Alíquota PIS</label><input type="number" step="0.01" value={item.pis_aliquota ?? 0} onChange={(e) => updateAdvancedExtraItem(item.id, { pis_aliquota: Number(e.target.value) })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>Valor PIS</label><input type="number" step="0.01" value={item.pis_valor ?? 0} onChange={(e) => updateAdvancedExtraItem(item.id, { pis_valor: Number(e.target.value) })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>COFINS CST</label><input value={item.cofins_cst || "99"} onChange={(e) => updateAdvancedExtraItem(item.id, { cofins_cst: e.target.value })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>Base COFINS</label><input type="number" step="0.01" value={item.cofins_base ?? 0} onChange={(e) => updateAdvancedExtraItem(item.id, { cofins_base: Number(e.target.value) })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>Alíquota COFINS</label><input type="number" step="0.01" value={item.cofins_aliquota ?? 0} onChange={(e) => updateAdvancedExtraItem(item.id, { cofins_aliquota: Number(e.target.value) })} className={itemFieldClass} /></div>
+                                                                    <div className="xl:col-span-3"><label className={itemLabelClass}>Valor COFINS</label><input type="number" step="0.01" value={item.cofins_valor ?? 0} onChange={(e) => updateAdvancedExtraItem(item.id, { cofins_valor: Number(e.target.value) })} className={itemFieldClass} /></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
                             ) : (
                             <div className="space-y-3">
                                 {items.map((item, index) => (
@@ -3718,12 +3901,14 @@ function ReturnItemsTable({
     loading,
     toggleItem,
     updateQty,
+    updateCfop,
     mode,
 }: {
     items: ReturnItemState[];
     loading: boolean;
     toggleItem: (index: number) => void;
     updateQty: (index: number, value: string) => void;
+    updateCfop?: (index: number, cfop: string) => void;
     mode: "devolucao" | "retorno";
 }) {
     if (loading) {
@@ -3751,9 +3936,11 @@ function ReturnItemsTable({
                     {mode === "retorno" ? "Itens da remessa de origem" : "Itens espelhados da NF-e de entrada"}
                 </p>
                 <p className="mt-1 text-xs font-medium text-stone-500">
-                    {mode === "retorno"
-                        ? "O retorno referencia a chave original e usa os itens do XML autorizado como base."
-                        : "A emissão usa o mesmo backend aprovado: os impostos/taxas são espelhados a partir do XML original."}
+                    {updateCfop
+                        ? "Edite o CFOP de cada item conforme necessário para esta operação. Os demais dados são espelhados da nota de origem."
+                        : mode === "retorno"
+                            ? "O retorno referencia a chave original e usa os itens do XML autorizado como base."
+                            : "A emissão usa o mesmo backend aprovado: os impostos/taxas são espelhados a partir do XML original."}
                 </p>
             </div>
             <div className="overflow-x-auto">
@@ -3763,6 +3950,7 @@ function ReturnItemsTable({
                             <th className="px-4 py-3 text-left"></th>
                             <th className="px-4 py-3 text-left">Produto</th>
                             <th className="px-4 py-3 text-left">NCM</th>
+                            {updateCfop && <th className="px-4 py-3 text-left">CFOP</th>}
                             <th className="px-4 py-3 text-right">Qtd. original</th>
                             <th className="px-4 py-3 text-right">{mode === "retorno" ? "Qtd. retornar" : "Qtd. devolver"}</th>
                             <th className="px-4 py-3 text-right">Valor unit.</th>
@@ -3785,6 +3973,18 @@ function ReturnItemsTable({
                                     <p className="mt-1 text-xs font-medium text-stone-400">{item.codigo}</p>
                                 </td>
                                 <td className="px-4 py-3 font-mono text-xs text-stone-500">{item.ncm}</td>
+                                {updateCfop && (
+                                    <td className="px-4 py-3">
+                                        <input
+                                            type="text"
+                                            value={item.cfop || ""}
+                                            onChange={(e) => updateCfop(index, e.target.value.replace(/\D/g, "").slice(0, 4))}
+                                            disabled={!item.selected}
+                                            className="w-20 rounded-lg border border-stone-200 px-2 py-1 text-center font-black outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 disabled:bg-stone-50"
+                                            placeholder="CFOP"
+                                        />
+                                    </td>
+                                )}
                                 <td className="px-4 py-3 text-right font-bold text-stone-600">{item.quantidade} {item.unidade}</td>
                                 <td className="px-4 py-3 text-right">
                                     <input

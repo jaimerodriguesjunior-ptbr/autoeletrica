@@ -441,6 +441,10 @@ function buildIntermediador(payload: EmissionPayload) {
 }
 
 function buildNFeDetPag(payload: EmissionPayload, valorTotal: number, fallback = "90") {
+    const finNFe = Number(payload.finalidade_nfe ?? 1);
+    if ([2, 3, 4].includes(finNFe)) {
+        return [{ tPag: "90", vPag: 0 }];
+    }
     const tPag = payload.meio_pagamento || fallback;
     return [{ tPag, vPag: tPag === "90" ? 0 : valorTotal }];
 }
