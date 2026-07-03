@@ -324,11 +324,7 @@ function scaleValue(value: number | undefined, ratio: number) {
 }
 
 function cfopForAdvancedOriginItem(item: ParsedNFeItem, advancedFinNFe: "1" | "2" | "3" | "4") {
-    if (advancedFinNFe !== "4") return item.cfop || "";
-    const original = String(item.cfop || "");
-    if (original.startsWith("5")) return "5202";
-    if (original.startsWith("6")) return "6202";
-    return "";
+    return item.cfop || "";
 }
 
 function draftItemFromReturnItem(item: ReturnItemState, advancedFinNFe: "1" | "2" | "3" | "4"): DraftItem {
@@ -910,6 +906,21 @@ export default function NFeCompletaPage() {
     }, [operation, returnItems, advancedFinNFe]);
 
     useEffect(() => {
+        if (operation !== "advanced" || returnItems.length === 0) return;
+
+        if (advancedFinNFe === "4") {
+            setReturnItems((current) => current.map((item) => {
+                const currentCfop = item.cfop || "";
+                if (currentCfop.startsWith("1") || currentCfop.startsWith("2")) {
+                    const prefix = currentCfop.startsWith("1") ? "5" : "6";
+                    return { ...item, cfop: `${prefix}202` };
+                }
+                return item;
+            }));
+        }
+    }, [advancedFinNFe, operation]);
+
+    useEffect(() => {
         if (operation !== "advanced") return;
         if (!advancedAuditReady) return;
         setAdvancedAuditReady(false);
@@ -1324,11 +1335,22 @@ export default function NFeCompletaPage() {
                 }
             }
 
-            setReturnItems(data.items.map((item) => ({
-                ...item,
-                selected: true,
-                qtd_devolver: item.quantidade,
-            })));
+            setReturnItems(data.items.map((item) => {
+                let initialCfop = item.cfop || "";
+                if (operation === "advanced" && advancedFinNFe === "4") {
+                    if (initialCfop.startsWith("1") || initialCfop.startsWith("5")) {
+                        initialCfop = "5202";
+                    } else if (initialCfop.startsWith("2") || initialCfop.startsWith("6")) {
+                        initialCfop = "6202";
+                    }
+                }
+                return {
+                    ...item,
+                    selected: true,
+                    qtd_devolver: item.quantidade,
+                    cfop: initialCfop,
+                };
+            }));
         } catch (error: any) {
             alert(error.message || "Erro ao carregar itens da NF-e de origem.");
             setReturnItems([]);
@@ -1355,11 +1377,22 @@ export default function NFeCompletaPage() {
 
             setReferencedKey(cleanKey);
             setSelectedEntryInvoice(result.invoice as EntryInvoiceSummary);
-            setReturnItems((result.items || []).map((item: ParsedNFeItem) => ({
-                ...item,
-                selected: true,
-                qtd_devolver: item.quantidade,
-            })));
+            setReturnItems((result.items || []).map((item: ParsedNFeItem) => {
+                let initialCfop = item.cfop || "";
+                if (operation === "advanced" && advancedFinNFe === "4") {
+                    if (initialCfop.startsWith("1") || initialCfop.startsWith("5")) {
+                        initialCfop = "5202";
+                    } else if (initialCfop.startsWith("2") || initialCfop.startsWith("6")) {
+                        initialCfop = "6202";
+                    }
+                }
+                return {
+                    ...item,
+                    selected: true,
+                    qtd_devolver: item.quantidade,
+                    cfop: initialCfop,
+                };
+            }));
 
             const originParticipant = result.originParticipant;
             if (originParticipant?.nome && originParticipant?.cpf_cnpj) {

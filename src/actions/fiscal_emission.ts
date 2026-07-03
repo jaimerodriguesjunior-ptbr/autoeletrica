@@ -707,8 +707,10 @@ function shouldSendRtcHomologationGroup(
 
     return (
         context.model === 55 &&
-        context.finality === 1 &&
-        ["5101", "5102", "6101", "6102"].includes(context.cfop)
+        (
+            (context.finality === 1 && ["5101", "5102", "6101", "6102"].includes(context.cfop)) ||
+            (context.finality === 4 && ["5202", "6202"].includes(context.cfop))
+        )
     );
 }
 
@@ -2919,6 +2921,17 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
             console.warn("[NFe Assistida] referenced_key ignorada: chave invalida.");
         }
 
+        const finalityNFeAssistida = Number(payload.finalidade_nfe ?? 1) as 1 | 2 | 3 | 4;
+        const rtcNFeAssistidaContexts: RtcHomologationContext[] = payload.itens.map((item) => ({
+            model: 55,
+            finality: finalityNFeAssistida,
+            cfop: item.cfop,
+            sameState: mesmoEstado,
+        }));
+        const rtcNFeAssistidaTotalContext = rtcNFeAssistidaContexts.find((context) =>
+            shouldSendRtcHomologationGroup(env, context)
+        );
+
         const nfePayload = {
             ambiente: env === "production" ? "producao" : "homologacao",
             infNFe: {
@@ -2933,10 +2946,13 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
                     tpNF: Number(payload.tipo_nfe ?? 1),
                     idDest: mesmoEstado ? 1 : 2,
                     cMunFG: Number(company.codigo_municipio_ibge),
+                    ...(rtcNFeAssistidaTotalContext
+                        ? { cMunFGIBS: Number(company.codigo_municipio_ibge) }
+                        : {}),
                     tpImp: 1,
                     tpEmis: 1,
                     tpAmb: env === "production" ? 1 : 2,
-                    finNFe: Number(payload.finalidade_nfe ?? 1),
+                    finNFe: finalityNFeAssistida,
                     indFinal: payload.ind_final ?? 1,
                     indPres: payload.ind_pres ?? 9,
                     indIntermed: payload.ind_intermed ?? 0,
@@ -2985,10 +3001,16 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
                         vUnTrib: toMoneyNumber(item.valor_unitario),
                         indTot: 1,
                     },
-                    imposto: buildNFeItemImposto(item, item.csosn || "400"),
+                    imposto: {
+                        ...buildNFeItemImposto(item, item.csosn || "400"),
+                        ...buildRtcHomologationItemImposto(env, rtcNFeAssistidaContexts[index]),
+                    },
                 })),
                 total: {
                     ICMSTot: buildNFeIcmsTot(payload, valorTotal),
+                    ...(rtcNFeAssistidaTotalContext
+                        ? buildRtcHomologationTotal(env, rtcNFeAssistidaTotalContext)
+                        : {}),
                 },
                 transp: buildNFeTransp(payload),
                 pag: { detPag: buildNFeDetPag(payload, getNFeValorNota(payload, valorTotal), "90") },
@@ -5401,6 +5423,12 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         // 4. CFOP: interna (5202) ou interestadual (6202)
         const mesmoEstado = company.uf === fornecedorUF;
         const cfopDevolucao = mesmoEstado ? "5202" : "6202";
+        const rtcNFeDevolucaoContext: RtcHomologationContext = {
+            model: 55,
+            finality: 4,
+            cfop: cfopDevolucao,
+            sameState: mesmoEstado,
+        };
 
         // 5. Próximo número de NF-e de devolução (série 1) — filtrado por ambiente
         const nfeSerie = getCompanyNFeSerie(company);
@@ -5452,6 +5480,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         ICMS: icmsImposto,
                         PIS: { PISOutr: { CST: "99", vBC: 0, pPIS: 0, vPIS: 0 } },
                         COFINS: { COFINSOutr: { CST: "99", vBC: 0, pCOFINS: 0, vCOFINS: 0 } },
+                        ...buildRtcHomologationItemImposto(env, rtcNFeDevolucaoContext),
                     },
                 },
                 vBC: vBC_item,
@@ -5477,6 +5506,9 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     tpNF: 1,
                     idDest: mesmoEstado ? 1 : 2,
                     cMunFG: Number(company.codigo_municipio_ibge),
+                    ...(shouldSendRtcHomologationGroup(env, rtcNFeDevolucaoContext)
+                        ? { cMunFGIBS: Number(company.codigo_municipio_ibge) }
+                        : {}),
                     tpImp: 1,
                     tpEmis: 1,
                     tpAmb: env === "production" ? 1 : 2,
@@ -5523,6 +5555,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         vIPI: 0, vIPIDevol: 0, vPIS: 0, vCOFINS: 0,
                         vOutro: 0, vNF: toMoneyNumber(payload.valor_total),
                     },
+                    ...buildRtcHomologationTotal(env, rtcNFeDevolucaoContext),
                 },
                 transp: { modFrete: 9 },
                 pag: { detPag: [{ tPag: "90", vPag: 0 }] },
