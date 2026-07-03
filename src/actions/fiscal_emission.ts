@@ -698,7 +698,7 @@ function shouldSendRtcHomologationGroup(
     environment: "production" | "homologation",
     context?: RtcHomologationContext
 ) {
-    if (environment !== "homologation") return false;
+    if (!["homologation", "production"].includes(environment)) return false;
     if (!context) return true;
 
     if (context.model === 65) {
