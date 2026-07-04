@@ -661,17 +661,23 @@ export default function NFeCompletaPage() {
     const stepIndex = STEPS.findIndex((item) => item.id === step);
     const participantUf = participant.uf.trim().toUpperCase();
     const isVendaComumMvp = operation === "sale" && purpose === "Venda comum";
-    const isRemessaConsertoMvp = operation === "shipment" && purpose === "Remessa para conserto";
-    const isRemessaGarantiaMvp = operation === "shipment" && purpose === "Remessa em garantia";
-    const isRetornoConsertoMvp = operation === "shipment" && purpose === "Retorno de conserto";
-    const isRetornoGarantiaMvp = operation === "shipment" && purpose === "Retorno de garantia";
-    const isRetornoDepositoMvp = operation === "transfer" && purpose === "Retorno de depósito";
-    const isTransferenciaMvp = operation === "transfer" && ["Transferência entre filiais", "Transferência para depósito", "Retorno de depósito"].includes(purpose);
-    const isBonusMvp = operation === "bonus" && ["Bonificação", "Brinde", "Doação"].includes(purpose);
+    // Operações fora do escopo do MVP atual (2026-07-04) permanecem implementadas no
+    // motor, mas ficam bloqueadas na UI para evitar emissão acidental fora do escopo
+    // fechado (venda e devolução via "Outra operação"). Para reabrir qualquer uma,
+    // trocar o flag para true após teste e registro em NUVEMLOCALFISCAL.md.
+    const isRemessaConsertoMvp = false;
+    const isRemessaGarantiaMvp = false;
+    const isRetornoConsertoMvp = false;
+    const isRetornoGarantiaMvp = false;
+    const isRetornoDepositoMvp = false;
+    const isTransferenciaMvp = false;
+    const isBonusMvp = false;
     const isSalePurposeUnavailable = operation === "sale" && purpose !== "Venda comum";
     const isReturnPurposeUnavailable = operation === "return" && purpose !== "Devolução de compra";
     const usesOriginItems = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp;
-    const isEmissionSupported = isVendaComumMvp || isRemessaConsertoMvp || isRemessaGarantiaMvp || isRetornoConsertoMvp || isRetornoGarantiaMvp || isTransferenciaMvp || isBonusMvp;
+    // MVP de NF-e: somente venda comum; devolução e venda com parâmetros fiscais de
+    // venda/devolução entram pelo caminho de "Outra operação" (advanced).
+    const isEmissionSupported = isVendaComumMvp;
     const destinationLabel = !participantUf || !companyUf
         ? "Aguardando endereco"
         : participantUf === companyUf
