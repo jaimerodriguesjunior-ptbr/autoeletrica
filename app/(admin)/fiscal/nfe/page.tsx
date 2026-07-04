@@ -1167,7 +1167,7 @@ export default function NFeCompletaPage() {
             if (![ "0", "1" ].includes(advancedTpNF)) issues.push("Tipo da NF-e inválido no modo assistido.");
             if (![ "1", "2", "3", "4" ].includes(advancedFinNFe)) issues.push("Finalidade da NF-e inválida no modo assistido.");
         }
-        if (!isEmissionSupported && operation !== "return" && operation !== "advanced") {
+        if (!isEmissionSupported && operation !== "return") {
             issues.push("Emissão real indisponível para a combinação atual de operação/finalidade.");
         }
         if (operation === "return") {
