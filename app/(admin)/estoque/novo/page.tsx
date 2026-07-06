@@ -20,6 +20,8 @@ export default function NovoProduto() {
   const [fetchingNCM, setFetchingNCM] = useState(false);
   const [ncmOptions, setNcmOptions] = useState<{ code: string; description: string }[] | null>(null);
   const [ncmAiStatus, setNcmAiStatus] = useState<{ label: string; tone: "green" | "yellow" | "red"; confidence?: number } | null>(null);
+  const [brandSuggestions, setBrandSuggestions] = useState<string[]>([]);
+  const [brandOpen, setBrandOpen] = useState(false);
 
   // Estados dos Campos
   const [nome, setNome] = useState("");
@@ -52,8 +54,35 @@ export default function NovoProduto() {
         setMarkupValor(settings.markup_valor_importacao ?? 2.0);
       }
     };
+
+    const loadBrandSuggestions = async () => {
+      if (!profile?.organization_id) return;
+
+      const { data, error } = await supabase
+        .from("products")
+        .select("marca")
+        .eq("organization_id", profile.organization_id)
+        .not("marca", "is", null);
+
+      if (error) {
+        console.error("Erro ao carregar marcas sugeridas:", error);
+        return;
+      }
+
+      const brands = Array.from(
+        new Set(
+          (data || [])
+            .map((item) => (item.marca || "").trim())
+            .filter(Boolean)
+        )
+      ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+      setBrandSuggestions(brands);
+    };
+
     loadSettings();
-  }, []);
+    loadBrandSuggestions();
+  }, [profile?.organization_id]);
 
   // --- NOVO: Lógica de Espelhamento ---
   // Quando muda o Custo Real, atualiza também o de Reposição
@@ -158,6 +187,10 @@ export default function NovoProduto() {
     }
   };
 
+  const filteredBrandSuggestions = brandSuggestions.filter((brand) =>
+    brand.toLowerCase().includes(marca.toLowerCase().trim())
+  ).slice(0, 8);
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-32">
 
@@ -190,9 +223,38 @@ export default function NovoProduto() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
+                <div className="space-y-1 relative">
                   <label className="text-xs font-bold text-stone-400 ml-2">MARCA</label>
-                  <input type="text" value={marca} onChange={e => setMarca(e.target.value)} placeholder="Ex: Philips" className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
+                  <input
+                    type="text"
+                    value={marca}
+                    onChange={e => {
+                      setMarca(e.target.value);
+                      setBrandOpen(true);
+                    }}
+                    onFocus={() => setBrandOpen(true)}
+                    onBlur={() => setTimeout(() => setBrandOpen(false), 120)}
+                    placeholder="Ex: Philips"
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                  />
+                  {brandOpen && filteredBrandSuggestions.length > 0 && (
+                    <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl">
+                      {filteredBrandSuggestions.map((brand) => (
+                        <button
+                          key={brand}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setMarca(brand);
+                            setBrandOpen(false);
+                          }}
+                          className="block w-full px-4 py-3 text-left text-sm font-medium text-[#1A1A1A] hover:bg-stone-50"
+                        >
+                          {brand}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-stone-400 ml-2">CÓDIGO (REF)</label>
