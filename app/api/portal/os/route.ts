@@ -18,7 +18,15 @@ export async function GET(req: NextRequest) {
         *,
         vehicles ( modelo, placa, cor, fabricante ),
         clients ( nome, whatsapp ),
-        work_order_items ( name, total_price, peca_cliente, tipo )
+        work_order_items (
+          name,
+          quantity,
+          total_price,
+          product_id,
+          peca_cliente,
+          tipo,
+          products ( marca )
+        )
       `)
             .eq('public_token', token)
             .single()
@@ -99,8 +107,20 @@ export async function GET(req: NextRequest) {
             .eq('status', 'authorized')
             .eq('direction', 'output')
 
+        const osPortal = {
+            ...os,
+            work_order_items: (os.work_order_items || []).map((item: any) => {
+                const productData = Array.isArray(item.products) ? item.products[0] : item.products
+                const { products, ...rest } = item
+                return {
+                    ...rest,
+                    marca: productData?.marca || null
+                }
+            })
+        }
+
         return NextResponse.json({ 
-            os, 
+            os: osPortal, 
             logoUrl, 
             telefone, 
             isAppointment: false, 

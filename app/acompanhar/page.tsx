@@ -83,6 +83,14 @@ function ConteudoPortal() {
     );
   }, [companySettings, os, pixValorCustom]);
 
+  const formatItemQuantity = (value: any) => {
+    const quantity = Number(value ?? 1);
+    if (!Number.isFinite(quantity)) return "1";
+    return Number.isInteger(quantity)
+      ? String(quantity)
+      : quantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  };
+
   useEffect(() => {
     if (token) {
       fetchOS();
@@ -148,7 +156,7 @@ function ConteudoPortal() {
       } catch { /* silencioso */ }
 
       // Hash da versão do orçamento (itens + valores)
-      const versaoStr = (os.work_order_items || []).map((i: any) => `${i.name}:${i.total_price}:${i.peca_cliente}`).join('|');
+      const versaoStr = (os.work_order_items || []).map((i: any) => `${i.name}:${i.quantity}:${i.total_price}:${i.peca_cliente}`).join('|');
       const encoder = new TextEncoder();
       const data = encoder.encode(versaoStr + ':' + os.total);
       const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -590,12 +598,14 @@ function ConteudoPortal() {
                               <Package size={11} /> Peças
                             </p>
                             {pecas.map((item: any, idx: number) => (
-                              <div key={idx} className="flex justify-between text-sm">
-                                <span className="text-stone-600">
-                                  {item.name}
-                                  {item.peca_cliente && <span className="ml-1 text-[9px] font-bold text-orange-500 uppercase">(do cliente)</span>}
+                              <div key={idx} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 text-[11px] leading-tight">
+                                <span className="min-w-0 text-stone-600 truncate">
+                                  <span className="font-extrabold text-[#1A1A1A] tabular-nums mr-1">{formatItemQuantity(item.quantity)}</span>
+                                  <span className="font-bold text-stone-500 mr-1">{item.marca || "Sem marca"}</span>
+                                  <span className="font-medium">{item.name}</span>
+                                  {item.peca_cliente && <span className="ml-1 text-[9px] font-bold text-orange-500 uppercase">Cliente</span>}
                                 </span>
-                                <span className="font-bold text-[#1A1A1A]">R$ {Number(item.total_price).toFixed(2)}</span>
+                                <span className="font-extrabold text-[#1A1A1A] tabular-nums whitespace-nowrap">R$ {Number(item.total_price).toFixed(2)}</span>
                               </div>
                             ))}
                           </div>
