@@ -1,9 +1,20 @@
 import { NextResponse } from 'next/server';
 import { getNuvemFiscalToken } from '@/src/lib/nuvemfiscal';
 
-export async function GET() {
+function resolveBaseUrl(environment: 'production' | 'homologation') {
+    if (environment === 'homologation') {
+        return process.env.NUVEMFISCAL_HOM_URL || process.env.NUVEMFISCAL_URL || 'https://api.sandbox.nuvemfiscal.com.br';
+    }
+
+    return process.env.NUVEMFISCAL_PROD_URL || process.env.NUVEMFISCAL_URL || 'https://api.nuvemfiscal.com.br';
+}
+
+export async function GET(request: Request) {
     try {
-        const token = await getNuvemFiscalToken();
+        const { searchParams } = new URL(request.url);
+        const environment = searchParams.get('env') === 'homologation' ? 'homologation' : 'production';
+        const token = await getNuvemFiscalToken(environment);
+        const baseUrl = resolveBaseUrl(environment).replace(/\/$/, '');
 
         const endpoints = [
             '/nfe/emitir',
@@ -18,7 +29,7 @@ export async function GET() {
 
         for (const endpoint of endpoints) {
             try {
-                const url = `${process.env.NUVEMFISCAL_URL}${endpoint}`;
+                const url = `${baseUrl}${endpoint}`;
                 const response = await fetch(url, {
                     method: 'POST', // Tentando POST pois é o método de emissão
                     headers: {
@@ -41,7 +52,8 @@ export async function GET() {
 
         return NextResponse.json({
             sucesso: true,
-            base_url: process.env.NUVEMFISCAL_URL,
+            environment,
+            base_url: baseUrl,
             results
         });
 
