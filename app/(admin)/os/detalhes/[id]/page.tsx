@@ -77,6 +77,7 @@ type WorkOrderFull = {
 
 type CatalogItem = { id: string; nome: string; price?: number; preco_venda?: number; estoque_atual?: number; ean?: string };
 type GlobalProduct = { id: string; ean: string; name: string; brand: string | null; reference_code: string | null };
+type CheckoutPayment = { amount: string; method: string; installments: number; chequeDate: string };
 
 export default function DetalhesOS() {
   const { id } = useParams();
@@ -196,6 +197,7 @@ export default function DetalhesOS() {
   const [dataCheque, setDataCheque] = useState("");
   const [valorFinal, setValorFinal] = useState("");
   const [parcelas, setParcelas] = useState(1);
+  const [pagamentosCheckout, setPagamentosCheckout] = useState<CheckoutPayment[]>([]);
 
   // Adiantamento
   const [modalAdiantamentoAberto, setModalAdiantamentoAberto] = useState(false);
@@ -921,7 +923,59 @@ export default function DetalhesOS() {
     }
   };
 
+  const handleCheckoutDividido = async () => {
+    if (!os || !profile?.organization_id) return;
+    const valorTotal = Number(valorFinal);
+    const totalPagamentos = pagamentosCheckout.reduce((total, pagamento) => total + Number(pagamento.amount || 0), 0);
+    if (!Number.isFinite(valorTotal) || valorTotal <= 0) return alert("Informe um valor final valido.");
+    if (pagamentosCheckout.some(pagamento => !Number.isFinite(Number(pagamento.amount)) || Number(pagamento.amount) <= 0)) return alert("Informe um valor valido para cada pagamento.");
+    if (Math.abs(totalPagamentos - valorTotal) > 0.009) return alert(`A soma dos pagamentos (${formatCurrency(totalPagamentos)}) deve ser igual ao total a receber (${formatCurrency(valorTotal)}).`);
+    if (pagamentosCheckout.some(pagamento => pagamento.method === "cheque_pre" && !pagamento.chequeDate)) return alert("Informe a data de deposito para cada pagamento a prazo.");
+
+    setUpdating(true);
+    try {
+      const hoje = new Date();
+      const transacoesParaInserir: any[] = [];
+      for (const [indice, pagamento] of pagamentosCheckout.entries()) {
+        const valorPagamento = Number(pagamento.amount);
+        const descricao = `Recebimento OS #${os.id} - ${os.clients?.nome} (Pagamento ${indice + 1}: ${pagamento.method})`;
+        if (pagamento.method === "cartao_credito") {
+          for (let i = 1; i <= pagamento.installments; i++) {
+            const vencimento = new Date(hoje);
+            vencimento.setDate(hoje.getDate() + (i * 30));
+            transacoesParaInserir.push({ organization_id: profile.organization_id, work_order_id: os.id, description: `${descricao} - Parc ${i}/${pagamento.installments}`, amount: valorPagamento / pagamento.installments, type: "income", category: "Servi\u00e7os", status: "pending", payment_method: pagamento.method, date: new Date(vencimento.getTime() - vencimento.getTimezoneOffset() * 60000).toISOString().split("T")[0] });
+          }
+        } else {
+          transacoesParaInserir.push({ organization_id: profile.organization_id, work_order_id: os.id, description: pagamento.method === "cheque_pre" ? `${descricao} (Cheque)` : descricao, amount: valorPagamento, type: "income", category: "Servi\u00e7os", status: pagamento.method === "cheque_pre" ? "pending" : "paid", payment_method: pagamento.method, date: pagamento.method === "cheque_pre" ? pagamento.chequeDate : new Date(hoje.getTime() - hoje.getTimezoneOffset() * 60000).toISOString().split("T")[0] });
+        }
+      }
+      const { error: osError } = await supabase.from("work_orders").update({ status: "entregue", total: valorTotal }).eq("id", os.id);
+      if (osError) throw osError;
+      const { error: transError } = await supabase.from("transactions").insert(transacoesParaInserir);
+      if (transError) throw transError;
+
+      if (usaComissao) {
+        const comissoesParaInserir: any[] = [];
+        for (const item of os.work_order_items?.filter(i => i.tipo === "servico") || []) {
+          const assignedIds = assignmentsMap[item.id] || [];
+          for (const empId of assignedIds) {
+            const pct = listaFuncionarios.find(f => f.id === empId)?.comissao_percentual || 0;
+            if (pct > 0) comissoesParaInserir.push({ organization_id: profile.organization_id, work_order_id: os.id, work_order_item_id: item.id, employee_id: empId, amount: Math.round(((item.total_price * pct) / 100 / assignedIds.length) * 100) / 100, status: "pending" });
+          }
+        }
+        if (comissoesParaInserir.length) await supabase.from("commissions").insert(comissoesParaInserir);
+      }
+      alert("OS finalizada e financeiro lancado!");
+      setModalCheckoutAberto(false);
+      setPagamentosCheckout([]);
+      setOs({ ...os, status: "entregue", total: valorTotal });
+    } catch (error: any) {
+      alert("Erro no checkout: " + error.message);
+    } finally { setUpdating(false); }
+  };
+
   const handleCheckout = async () => {
+    if (pagamentosCheckout.length > 0) return handleCheckoutDividido();
     if (!os || !profile?.organization_id) return;
 
     if (formaPagamento === "cheque_pre" && !dataCheque) {
@@ -1608,7 +1662,7 @@ export default function DetalhesOS() {
                     <div><p className="font-bold text-sm">Pronto p/ Entrega</p><p className="text-xs opacity-80">Veículo testado e liberado</p></div>
                   </div>
                   {os!.status === 'pronto' && (
-                    <button onClick={() => { setValorFinal(Math.max(0, saldoRestante).toFixed(2)); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                    <button onClick={() => { const saldo = Math.max(0, saldoRestante).toFixed(2); setValorFinal(saldo); setPagamentosCheckout([{ amount: saldo, method: "pix", installments: 1, chequeDate: "" }]); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
                       Entregar & Fechar
                     </button>
                   )}
@@ -1652,7 +1706,7 @@ export default function DetalhesOS() {
                     <div><p className="font-bold text-sm">Serviço Pronto</p><p className="text-xs opacity-80">Aguardando retirada</p></div>
                   </div>
                   {os!.status === 'pronto' && (
-                    <button onClick={() => { setValorFinal(Math.max(0, saldoRestante).toFixed(2)); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                    <button onClick={() => { const saldo = Math.max(0, saldoRestante).toFixed(2); setValorFinal(saldo); setPagamentosCheckout([{ amount: saldo, method: "pix", installments: 1, chequeDate: "" }]); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
                       Receber & Fechar
                     </button>
                   )}
@@ -2812,7 +2866,7 @@ export default function DetalhesOS() {
                 <p className="text-[10px] text-stone-400 mt-2">Você pode ajustar o valor final aqui (descontos)</p>
               </div>
 
-              <div className="space-y-4">
+              <div className="hidden">
                 <div>
                   <label className="text-xs font-bold text-stone-400 ml-2">FORMA DE PAGAMENTO</label>
                   <select
@@ -2860,10 +2914,37 @@ export default function DetalhesOS() {
                 )}
               </div>
 
+              <div className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <label className="text-xs font-bold text-stone-400">FORMAS DE PAGAMENTO</label>
+                  <button type="button" onClick={() => setPagamentosCheckout(prev => [...prev, { amount: "", method: "pix", installments: 1, chequeDate: "" }])} className="text-xs font-bold text-green-700 flex items-center gap-1"><Plus size={14} /> Adicionar forma</button>
+                </div>
+                {pagamentosCheckout.map((pagamento, indice) => (
+                  <div key={indice} className="rounded-2xl border-2 border-stone-200 bg-stone-50 p-3 space-y-3">
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="text-[10px] font-bold text-stone-400 ml-1">FORMA</label>
+                        <select value={pagamento.method} onChange={(e) => setPagamentosCheckout(prev => prev.map((item, i) => i === indice ? { ...item, method: e.target.value, installments: 1, chequeDate: "" } : item))} className="w-full bg-white rounded-xl p-3 outline-none font-medium border border-stone-300">
+                          <option value="pix">Pix</option><option value="dinheiro">Dinheiro</option><option value="cartao_debito">Cartao de Debito</option><option value="cartao_credito">Cartao de Credito</option><option value="cheque_pre">A prazo</option>
+                        </select>
+                      </div>
+                      <div className="w-28">
+                        <label className="text-[10px] font-bold text-stone-400 ml-1">VALOR</label>
+                        <input type="number" min="0.01" step="0.01" value={pagamento.amount} onChange={(e) => setPagamentosCheckout(prev => prev.map((item, i) => i === indice ? { ...item, amount: e.target.value } : item))} className="w-full bg-white rounded-xl p-3 outline-none font-bold border border-stone-300" />
+                      </div>
+                      {pagamentosCheckout.length > 1 && <button type="button" aria-label="Remover forma de pagamento" onClick={() => setPagamentosCheckout(prev => prev.filter((_, i) => i !== indice))} className="p-3 text-red-500"><Trash2 size={18} /></button>}
+                    </div>
+                    {pagamento.method === "cartao_credito" && <select value={pagamento.installments} onChange={(e) => setPagamentosCheckout(prev => prev.map((item, i) => i === indice ? { ...item, installments: Number(e.target.value) } : item))} className="w-full bg-white rounded-xl p-3 outline-none font-medium border border-stone-300">{[1, 2, 3, 4, 5, 6, 10, 12].map(n => <option key={n} value={n}>{n}x de {formatCurrency(Number(pagamento.amount || 0) / n)}</option>)}</select>}
+                    {pagamento.method === "cheque_pre" && <input type="date" value={pagamento.chequeDate} onChange={(e) => setPagamentosCheckout(prev => prev.map((item, i) => i === indice ? { ...item, chequeDate: e.target.value } : item))} className="w-full bg-white rounded-xl p-3 outline-none font-medium border border-stone-300" />}
+                  </div>
+                ))}
+                <div className="flex justify-between px-2 text-xs font-bold"><span className="text-stone-500">Soma informada</span><span className={Math.abs(pagamentosCheckout.reduce((total, pagamento) => total + Number(pagamento.amount || 0), 0) - Number(valorFinal || 0)) < 0.01 ? "text-green-700" : "text-red-600"}>{formatCurrency(pagamentosCheckout.reduce((total, pagamento) => total + Number(pagamento.amount || 0), 0))}</span></div>
+              </div>
+
               <button
                 onClick={handleCheckout}
-                disabled={updating}
-                className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 hover:scale-105 transition"
+                disabled={updating || !Number.isFinite(Number(valorFinal)) || Number(valorFinal) <= 0 || pagamentosCheckout.some(pagamento => !Number.isFinite(Number(pagamento.amount)) || Number(pagamento.amount) <= 0) || Math.abs(pagamentosCheckout.reduce((total, pagamento) => total + Number(pagamento.amount || 0), 0) - Number(valorFinal || 0)) > 0.009}
+                className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition"
               >
                 {updating ? <Loader2 className="animate-spin" /> : <CheckCircle />}
                 Confirmar Recebimento

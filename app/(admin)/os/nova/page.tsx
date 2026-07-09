@@ -374,31 +374,42 @@ export default function NovaOS() {
       const { data, error } = await supabase
         .from("vehicles")
         .select(`
-          id, placa, modelo, fabricante, ano, obs, categoria,
+          id, placa, modelo, fabricante, ano, obs, categoria, created_at,
           clients ( id, nome, whatsapp )
         `)
         .eq("organization_id", profile?.organization_id)
         .eq("placa", placaNormalizada)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(2);
 
       if (error) throw error;
 
-      if (data) {
+      const veiculoEncontrado = data?.[0];
+
+      if (veiculoEncontrado) {
         setVeiculoConfirmado({
-          id: data.id,
-          placa: data.placa,
-          modelo: data.modelo,
-          fabricante: data.fabricante,
+          id: veiculoEncontrado.id,
+          placa: veiculoEncontrado.placa,
+          modelo: veiculoEncontrado.modelo,
+          fabricante: veiculoEncontrado.fabricante,
         });
 
-        if (data.categoria) {
-          setVehicleCategory(data.categoria as 'carro' | 'moto' | 'barco');
+        if (veiculoEncontrado.categoria) {
+          setVehicleCategory(veiculoEncontrado.categoria as 'carro' | 'moto' | 'barco');
+        }
+
+        if (data.length > 1) {
+          console.warn("[Nova OS] Veiculos duplicados encontrados para a mesma placa:", {
+            organization_id: profile?.organization_id,
+            placa: placaNormalizada,
+            vehicleIds: data.map((item) => item.id),
+          });
         }
 
         // @ts-ignore
-        if (data.clients) {
+        if (veiculoEncontrado.clients) {
           // @ts-ignore
-          setClienteSelecionado(data.clients);
+          setClienteSelecionado(veiculoEncontrado.clients);
         }
 
         setStep(2);
@@ -423,21 +434,40 @@ export default function NovaOS() {
     setSearchingVehicle(true);
 
     try {
-      const { data, error } = await supabase
-        .from("vehicles")
-        .insert({
-          organization_id: profile?.organization_id,
-          placa: placaInput.toUpperCase(),
-          modelo: modeloInput,
-          fabricante: fabricanteInput,
-          ano: anoInput,
-          categoria: vehicleCategory,
-          obs: obsVeiculoInput,
-        })
-        .select()
-        .single();
+      const placaNormalizada = placaInput.toUpperCase();
 
-      if (error) throw error;
+      const { data: veiculosExistentes, error: buscaExistenteError } = await supabase
+        .from("vehicles")
+        .select("id, placa, modelo, fabricante, created_at")
+        .eq("organization_id", profile?.organization_id)
+        .eq("placa", placaNormalizada)
+        .order("created_at", { ascending: false })
+        .limit(2);
+
+      if (buscaExistenteError) throw buscaExistenteError;
+
+      let data;
+
+      if (veiculosExistentes && veiculosExistentes.length > 0) {
+        data = veiculosExistentes[0];
+      } else {
+        const { data: insertedVehicle, error } = await supabase
+          .from("vehicles")
+          .insert({
+            organization_id: profile?.organization_id,
+            placa: placaNormalizada,
+            modelo: modeloInput,
+            fabricante: fabricanteInput,
+            ano: anoInput,
+            categoria: vehicleCategory,
+            obs: obsVeiculoInput,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        data = insertedVehicle;
+      }
 
       setVeiculoConfirmado({
         id: data.id,

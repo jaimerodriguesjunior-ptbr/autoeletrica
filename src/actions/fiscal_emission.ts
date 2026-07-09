@@ -281,6 +281,10 @@ function toMoneyNumber(value: unknown, fallback = 0) {
     return fallback;
 }
 
+function toFiscalNumberText(value: unknown, decimals = 2, fallback = 0) {
+    return toMoneyNumber(value, fallback).toFixed(decimals);
+}
+
 function sanitizeFiscalText(value: unknown, maxLength?: number) {
     if (value === null || value === undefined) return undefined;
 
@@ -5505,7 +5509,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         let fornecedorIE: string | undefined;
         let fornecedorUF = "SP";
         // cProd → ICMS original (usado para replicar destaque na devolução)
-        const itemIcmsMap = new Map<string, { vBC: number; pICMS: number; modBC: number; vProd: number }>();
+        const itemIcmsMap = new Map<string, { vBC: number; pICMS: number; vICMS: number; modBC: number; vProd: number; qCom: number }>();
 
         if (entryInvoice.xml_content) {
             try {
@@ -5549,8 +5553,10 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     itemIcmsMap.set(cProd, {
                         vBC: Number(icmsValues?.vBC || vProd),
                         pICMS: Number(icmsValues?.pICMS || 0),
+                        vICMS,
                         modBC: Number(icmsValues?.modBC ?? 3),
                         vProd,
+                        qCom: Number(det.prod?.qCom || 0),
                     });
                 }
             } catch (e) {
@@ -5583,12 +5589,22 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             let vICMS_item = 0;
 
             if (originalIcms && originalIcms.vProd > 0) {
-                // BC da devolução = só o valor da mercadoria (sem frete/outros da nota original)
-                vBC_item = itemVProd;
+                const quantityFactor = originalIcms.qCom > 0
+                    ? item.quantidade / originalIcms.qCom
+                    : itemVProd / originalIcms.vProd;
+                // Usa o ICMS efetivo destacado na entrada; isso cobre diferimento/ICMS51 sem recalcular por aliquota cheia.
+                vBC_item = toMoneyNumber(originalIcms.vBC * quantityFactor);
                 const pICMS = originalIcms.pICMS;
-                vICMS_item = toMoneyNumber(vBC_item * pICMS / 100);
+                vICMS_item = toMoneyNumber(originalIcms.vICMS * quantityFactor);
                 icmsImposto = {
-                    ICMSSN900: { orig: 0, CSOSN: "900", modBC: 3, vBC: vBC_item, pICMS, vICMS: vICMS_item },
+                    ICMSSN900: {
+                        orig: 0,
+                        CSOSN: "900",
+                        modBC: originalIcms.modBC || 3,
+                        vBC: toFiscalNumberText(vBC_item),
+                        pICMS: toFiscalNumberText(pICMS),
+                        vICMS: toFiscalNumberText(vICMS_item),
+                    },
                 };
             } else {
                 icmsImposto = { ICMSSN102: { orig: 0, CSOSN: "102" } };
@@ -5686,7 +5702,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 det: detItemsComputed.map((d) => d.det),
                 total: {
                     ICMSTot: {
-                        vBC: totalVBC, vICMS: totalVICMS, vICMSDeson: 0, vFCP: 0,
+                        vBC: toFiscalNumberText(totalVBC), vICMS: toFiscalNumberText(totalVICMS), vICMSDeson: 0, vFCP: 0,
                         vBCST: 0, vST: 0, vFCPST: 0, vFCPSTRet: 0,
                         vProd: toMoneyNumber(payload.valor_total),
                         vFrete: 0, vSeg: 0, vDesc: 0, vII: 0,
