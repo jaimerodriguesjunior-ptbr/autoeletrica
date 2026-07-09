@@ -1662,7 +1662,7 @@ export default function DetalhesOS() {
                     <div><p className="font-bold text-sm">Pronto p/ Entrega</p><p className="text-xs opacity-80">Veículo testado e liberado</p></div>
                   </div>
                   {os!.status === 'pronto' && (
-                    <button onClick={() => { const saldo = Math.max(0, saldoRestante).toFixed(2); setValorFinal(saldo); setPagamentosCheckout([{ amount: saldo, method: "pix", installments: 1, chequeDate: "" }]); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                    <button onClick={() => { const saldo = Math.max(0, saldoRestante).toFixed(2); setValorFinal(saldo); setPagamentosCheckout([{ amount: saldo, method: "dinheiro", installments: 1, chequeDate: "" }]); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
                       Entregar & Fechar
                     </button>
                   )}
@@ -1706,7 +1706,7 @@ export default function DetalhesOS() {
                     <div><p className="font-bold text-sm">Serviço Pronto</p><p className="text-xs opacity-80">Aguardando retirada</p></div>
                   </div>
                   {os!.status === 'pronto' && (
-                    <button onClick={() => { const saldo = Math.max(0, saldoRestante).toFixed(2); setValorFinal(saldo); setPagamentosCheckout([{ amount: saldo, method: "pix", installments: 1, chequeDate: "" }]); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                    <button onClick={() => { const saldo = Math.max(0, saldoRestante).toFixed(2); setValorFinal(saldo); setPagamentosCheckout([{ amount: saldo, method: "dinheiro", installments: 1, chequeDate: "" }]); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
                       Receber & Fechar
                     </button>
                   )}
