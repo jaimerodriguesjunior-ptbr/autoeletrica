@@ -260,6 +260,20 @@ function buildNfseProviderErrorMessage(result: any, fallback?: string) {
     return fallback || "Erro na emissao da NFS-e.";
 }
 
+function buildNfseUserFacingErrorMessage(result: any, providerMessage: string) {
+    const details = `${providerMessage} ${JSON.stringify(result)}`.toLowerCase();
+
+    if (
+        details.includes("tomador e prestador do servi") ||
+        /(?:^|\D)191(?:\D|$)/.test(details)
+    ) {
+        return "Não foi possível emitir a NFS-e porque o CPF/CNPJ do cliente é o mesmo da empresa emissora. " +
+            "Revise o documento do tomador e tente novamente.";
+    }
+
+    return `Não foi possível emitir a NFS-e. ${providerMessage}`;
+}
+
 function toMoneyNumber(value: unknown, fallback = 0) {
     if (typeof value === "number" && Number.isFinite(value)) {
         return Number(value.toFixed(2));
@@ -4414,6 +4428,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
             const fullErrorString = JSON.stringify(result);
             const normalizedError = `${errorDetails} ${fullErrorString}`.toLowerCase();
+            const userFacingError = buildNfseUserFacingErrorMessage(result, errorDetails);
             const isToledoCredentialIssue =
                 (normalizedError.includes("1824") && normalizedError.includes("nrinscricaomunicipal")) ||
                 normalizedError.includes("8003");
@@ -4559,7 +4574,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                         status: "error",
                         error_message: fullErrorString
                     }).eq("id", invoice.id);
-                    return { success: false, error: `Erro NuvemFiscal: ${errorDetails} ${debugMini}` };
+                    return { success: false, error: userFacingError };
                 }
             }
 
@@ -4569,7 +4584,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                     status: "error",
                     error_message: fullErrorString
                 }).eq("id", invoice.id);
-                return { success: false, error: `Erro NuvemFiscal: ${errorDetails} ${debugMini}` };
+                return { success: false, error: userFacingError };
             }
         }
 
