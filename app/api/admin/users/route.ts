@@ -39,7 +39,7 @@ async function getAuthenticatedOwner() {
 
   if (!profile || profile.cargo !== 'owner') return null;
 
-  return profile as { organization_id: string; cargo: string };
+  return { ...profile, id: user.id } as { id: string; organization_id: string; cargo: string };
 }
 
 export async function POST(req: Request) {
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { action, email, password, nome, cargo, user_id, comissao_percentual, celular } = body;
+    const { action, email, password, nome, cargo, user_id, comissao_percentual, celular, ativo } = body;
 
     // --- AÇÃO 1: CRIAR NOVO USUÁRIO ---
     if (action === 'create') {
@@ -141,6 +141,37 @@ export async function POST(req: Request) {
       if (profileError) throw profileError;
 
       return NextResponse.json({ success: true });
+    }
+
+    // --- AÇÃO 4: BLOQUEAR OU REATIVAR USUÁRIO (SOFT DELETE) ---
+    if (action === 'toggle_status') {
+      if (!user_id || typeof ativo !== 'boolean') {
+        return NextResponse.json({ error: 'ID e status são necessários' }, { status: 400 });
+      }
+
+      if (user_id === caller.id) {
+        return NextResponse.json({ error: 'Você não pode bloquear o próprio acesso' }, { status: 400 });
+      }
+
+      const { data: targetProfile, error: targetError } = await supabaseAdmin
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', user_id)
+        .single();
+
+      if (targetError || targetProfile?.organization_id !== caller.organization_id) {
+        return NextResponse.json({ error: 'Colaborador não encontrado nesta organização' }, { status: 404 });
+      }
+
+      const { error: statusError } = await supabaseAdmin
+        .from('profiles')
+        .update({ ativo })
+        .eq('id', user_id)
+        .eq('organization_id', caller.organization_id);
+
+      if (statusError) throw statusError;
+
+      return NextResponse.json({ success: true, ativo });
     }
 
     return NextResponse.json({ error: 'Ação inválida' }, { status: 400 });

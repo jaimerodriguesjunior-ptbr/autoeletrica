@@ -202,6 +202,7 @@ export default function DetalhesOS() {
   // Adiantamento
   const [modalAdiantamentoAberto, setModalAdiantamentoAberto] = useState(false);
   const [adiantamentos, setAdiantamentos] = useState<{ id: string; amount: number; payment_method: string; created_at: string }[]>([]);
+  const [recebimentosAnteriores, setRecebimentosAnteriores] = useState<{ id: string; amount: number; payment_method: string; created_at: string }[]>([]);
   const [valorAdiantamento, setValorAdiantamento] = useState("");
   const [formaPagamentoAdiantamento, setFormaPagamentoAdiantamento] = useState("pix");
   const [parcelasAdiantamento, setParcelasAdiantamento] = useState(1);
@@ -272,14 +273,16 @@ export default function DetalhesOS() {
         setDefeitosConstatados(data.defeitos_constatados || "");
         setServicosExecutados(data.servicos_executados || "");
 
-        // Busca adiantamentos já lançados
-        const { data: adiantData } = await supabase
+        // Busca valores já recebidos na OS, inclusive de fechamentos anteriores.
+        const { data: recebimentosData } = await supabase
           .from('transactions')
-          .select('id, amount, payment_method, created_at')
+          .select('id, amount, payment_method, created_at, category')
           .eq('work_order_id', data.id)
-          .eq('category', 'Adiantamento')
+          .eq('type', 'income')
+          .in('category', ['Adiantamento', 'Serviços'])
           .order('created_at', { ascending: true });
-        setAdiantamentos(adiantData || []);
+        setAdiantamentos((recebimentosData || []).filter(t => t.category === 'Adiantamento'));
+        setRecebimentosAnteriores((recebimentosData || []).filter(t => t.category === 'Serviços'));
       }
 
     } catch (error) {
@@ -949,18 +952,21 @@ export default function DetalhesOS() {
           transacoesParaInserir.push({ organization_id: profile.organization_id, work_order_id: os.id, description: pagamento.method === "cheque_pre" ? `${descricao} (Cheque)` : descricao, amount: valorPagamento, type: "income", category: "Servi\u00e7os", status: pagamento.method === "cheque_pre" ? "pending" : "paid", payment_method: pagamento.method, date: pagamento.method === "cheque_pre" ? pagamento.chequeDate : new Date(hoje.getTime() - hoje.getTimezoneOffset() * 60000).toISOString().split("T")[0] });
         }
       }
-      const { error: osError } = await supabase.from("work_orders").update({ status: "entregue", total: valorTotal }).eq("id", os.id);
+      const { error: osError } = await supabase.from("work_orders").update({ status: "entregue", total: totalOSBruto }).eq("id", os.id);
       if (osError) throw osError;
       const { error: transError } = await supabase.from("transactions").insert(transacoesParaInserir);
       if (transError) throw transError;
 
       if (usaComissao) {
+        const totalEfetivamenteCobrado = Math.min(totalOSBruto, Math.max(0, totalRecebidoAnterior + valorTotal));
+        const fatorDesconto = totalOSBruto > 0 ? totalEfetivamenteCobrado / totalOSBruto : 0;
         const comissoesParaInserir: any[] = [];
         for (const item of os.work_order_items?.filter(i => i.tipo === "servico") || []) {
           const assignedIds = assignmentsMap[item.id] || [];
           for (const empId of assignedIds) {
             const pct = listaFuncionarios.find(f => f.id === empId)?.comissao_percentual || 0;
-            if (pct > 0) comissoesParaInserir.push({ organization_id: profile.organization_id, work_order_id: os.id, work_order_item_id: item.id, employee_id: empId, amount: Math.round(((item.total_price * pct) / 100 / assignedIds.length) * 100) / 100, status: "pending" });
+            const baseServicoComDesconto = item.total_price * fatorDesconto;
+            if (pct > 0) comissoesParaInserir.push({ organization_id: profile.organization_id, work_order_id: os.id, work_order_item_id: item.id, employee_id: empId, amount: Math.round(((baseServicoComDesconto * pct) / 100 / assignedIds.length) * 100) / 100, status: "pending" });
           }
         }
         if (comissoesParaInserir.length) await supabase.from("commissions").insert(comissoesParaInserir);
@@ -968,7 +974,7 @@ export default function DetalhesOS() {
       alert("OS finalizada e financeiro lancado!");
       setModalCheckoutAberto(false);
       setPagamentosCheckout([]);
-      setOs({ ...os, status: "entregue", total: valorTotal });
+      setOs({ ...os, status: "entregue", total: totalOSBruto });
     } catch (error: any) {
       alert("Erro no checkout: " + error.message);
     } finally { setUpdating(false); }
@@ -986,10 +992,15 @@ export default function DetalhesOS() {
 
     try {
       const valorTotal = parseFloat(valorFinal);
+      if (!Number.isFinite(valorTotal) || valorTotal < 0) {
+        return alert("Informe um valor final v\u00e1lido.");
+      }
       const transacoesParaInserir = [];
       const hoje = new Date();
 
-      if (formaPagamento === 'cartao_credito') {
+      if (valorTotal <= 0.009) {
+        // OS integralmente quitada por adiantamentos: não gera recebimento de valor zero.
+      } else if (formaPagamento === 'cartao_credito') {
         const valorParcela = valorTotal / parcelas;
 
         for (let i = 1; i <= parcelas; i++) {
@@ -1040,20 +1051,24 @@ export default function DetalhesOS() {
         .from('work_orders')
         .update({
           status: 'entregue',
-          total: valorTotal
+          total: totalOSBruto
         })
         .eq('id', os!.id);
 
       if (osError) throw osError;
 
-      const { error: transError } = await supabase
-        .from('transactions')
-        .insert(transacoesParaInserir);
+      if (transacoesParaInserir.length > 0) {
+        const { error: transError } = await supabase
+          .from('transactions')
+          .insert(transacoesParaInserir);
 
-      if (transError) throw transError;
+        if (transError) throw transError;
+      }
 
       // --- GERAR COMISSÕES (se módulo ativo) ---
       if (usaComissao) {
+        const totalEfetivamenteCobrado = Math.min(totalOSBruto, Math.max(0, totalRecebidoAnterior + valorTotal));
+        const fatorDesconto = totalOSBruto > 0 ? totalEfetivamenteCobrado / totalOSBruto : 0;
         const servicoItems = os!.work_order_items?.filter(i => i.tipo === 'servico') || [];
         const comissoesParaInserir: any[] = [];
 
@@ -1066,7 +1081,8 @@ export default function DetalhesOS() {
             const pct = func?.comissao_percentual || 0;
             if (pct <= 0) continue;
 
-            const comissaoTotal = (item.total_price * pct) / 100;
+            const baseServicoComDesconto = item.total_price * fatorDesconto;
+            const comissaoTotal = (baseServicoComDesconto * pct) / 100;
             const comissaoRateada = comissaoTotal / assignedIds.length;
 
             comissoesParaInserir.push({
@@ -1087,7 +1103,7 @@ export default function DetalhesOS() {
 
       alert("OS Finalizada e Financeiro Lançado!");
       setModalCheckoutAberto(false);
-      setOs({ ...os, status: 'entregue', total: valorTotal });
+      setOs({ ...os, status: 'entregue', total: totalOSBruto });
 
     } catch (error: any) {
       alert("Erro no checkout: " + error.message);
@@ -1462,8 +1478,15 @@ export default function DetalhesOS() {
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
-  const totalAdiantado = adiantamentos.reduce((acc, a) => acc + a.amount, 0);
-  const saldoRestante = (os?.total || 0) - totalAdiantado;
+  const totalAdiantado = adiantamentos.reduce((acc, a) => acc + Number(a.amount || 0), 0);
+  const totalRecebimentosAnteriores = recebimentosAnteriores.reduce((acc, recebimento) => acc + Number(recebimento.amount || 0), 0);
+  const totalRecebidoAnterior = totalAdiantado + totalRecebimentosAnteriores;
+  const totalItensBruto = os?.work_order_items?.reduce(
+    (acc, item) => item.peca_cliente ? acc : acc + Number(item.total_price || 0),
+    0
+  ) ?? 0;
+  const totalOSBruto = totalItensBruto > 0 ? totalItensBruto : Number(os?.total || 0);
+  const saldoRestante = totalOSBruto - totalRecebidoAnterior;
 
   const getStatusColor = (stepStatus: string) => {
     if (!os) return "";
@@ -1662,7 +1685,7 @@ export default function DetalhesOS() {
                     <div><p className="font-bold text-sm">Pronto p/ Entrega</p><p className="text-xs opacity-80">Veículo testado e liberado</p></div>
                   </div>
                   {os!.status === 'pronto' && (
-                    <button onClick={() => { const saldo = Math.max(0, saldoRestante).toFixed(2); setValorFinal(saldo); setPagamentosCheckout([{ amount: saldo, method: "dinheiro", installments: 1, chequeDate: "" }]); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                    <button onClick={() => { const saldo = Math.max(0, saldoRestante).toFixed(2); setValorFinal(saldo); setPagamentosCheckout(Number(saldo) > 0 ? [{ amount: saldo, method: "dinheiro", installments: 1, chequeDate: "" }] : []); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
                       Entregar & Fechar
                     </button>
                   )}
@@ -1706,7 +1729,7 @@ export default function DetalhesOS() {
                     <div><p className="font-bold text-sm">Serviço Pronto</p><p className="text-xs opacity-80">Aguardando retirada</p></div>
                   </div>
                   {os!.status === 'pronto' && (
-                    <button onClick={() => { const saldo = Math.max(0, saldoRestante).toFixed(2); setValorFinal(saldo); setPagamentosCheckout([{ amount: saldo, method: "dinheiro", installments: 1, chequeDate: "" }]); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
+                    <button onClick={() => { const saldo = Math.max(0, saldoRestante).toFixed(2); setValorFinal(saldo); setPagamentosCheckout(Number(saldo) > 0 ? [{ amount: saldo, method: "dinheiro", installments: 1, chequeDate: "" }] : []); setModalCheckoutAberto(true); }} disabled={updating} className="bg-[#1A1A1A] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition flex items-center gap-2">
                       Receber & Fechar
                     </button>
                   )}
@@ -2148,16 +2171,22 @@ export default function DetalhesOS() {
 
               <div className="border-t border-stone-300 my-2 pt-4 flex justify-between text-lg">
                 <span className="font-bold text-[#1A1A1A]">Total Geral</span>
-                <span className="font-bold text-[#1A1A1A]">{formatCurrency(os!.total)}</span>
+                <span className="font-bold text-[#1A1A1A]">{formatCurrency(totalOSBruto)}</span>
               </div>
 
-              {/* ADIANTAMENTOS */}
-              {adiantamentos.length > 0 && (
+              {/* VALORES JÁ RECEBIDOS */}
+              {totalRecebidoAnterior > 0 && (
                 <div className="bg-green-50 border border-green-200 rounded-xl p-3 space-y-1.5 text-xs">
                   {adiantamentos.map(a => (
                     <div key={a.id} className="flex justify-between text-stone-600">
                       <span>↳ Adiantamento ({a.payment_method}) – {new Date(a.created_at).toLocaleDateString('pt-BR')}</span>
                       <span className="text-green-700 font-bold">– {formatCurrency(a.amount)}</span>
+                    </div>
+                  ))}
+                  {recebimentosAnteriores.map(recebimento => (
+                    <div key={recebimento.id} className="flex justify-between text-stone-600">
+                      <span>↳ Recebimento ({recebimento.payment_method}) – {new Date(recebimento.created_at).toLocaleDateString('pt-BR')}</span>
+                      <span className="text-green-700 font-bold">– {formatCurrency(recebimento.amount)}</span>
                     </div>
                   ))}
                   <div className="flex justify-between font-bold border-t border-green-200 pt-1.5 text-sm">
@@ -2734,12 +2763,18 @@ export default function DetalhesOS() {
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-xs space-y-1">
               <div className="flex justify-between text-stone-500">
                 <span>Total OS</span>
-                <span>{formatCurrency(os!.total)}</span>
+                <span>{formatCurrency(totalOSBruto)}</span>
               </div>
               {adiantamentos.length > 0 && (
                 <div className="flex justify-between text-green-700 font-bold">
                   <span>Já adiantado</span>
                   <span>– {formatCurrency(totalAdiantado)}</span>
+                </div>
+              )}
+              {totalRecebimentosAnteriores > 0 && (
+                <div className="flex justify-between text-green-700 font-bold">
+                  <span>Outros recebimentos</span>
+                  <span>– {formatCurrency(totalRecebimentosAnteriores)}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold border-t border-blue-200 pt-1 text-stone-700">
@@ -2833,16 +2868,14 @@ export default function DetalhesOS() {
                 <button onClick={() => setModalCheckoutAberto(false)}><X /></button>
               </div>
 
-              {adiantamentos.length > 0 && (
+              {totalRecebidoAnterior > 0 && (
                 <div className="bg-green-50 border border-green-200 rounded-2xl p-3 text-xs space-y-1">
                   <div className="flex justify-between text-stone-500">
                     <span>Total OS</span>
-                    <span>{formatCurrency(os!.total)}</span>
+                    <span>{formatCurrency(totalOSBruto)}</span>
                   </div>
-                  <div className="flex justify-between text-green-700 font-bold">
-                    <span>Adiantamentos recebidos</span>
-                    <span>– {formatCurrency(totalAdiantado)}</span>
-                  </div>
+                  {totalAdiantado > 0 && <div className="flex justify-between text-green-700 font-bold"><span>Adiantamentos recebidos</span><span>– {formatCurrency(totalAdiantado)}</span></div>}
+                  {totalRecebimentosAnteriores > 0 && <div className="flex justify-between text-green-700 font-bold"><span>Outros recebimentos já lançados</span><span>– {formatCurrency(totalRecebimentosAnteriores)}</span></div>}
                   <div className="flex justify-between font-bold border-t border-green-200 pt-1 text-stone-700">
                     <span>Saldo</span>
                     <span>{formatCurrency(Math.max(0, saldoRestante))}</span>
@@ -2852,7 +2885,7 @@ export default function DetalhesOS() {
 
               <div className="bg-stone-50 p-4 rounded-2xl text-center">
                 <p className="text-xs text-stone-500 uppercase font-bold">
-                  {adiantamentos.length > 0 ? 'Saldo a Receber' : 'Total a Receber'}
+                  {totalRecebidoAnterior > 0 ? 'Saldo a Receber' : 'Total a Receber'}
                 </p>
                 <div className="flex items-center justify-center gap-1 mt-1">
                   <span className="text-stone-400 font-bold">R$</span>
@@ -2943,7 +2976,7 @@ export default function DetalhesOS() {
 
               <button
                 onClick={handleCheckout}
-                disabled={updating || !Number.isFinite(Number(valorFinal)) || Number(valorFinal) <= 0 || pagamentosCheckout.some(pagamento => !Number.isFinite(Number(pagamento.amount)) || Number(pagamento.amount) <= 0) || Math.abs(pagamentosCheckout.reduce((total, pagamento) => total + Number(pagamento.amount || 0), 0) - Number(valorFinal || 0)) > 0.009}
+                disabled={updating || !Number.isFinite(Number(valorFinal)) || Number(valorFinal) < 0 || pagamentosCheckout.some(pagamento => !Number.isFinite(Number(pagamento.amount)) || Number(pagamento.amount) <= 0) || Math.abs(pagamentosCheckout.reduce((total, pagamento) => total + Number(pagamento.amount || 0), 0) - Number(valorFinal || 0)) > 0.009}
                 className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-2xl shadow-lg flex justify-center items-center gap-2 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition"
               >
                 {updating ? <Loader2 className="animate-spin" /> : <CheckCircle />}

@@ -289,8 +289,25 @@ export default function Configuracoes() {
 
   const handleToggleStatus = async (user: Profile) => {
     if (!confirm(`Alterar acesso de ${user.nome}?`)) return;
-    await supabase.from('profiles').update({ ativo: !user.ativo }).eq('id', user.id);
-    fetchUsers();
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'toggle_status',
+          user_id: user.id,
+          ativo: !user.ativo
+        })
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Erro ao alterar acesso.');
+      await fetchUsers();
+    } catch (error: any) {
+      alert(error.message || 'Erro ao alterar acesso do colaborador.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleToggleModule = async (module: 'usa_fiscal' | 'usa_caixa' | 'usa_agendamento' | 'usa_comissao', value: boolean) => {

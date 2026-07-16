@@ -58,6 +58,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { success, data } = await getProfileServerAction();
 
       if (success && data) {
+        if (data.ativo === false) {
+          await createClient().auth.signOut();
+          setUser(null);
+          setProfile(null);
+          window.location.href = "/";
+          return;
+        }
         // CORREÇÃO: Força o TypeScript a aceitar os dados (remove o vermelho)
         setProfile(data as any as UserProfile);
         console.log("✅ Perfil carregado via Server Action:", data.nome);
