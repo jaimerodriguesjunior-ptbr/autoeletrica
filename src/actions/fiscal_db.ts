@@ -38,6 +38,7 @@ export async function getPendingWorkOrders(organizationId: string) {
             .eq("organization_id", organizationId)
             .in("work_order_id", workOrderIds)
             .not("work_order_id", "is", null)
+            .eq("direction", "output")
             .eq("status", "authorized")
     ]);
 
@@ -88,9 +89,20 @@ export async function getPendingWorkOrders(organizationId: string) {
                 itemSummary.hasServicos && !invoiceSummary.hasNFSe ? "NFSe" : null,
             ].filter(Boolean);
 
+            const documentos_emitidos = [
+                invoiceSummary.hasProductInvoice ? "NFCe/NFe" : null,
+                invoiceSummary.hasNFSe ? "NFSe" : null,
+            ].filter(Boolean);
+
+            // A OS continua vinculada a uma nota autorizada, mas ainda tem outra
+            // categoria fiscal para emitir (inclusive se a tentativa anterior dela falhou).
+            const emissao_parcial = documentos_emitidos.length > 0 && pending_documentos.length > 0;
+
             return {
                 ...os,
                 pending_documentos,
+                documentos_emitidos,
+                emissao_parcial,
             };
         })
         .filter((os: any) => os.pending_documentos.length > 0);

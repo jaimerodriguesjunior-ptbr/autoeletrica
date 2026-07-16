@@ -47,6 +47,10 @@ type PendingOS = {
 
     pending_documentos?: string[];
 
+    documentos_emitidos?: string[];
+
+    emissao_parcial?: boolean;
+
 };
 
 
@@ -1038,6 +1042,12 @@ export default function EmitirNotaPage() {
                                             <p className="text-[10px] text-blue-600 font-bold mt-0.5">
                                                 Falta: {(os.pending_documentos || []).join(' + ')}
                                             </p>
+
+                                            {os.emissao_parcial && (
+                                                <p className="inline-flex items-center mt-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-amber-800">
+                                                    Emissão parcial • Emitido: {(os.documentos_emitidos || []).join(' + ')}
+                                                </p>
+                                            )}
 
                                         </div>
 
