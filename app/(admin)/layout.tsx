@@ -22,6 +22,7 @@ import {
   BookOpen,
   HelpCircle
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { GlobalAppointmentAlert } from "../../src/components/GlobalAppointmentAlert";
 import { ClosingAutoSend } from "../../src/components/ClosingAutoSend";
@@ -84,11 +85,12 @@ export default function AdminLayout({
   );
 
   // Menu inferior do employee (todas as telas)
-  const employeeBottomItems = [
+  const employeeBottomItems: Array<{ name: string; icon: LucideIcon; path?: string; action?: "signOut" }> = [
     { name: "Atendimento", icon: Wrench, path: "/atendimento" },
     { name: "Clientes", icon: Users, path: "/clientes" },
     ...(usa_agendamento ? [{ name: "Agenda", icon: CalendarDays, path: "/agendamentos" }] : []),
     ...(usa_comissao ? [{ name: "Comissões", icon: Award, path: "/minhas-comissoes" }] : []),
+    { name: "Sair", icon: LogOut, path: "#sair", action: "signOut" },
   ];
 
   const bottomMenuItems = isOwner ? ownerBottomItems : employeeBottomItems;
@@ -296,11 +298,12 @@ export default function AdminLayout({
         `}
       >
         {bottomMenuItems.map((item) => {
-          const isActive = pathname === item.path || pathname.startsWith(item.path + "/");
+          const isActive = item.action !== "signOut" && pathname === item.path || item.action !== "signOut" && pathname.startsWith(item.path + "/");
           return (
             <Link
               key={item.path}
               href={item.path}
+              onClick={item.action === "signOut" ? (event) => { event.preventDefault(); void signOut(); } : undefined}
               className="flex flex-col items-center gap-1.5 p-2 w-full"
             >
               <div className={`
