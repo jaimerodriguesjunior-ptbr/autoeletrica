@@ -298,12 +298,13 @@ export default function AdminLayout({
         `}
       >
         {bottomMenuItems.map((item) => {
-          const isActive = item.action !== "signOut" && pathname === item.path || item.action !== "signOut" && pathname.startsWith(item.path + "/");
+          const isSignOut = "action" in item && item.action === "signOut";
+          const isActive = !isSignOut && pathname === item.path || !isSignOut && pathname.startsWith(item.path + "/");
           return (
             <Link
               key={item.path}
-              href={item.path}
-              onClick={item.action === "signOut" ? (event) => { event.preventDefault(); void signOut(); } : undefined}
+              href={item.path || "#"}
+              onClick={isSignOut ? (event) => { event.preventDefault(); void signOut(); } : undefined}
               className="flex flex-col items-center gap-1.5 p-2 w-full"
             >
               <div className={`
