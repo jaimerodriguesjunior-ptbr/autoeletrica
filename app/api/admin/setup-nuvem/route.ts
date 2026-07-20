@@ -13,7 +13,8 @@ export async function GET(request: Request) {
         const finalWebhookUrl = `${baseUrl}/api/webhooks/nuvemfiscal`;
 
         // URL de Produção da Nuvem Fiscal
-        const API_URL = process.env.NUVEMFISCAL_URL || "https://api.nuvemfiscal.com.br";
+        // O setup deve atualizar o mesmo backend usado pelas emissoes de producao.
+        const API_URL = process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br";
 
         logs.push(`[Setup] Iniciando deploy em PRODUÇÃO... URL: ${finalWebhookUrl}`);
         logs.push(`[Setup] API Nuvem Fiscal: ${API_URL}`);
@@ -94,6 +95,9 @@ export async function GET(request: Request) {
             } else {
             const nfsePayload = {
                 ambiente: "producao",
+                ipm: {
+                    modo_teste: false
+                },
                 prefeitura: {
                     login: nfseLogin,
                     senha: nfsePassword

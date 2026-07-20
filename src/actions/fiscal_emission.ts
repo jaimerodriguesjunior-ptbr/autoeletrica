@@ -5129,6 +5129,12 @@ export async function updateCompanyCredentials(organizationId: string, environme
 
             ambiente: environment === 'production' ? 'producao' : 'homologacao',
 
+            ipm: {
+
+                modo_teste: environment === 'homologation'
+
+            },
+
             prefeitura: {
                 login: company.nfse_login || cnpj,
 

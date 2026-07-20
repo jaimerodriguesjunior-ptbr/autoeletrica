@@ -247,6 +247,9 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
             // C. Configurar NFS-e (sem resetar RPS)
             const nfsePayload = keepFilledOnly({
                 ambiente: ambienteFiscal,
+                ipm: {
+                    modo_teste: env === 'homologation'
+                },
                 inscricao_municipal: data.inscricao_municipal,
                 municipio: {
                     codigo_ibge: data.codigo_municipio_ibge,
