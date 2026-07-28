@@ -1308,7 +1308,10 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                         vUnCom: item.valor_unitario,
 
-                        vProd: item.valor_total,
+                        // Valores totais do item devem ter exatamente duas casas no XML.
+                        // Enviar um number como 661.3 faz o serializador gerar "661.3",
+                        // formato que o XSD da NF-e rejeita.
+                        vProd: toFiscalNumberText(item.valor_total),
 
                         cEANTrib: "SEM GTIN",
 
@@ -1401,7 +1404,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                         vFCPSTRet: 0.00,
 
-                        vProd: payload.valor_total,
+                        vProd: toFiscalNumberText(payload.valor_total),
 
                         vFrete: 0.00,
 
@@ -1421,7 +1424,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                         vOutro: 0.00,
 
-                        vNF: payload.valor_total
+                        vNF: toFiscalNumberText(payload.valor_total)
 
                     },
 
@@ -1444,7 +1447,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
                     detPag: [
                         {
                             tPag: payload.meio_pagamento || "01", // 01 = Dinheiro
-                            vPag: payload.valor_total
+                            vPag: toFiscalNumberText(payload.valor_total)
                         }
                     ]
                 },
