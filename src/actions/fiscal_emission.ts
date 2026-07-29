@@ -5393,16 +5393,48 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
 
 
 
-        const result = await response.json();
+        const responseText = await response.text();
+        let result: any = {};
+        try {
+            result = responseText ? JSON.parse(responseText) : {};
+        } catch {
+            result = { message: responseText };
+        }
 
         console.log("[Cancelar] Resultado:", JSON.stringify(result, null, 2));
 
+        const apiErrorMessage =
+            result.error?.message ||
+            result.message ||
+            result.cancelamento?.motivo_status ||
+            result.motivo_status ||
+            (Array.isArray(result.mensagens) ? result.mensagens.map((m: any) => `${m.codigo}: ${m.descricao}`).join(" | ") : "") ||
+            "";
+        const isAlreadyCancelled =
+            result.codigo_status === "117" ||
+            result.cancelamento?.codigo_status === "117" ||
+            result.status === "cancelado" ||
+            result.status === "cancelada" ||
+            /cancelad/i.test(apiErrorMessage) ||
+            /117/.test(apiErrorMessage);
+        const isProcessing =
+            result.status === "processamento" ||
+            result.status === "processing";
 
+        if (!response.ok && !isAlreadyCancelled) {
+            return { success: false, error: apiErrorMessage || "Erro ao cancelar nota." };
+        }
 
-        if (!response.ok) {
-
-            return { success: false, error: result.error?.message || "Erro ao cancelar nota." };
-
+        if (isProcessing) {
+            await supabase
+                .from("fiscal_invoices")
+                .update({ status: "processing", error_message: null })
+                .eq("id", invoiceId);
+            return {
+                success: true,
+                status: "processing",
+                message: "Cancelamento em processamento. O status sera atualizado apos a confirmacao da prefeitura."
+            };
         }
 
 
@@ -5417,7 +5449,7 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
 
                 status: "cancelled",
 
-                error_message: null // Limpar erro se houver
+                error_message: null
 
             })
 
@@ -5425,7 +5457,13 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
 
 
 
-        return { success: true, message: "Nota cancelada com sucesso!" };
+        return {
+            success: true,
+            status: "cancelled",
+            message: isAlreadyCancelled
+                ? "A nota ja constava como cancelada no orgao fiscal. O status foi sincronizado com sucesso!"
+                : "Nota cancelada com sucesso!"
+        };
 
 
 
