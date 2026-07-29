@@ -409,33 +409,57 @@ async function ensureNoActiveInvoiceForWorkOrder(
     return `Ja existe ${tipoDocumento} ${environment === "production" ? "de producao" : "de homologacao"} para esta OS.`;
 }
 
-async function ensureNoActiveDevolucaoForEntryInvoice(
+async function ensureDevolucaoQuantitiesAreAvailable(
     supabase: any,
     organizationId: string,
     entryInvoiceId: string,
-    environment: "production" | "homologation"
+    environment: "production" | "homologation",
+    originQuantityByCode: Map<string, number>,
+    requestedItems: DevolucaoPayload["itens"],
 ) {
     if (!entryInvoiceId) return null;
 
-    const { data: existingInvoice, error } = await supabase
+    const { data: existingInvoices, error } = await supabase
         .from("fiscal_invoices")
-        .select("id, status")
+        .select("payload_json")
         .eq("organization_id", organizationId)
         .eq("direction", "output")
         .eq("tipo_documento", "NFe")
         .eq("environment", environment)
         .in("status", ["draft", "processing", "authorized"])
-        .contains("payload_json", { _entry_invoice_id: entryInvoiceId })
-        .limit(1)
-        .maybeSingle();
+        .contains("payload_json", { _entry_invoice_id: entryInvoiceId });
 
     if (error) {
-        throw new Error("Nao foi possivel validar duplicidade de devolucao.");
+        throw new Error("Nao foi possivel validar as quantidades ja devolvidas.");
     }
 
-    if (!existingInvoice) return null;
+    const returnedQuantityByCode = new Map<string, number>();
+    for (const invoice of existingInvoices || []) {
+        const details = Array.isArray(invoice?.payload_json?.infNFe?.det)
+            ? invoice.payload_json.infNFe.det
+            : [];
 
-    return `Ja existe NF-e de devolucao ${environment === "production" ? "de producao" : "de homologacao"} ativa para esta nota de entrada.`;
+        for (const detail of details) {
+            const code = String(detail?.prod?.cProd || "").trim();
+            const quantity = Number(detail?.prod?.qCom ?? detail?.prod?.qTrib ?? 0);
+            if (!code || !Number.isFinite(quantity) || quantity <= 0) continue;
+            returnedQuantityByCode.set(code, (returnedQuantityByCode.get(code) || 0) + quantity);
+        }
+    }
+
+    for (const item of requestedItems) {
+        const code = String(item.codigo || "").trim();
+        const requestedQuantity = Number(item.quantidade || 0);
+        const originalQuantity = originQuantityByCode.get(code) || 0;
+        const previouslyReturnedQuantity = returnedQuantityByCode.get(code) || 0;
+
+        if (previouslyReturnedQuantity + requestedQuantity > originalQuantity) {
+            return `Quantidade de devolucao indisponivel para o item ${item.descricao || code}. `
+                + `Ja devolvida: ${previouslyReturnedQuantity}. Disponivel: ${Math.max(0, originalQuantity - previouslyReturnedQuantity)}.`;
+        }
+    }
+
+    return null;
 }
 
 function buildAdvancedInfAdic(payload: EmissionPayload, fallbackInfCpl: string) {
@@ -5443,15 +5467,6 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
 
     try {
         const env = payload.environment || "production";
-        const duplicateError = await ensureNoActiveDevolucaoForEntryInvoice(
-            supabase,
-            payload.organization_id,
-            payload.entry_invoice_id,
-            env
-        );
-        if (duplicateError) {
-            return { success: false, error: duplicateError };
-        }
 
         const token = await getNuvemFiscalToken(env);
         const baseUrl =
@@ -5532,6 +5547,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         let fornecedorEnd: any = null;
         let fornecedorIE: string | undefined;
         let fornecedorUF = "SP";
+        const originQuantityByCode = new Map<string, number>();
         // cProd → ICMS original (usado para replicar destaque na devolução)
         const itemIcmsMap = new Map<string, { vBC: number; pICMS: number; vICMS: number; modBC: number; vProd: number; qCom: number }>();
 
@@ -5567,6 +5583,10 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 if (dets && !Array.isArray(dets)) dets = [dets];
                 for (const det of (dets || [])) {
                     const cProd = String(det.prod?.cProd || "");
+                    const qCom = Number(det.prod?.qCom || 0);
+                    if (cProd && Number.isFinite(qCom) && qCom > 0) {
+                        originQuantityByCode.set(cProd, (originQuantityByCode.get(cProd) || 0) + qCom);
+                    }
                     const vProd = Number(det.prod?.vProd || 0);
                     if (!cProd || !vProd) continue;
                     const icmsGroup = det?.imposto?.ICMS;
@@ -5591,6 +5611,17 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         // 4. CFOP: interna (5202) ou interestadual (6202)
         const mesmoEstado = company.uf === fornecedorUF;
         const cfopDevolucao = mesmoEstado ? "5202" : "6202";
+        const quantityError = await ensureDevolucaoQuantitiesAreAvailable(
+            supabase,
+            payload.organization_id,
+            payload.entry_invoice_id,
+            env,
+            originQuantityByCode,
+            payload.itens,
+        );
+        if (quantityError) {
+            return { success: false, error: quantityError };
+        }
         const rtcNFeDevolucaoContext: RtcHomologationContext = {
             model: 55,
             finality: 4,
