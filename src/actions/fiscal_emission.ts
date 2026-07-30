@@ -1034,19 +1034,88 @@ async function ensureNFeSequenceAtLeast(
 ) {
     if (!Number.isFinite(number) || number <= 0) return;
 
-    const { error } = await supabase
+    // Esta operação só deve avançar a sequência. Um upsert simples poderia
+    // sobrescrever um número maior caso duas emissões fossem processadas em
+    // paralelo (por exemplo, uma rejeição 539 chegando depois de outra nota).
+    const { data: updatedRows, error: updateError } = await supabase
         .from("nfe_sequences")
-        .upsert({
-            organization_id: organizationId,
-            serie,
-            environment,
+        .update({
             last_number: number,
             updated_at: new Date().toISOString(),
-        }, { onConflict: "organization_id,serie,environment" });
+        })
+        .eq("organization_id", organizationId)
+        .eq("serie", serie)
+        .eq("environment", environment)
+        .lt("last_number", number)
+        .select("id");
 
-    if (error) {
-        console.warn("[NFe] Nao foi possivel ajustar sequencia apos rejeicao:", error);
+    if (updateError) {
+        console.warn("[NFe] Nao foi possivel ajustar sequencia apos rejeicao:", updateError);
+        return;
     }
+
+    // A linha normalmente já existe porque getNextNFeNumber() foi chamado.
+    // O fallback cobre bases recém-migradas sem permitir regressão em caso de
+    // conflito com uma linha criada simultaneamente.
+    if (!updatedRows?.length) {
+        const { data: existingSequence, error: readError } = await supabase
+            .from("nfe_sequences")
+            .select("last_number")
+            .eq("organization_id", organizationId)
+            .eq("serie", serie)
+            .eq("environment", environment)
+            .maybeSingle();
+
+        if (readError) {
+            console.warn("[NFe] Nao foi possivel verificar sequencia apos rejeicao:", readError);
+            return;
+        }
+
+        if (!existingSequence) {
+            const { error: insertError } = await supabase
+                .from("nfe_sequences")
+                .insert({
+                    organization_id: organizationId,
+                    serie,
+                    environment,
+                    last_number: number,
+                    updated_at: new Date().toISOString(),
+                });
+
+            if (insertError && insertError.code !== "23505") {
+                console.warn("[NFe] Nao foi possivel criar sequencia apos rejeicao:", insertError);
+            }
+        }
+    }
+}
+
+function getFiscalDocumentId(result: any) {
+    const candidates = [
+        result?.id,
+        result?.documento?.id,
+        result?.data?.id,
+        result?.nfe?.id,
+    ];
+    const id = candidates.find((value) => typeof value === "string" && value.trim());
+    return id ? String(id).trim() : null;
+}
+
+function getFiscalStatusCode(result: any) {
+    return String(
+        result?.autorizacao?.codigo_status ||
+        result?.codigo_status ||
+        result?.motivo_status ||
+        ""
+    ).trim();
+}
+
+function getFiscalStatusReason(result: any) {
+    return String(
+        result?.autorizacao?.motivo_status ||
+        result?.motivo ||
+        result?.error?.message ||
+        "Motivo nao informado"
+    ).trim();
 }
 function buildNFeInfRespTec(company: any, cnpjEmit: string, environment: "production" | "homologation") {
     const isProduction = environment === "production";
@@ -1929,10 +1998,13 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
 
         const realStatus = result.status;
         const providerStatus = String(result.status || "").toLowerCase();
+        const fiscalDocumentId = getFiscalDocumentId(result);
+        const codigoErro = getFiscalStatusCode(result);
+        const motivoErro = getFiscalStatusReason(result);
 
-        if (["erro", "rejeitado", "denegado"].includes(providerStatus)) {
-            const codigoErro = result.autorizacao?.codigo_status || result.motivo_status || "N/A";
-            const motivoErro = result.autorizacao?.motivo_status || result.motivo || "Motivo nao informado";
+        // O fiscal local pode devolver a rejeicao dentro da autorizacao antes
+        // de refletir o status final do documento. O codigo prevalece aqui.
+        if (["erro", "rejeitado", "denegado"].includes(providerStatus) || codigoErro === "539") {
             const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || nfeNumber;
             if (String(codigoErro) === "539") {
                 await ensureNFeSequenceAtLeast(supabase, payload.organization_id, env, nfeSerie, rejectedNumber);
@@ -1941,7 +2013,7 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                 .from("fiscal_invoices")
                 .update({
                     status: "rejected",
-                    nuvemfiscal_uuid: result.id,
+                    nuvemfiscal_uuid: fiscalDocumentId,
                     chave_acesso: result.chave,
                     numero: String(rejectedNumber || ""),
                     serie: String(nfeSerie || ""),
@@ -1957,7 +2029,7 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
             const xmlContent = await tryFetchXmlContent(result.xml_url);
             const update: Record<string, any> = {
                 status: "authorized",
-                nuvemfiscal_uuid: result.id,
+                nuvemfiscal_uuid: fiscalDocumentId,
                 chave_acesso: result.chave,
                 numero: String(result.numero || ""),
                 serie: String(result.serie || ""),
@@ -2215,10 +2287,11 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
 
         const realStatus = result.status;
         const providerStatus = String(result.status || "").toLowerCase();
+        const fiscalDocumentId = getFiscalDocumentId(result);
+        const codigoErro = getFiscalStatusCode(result);
+        const motivoErro = getFiscalStatusReason(result);
 
-        if (["erro", "rejeitado", "denegado"].includes(providerStatus)) {
-            const codigoErro = result.autorizacao?.codigo_status || result.motivo_status || "N/A";
-            const motivoErro = result.autorizacao?.motivo_status || result.motivo || "Motivo nao informado";
+        if (["erro", "rejeitado", "denegado"].includes(providerStatus) || codigoErro === "539") {
             const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || nfeNumber;
             if (String(codigoErro) === "539") {
                 await ensureNFeSequenceAtLeast(supabase, payload.organization_id, env, nfeSerie, rejectedNumber);
@@ -2227,7 +2300,7 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
                 .from("fiscal_invoices")
                 .update({
                     status: "rejected",
-                    nuvemfiscal_uuid: result.id,
+                    nuvemfiscal_uuid: fiscalDocumentId,
                     chave_acesso: result.chave,
                     numero: String(rejectedNumber || ""),
                     serie: String(nfeSerie || ""),
@@ -2243,7 +2316,7 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
             const xmlContent = await tryFetchXmlContent(result.xml_url);
             const update: Record<string, any> = {
                 status: "authorized",
-                nuvemfiscal_uuid: result.id,
+                nuvemfiscal_uuid: fiscalDocumentId,
                 chave_acesso: result.chave,
                 numero: String(result.numero || ""),
                 serie: String(result.serie || ""),
@@ -4688,7 +4761,16 @@ export async function consultarNFSe(invoiceId: string) {
                 }
             }
 
-            return { success: false, error: "Nota nao encontrada ou sem ID da NuvemFiscal." };
+            if (invoice.status === "processing") {
+                const errorMessage = "Emissao sem identificador retornado pelo fiscal local. A nota foi marcada como erro para nao permanecer em processamento sem possibilidade de consulta. Confirme a situacao antes de emitir novamente.";
+                await supabase
+                    .from("fiscal_invoices")
+                    .update({ status: "error", error_message: errorMessage })
+                    .eq("id", invoiceId);
+                return { success: true, status: "error", error: errorMessage };
+            }
+
+            return { success: false, error: "Nota nao encontrada ou sem ID do fiscal local." };
         }
 
 
@@ -4759,7 +4841,14 @@ export async function consultarNFSe(invoiceId: string) {
 
         else if (result.status === 'erro' || result.status === 'rejeitado' || result.status === 'negado') {
 
-            novoStatus = 'error';
+            const codigoStatus = String(
+                result.autorizacao?.codigo_status ||
+                result.codigo_status ||
+                result.motivo_status ||
+                ""
+            );
+            const isNFe539 = invoice.tipo_documento === "NFe" && codigoStatus === "539";
+            novoStatus = isNFe539 ? 'rejected' : 'error';
 
             // Tenta extrair mensagem detalhada
             if (result.mensagens && Array.isArray(result.mensagens) && result.mensagens.length > 0) {
@@ -4768,6 +4857,19 @@ export async function consultarNFSe(invoiceId: string) {
                 errorMessage = result.error.message || JSON.stringify(result.error);
             } else {
                 errorMessage = result.motivo_status || JSON.stringify(result);
+            }
+
+            if (isNFe539) {
+                const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || Number(invoice.numero);
+                const nfeSerie = Number(invoice.serie || invoice.payload_json?.infNFe?.ide?.serie || 1);
+                await ensureNFeSequenceAtLeast(
+                    supabase,
+                    invoice.organization_id,
+                    env,
+                    Number.isInteger(nfeSerie) && nfeSerie > 0 ? nfeSerie : 1,
+                    rejectedNumber,
+                );
+                errorMessage = `Erro 539: ${errorMessage}`;
             }
 
             // Log completo para debug
@@ -5908,12 +6010,52 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             return { success: true, invoiceId: invoice.id };
         }
 
-        // processando
+        const fiscalDocumentId = getFiscalDocumentId(result);
+
+        // O fiscal local pode informar a rejeicao da SEFAZ no bloco de
+        // autorizacao antes de alterar o status principal para "rejeitado".
+        const codigoErroLocal = getFiscalStatusCode(result);
+        if (codigoErroLocal === "539") {
+            const motivoErroLocal = getFiscalStatusReason(result);
+            const rejectedNumber = extractNFeNumberFromAccessKey(result.chave) || nfeNumber;
+            await ensureNFeSequenceAtLeast(supabase, payload.organization_id, env, nfeSerie, rejectedNumber);
+            await supabase
+                .from("fiscal_invoices")
+                .update({
+                    status: "rejected",
+                    nuvemfiscal_uuid: fiscalDocumentId,
+                    chave_acesso: result.chave,
+                    numero: String(rejectedNumber),
+                    serie: String(nfeSerie),
+                    error_message: `Erro 539: ${motivoErroLocal}`,
+                    motivo_rejeicao: `Erro 539: ${motivoErroLocal}`,
+                })
+                .eq("id", invoice.id);
+            return {
+                success: false,
+                error: `NF-e Rejeitada: Erro 539 - ${motivoErroLocal} A numeracao local foi ajustada; tente emitir novamente para usar o proximo numero.`,
+                invoiceId: invoice.id,
+            };
+        }
+
+        // Uma nota local em processamento precisa obrigatoriamente do id do
+        // documento local. Sem ele nao existe consulta segura por nRec.
+        if (!fiscalDocumentId) {
+            const receipt = result.recibo || result.nRec || result.autorizacao?.recibo || result.autorizacao?.nRec;
+            const trackingError = `Fiscal local respondeu sem ID do documento${receipt ? ` (recibo ${receipt})` : ""}. A emissao nao pode ser acompanhada automaticamente; confirme a situacao antes de reenviar.`;
+            await supabase
+                .from("fiscal_invoices")
+                .update({ status: "error", error_message: trackingError })
+                .eq("id", invoice.id);
+            return { success: false, error: trackingError, invoiceId: invoice.id };
+        }
+
+        // processamento
         await supabase
             .from("fiscal_invoices")
             .update({
                 status: "processing",
-                nuvemfiscal_uuid: result.id,
+                nuvemfiscal_uuid: fiscalDocumentId,
                 chave_acesso: result.chave,
                 numero: String(result.numero || ""),
                 serie: String(result.serie || ""),
