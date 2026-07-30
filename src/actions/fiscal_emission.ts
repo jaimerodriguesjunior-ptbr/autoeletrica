@@ -5703,6 +5703,11 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             vICMSSTRet: number;
             vProd: number;
             qCom: number;
+            combustivel?: {
+                cProdANP: string;
+                descANP?: string;
+                UFCons: string;
+            };
         }>();
 
         if (entryInvoice.xml_content) {
@@ -5759,6 +5764,13 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         vICMSSTRet: Number(icmsValues?.vICMSSTRet || 0),
                         vProd,
                         qCom: Number(det.prod?.qCom || 0),
+                        combustivel: det.prod?.comb?.cProdANP
+                            ? {
+                                cProdANP: String(det.prod.comb.cProdANP),
+                                descANP: sanitizeFiscalText(det.prod.comb.descANP, 95),
+                                UFCons: String(det.prod.comb.UFCons || company.uf || "").toUpperCase(),
+                            }
+                            : undefined,
                     });
                 }
             } catch (e) {
@@ -5828,6 +5840,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 },
             };
             const cfopItem = resolveDevolucaoCfop(originalTax?.cfop);
+            const combustivel = originalTax?.combustivel;
 
             return {
                 det: {
@@ -5848,6 +5861,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         qTrib: item.quantidade,
                         vUnTrib: toMoneyNumber(item.valor_unitario),
                         indTot: 1,
+                        ...(combustivel ? { comb: combustivel } : {}),
                     },
                     imposto: {
                         ICMS: icmsImposto,
