@@ -5688,8 +5688,22 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         let fornecedorIE: string | undefined;
         let fornecedorUF = "SP";
         const originQuantityByCode = new Map<string, number>();
-        // cProd → ICMS original (usado para replicar destaque na devolução)
-        const itemIcmsMap = new Map<string, { vBC: number; pICMS: number; vICMS: number; modBC: number; vProd: number; qCom: number }>();
+        // cProd -> perfil fiscal da entrada. A devolução é definida por item,
+        // pois uma mesma NF-e pode misturar revenda comum, ST e lubrificantes.
+        const itemTaxProfileMap = new Map<string, {
+            cfop: string;
+            orig: number;
+            vBC: number;
+            pICMS: number;
+            vICMS: number;
+            modBC: number;
+            vBCSTRet: number;
+            pST: number;
+            vICMSSubstituto: number;
+            vICMSSTRet: number;
+            vProd: number;
+            qCom: number;
+        }>();
 
         if (entryInvoice.xml_content) {
             try {
@@ -5718,7 +5732,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 if (ie && String(ie) !== "ISENTO") {
                     fornecedorIE = String(ie).replace(/\D/g, "");
                 }
-                // Extrair ICMS por item para replicar destaque na devolução (CSOSN 900)
+                // Extrair CFOP e ICMS por item para a devolução.
                 let dets = infNFe?.det;
                 if (dets && !Array.isArray(dets)) dets = [dets];
                 for (const det of (dets || [])) {
@@ -5732,13 +5746,17 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     const icmsGroup = det?.imposto?.ICMS;
                     if (!icmsGroup) continue;
                     const icmsValues = Object.values(icmsGroup)[0] as any;
-                    const vICMS = Number(icmsValues?.vICMS || 0);
-                    if (vICMS <= 0) continue;
-                    itemIcmsMap.set(cProd, {
+                    itemTaxProfileMap.set(cProd, {
+                        cfop: String(det.prod?.CFOP || "").replace(/\D/g, ""),
+                        orig: Number(icmsValues?.orig || 0),
                         vBC: Number(icmsValues?.vBC || vProd),
                         pICMS: Number(icmsValues?.pICMS || 0),
-                        vICMS,
+                        vICMS: Number(icmsValues?.vICMS || 0),
                         modBC: Number(icmsValues?.modBC ?? 3),
+                        vBCSTRet: Number(icmsValues?.vBCSTRet || 0),
+                        pST: Number(icmsValues?.pST || 0),
+                        vICMSSubstituto: Number(icmsValues?.vICMSSubstituto || 0),
+                        vICMSSTRet: Number(icmsValues?.vICMSSTRet || 0),
                         vProd,
                         qCom: Number(det.prod?.qCom || 0),
                     });
@@ -5748,9 +5766,16 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             }
         }
 
-        // 4. CFOP: interna (5202) ou interestadual (6202)
+        // 4. CFOP de devolução definido por item. O fallback cobre revenda
+        // comum; os mapeamentos especiais cobrem ST e lubrificantes.
         const mesmoEstado = company.uf === fornecedorUF;
-        const cfopDevolucao = mesmoEstado ? "5202" : "6202";
+        const resolveDevolucaoCfop = (originCfop?: string) => {
+            const cfop = String(originCfop || "").replace(/\D/g, "");
+            if (cfop === "5655" || cfop === "6655") return mesmoEstado ? "5661" : "6661";
+            if (cfop === "5403" || cfop === "6403") return mesmoEstado ? "5411" : "6411";
+            return mesmoEstado ? "5202" : "6202";
+        };
+        const cfopDevolucao = resolveDevolucaoCfop();
         const quantityError = await ensureDevolucaoQuantitiesAreAvailable(
             supabase,
             payload.organization_id,
@@ -5774,36 +5799,35 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
 
-        // 6. Precomputar itens com ICMS proporcional à quantidade devolvida
-        // Se o fornecedor destacou ICMS na nota original, a devolução deve espelhar (CSOSN 900)
+        // 6. Precomputar itens e ICMS proporcional à quantidade devolvida.
+        // CSOSN 900 é usado em devolução por optante do Simples Nacional.
         const detItemsComputed = payload.itens.map((item, idx) => {
-            const originalIcms = itemIcmsMap.get(item.codigo || "");
+            const originalTax = itemTaxProfileMap.get(item.codigo || "");
             const itemVProd = toMoneyNumber(item.valor_total);
-            let icmsImposto: any;
-            let vBC_item = 0;
-            let vICMS_item = 0;
-
-            if (originalIcms && originalIcms.vProd > 0) {
-                const quantityFactor = originalIcms.qCom > 0
-                    ? item.quantidade / originalIcms.qCom
-                    : itemVProd / originalIcms.vProd;
-                // Usa o ICMS efetivo destacado na entrada; isso cobre diferimento/ICMS51 sem recalcular por aliquota cheia.
-                vBC_item = toMoneyNumber(originalIcms.vBC * quantityFactor);
-                const pICMS = originalIcms.pICMS;
-                vICMS_item = toMoneyNumber(originalIcms.vICMS * quantityFactor);
-                icmsImposto = {
-                    ICMSSN900: {
-                        orig: 0,
-                        CSOSN: "900",
-                        modBC: originalIcms.modBC || 3,
-                        vBC: toFiscalNumberText(vBC_item),
-                        pICMS: toFiscalNumberText(pICMS),
-                        vICMS: toFiscalNumberText(vICMS_item),
-                    },
-                };
-            } else {
-                icmsImposto = { ICMSSN102: { orig: 0, CSOSN: "102" } };
-            }
+            const quantityFactor = originalTax?.qCom && originalTax.qCom > 0
+                ? item.quantidade / originalTax.qCom
+                : originalTax?.vProd && originalTax.vProd > 0
+                    ? itemVProd / originalTax.vProd
+                    : 1;
+            const vBC_item = toMoneyNumber((originalTax?.vBC || 0) * quantityFactor);
+            const vICMS_item = toMoneyNumber((originalTax?.vICMS || 0) * quantityFactor);
+            const stRetained = {
+                vBCSTRet: toMoneyNumber((originalTax?.vBCSTRet || 0) * quantityFactor),
+                pST: toMoneyNumber(originalTax?.pST || 0),
+                vICMSSubstituto: toMoneyNumber((originalTax?.vICMSSubstituto || 0) * quantityFactor),
+                vICMSSTRet: toMoneyNumber((originalTax?.vICMSSTRet || 0) * quantityFactor),
+            };
+            const icmsImposto = {
+                ICMSSN900: {
+                    orig: originalTax?.orig ?? 0,
+                    CSOSN: "900",
+                    modBC: originalTax?.modBC || 3,
+                    vBC: toFiscalNumberText(vBC_item),
+                    pICMS: toFiscalNumberText(originalTax?.pICMS || 0),
+                    vICMS: toFiscalNumberText(vICMS_item),
+                },
+            };
+            const cfopItem = resolveDevolucaoCfop(originalTax?.cfop);
 
             return {
                 det: {
@@ -5813,7 +5837,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         cEAN: "SEM GTIN",
                         xProd: sanitizeFiscalText(item.descricao, 120),
                         NCM: item.ncm || "00000000",
-                        CFOP: cfopDevolucao,
+                        CFOP: cfopItem,
                         uCom: item.unidade,
                         qCom: item.quantidade,
                         vUnCom: toMoneyNumber(item.valor_unitario),
@@ -5834,11 +5858,25 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 },
                 vBC: vBC_item,
                 vICMS: vICMS_item,
+                cfop: cfopItem,
+                stRetained,
             };
         });
 
         const totalVBC = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.vBC, 0));
         const totalVICMS = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.vICMS, 0));
+        const stInfo = detItemsComputed
+            .map((item, index) => {
+                const st = item.stRetained;
+                if (st.vBCSTRet <= 0 && st.vICMSSTRet <= 0) return null;
+                return `Item ${index + 1}: ICMS-ST retido na NF-e de origem - BC ST R$ ${st.vBCSTRet.toFixed(2)}, aliquota ST ${st.pST.toFixed(2)}%, ICMS do substituto R$ ${st.vICMSSubstituto.toFixed(2)}, ICMS-ST retido R$ ${st.vICMSSTRet.toFixed(2)}.`;
+            })
+            .filter(Boolean)
+            .join(" ");
+        const infCplDevolucao = [
+            `DEVOLUCAO REFERENTE A NF-e ${entryInvoice.numero || ""}, CHAVE ${chaveAcesso}.`,
+            stInfo,
+        ].filter(Boolean).join(" ");
 
         // 7. Montar payload NF-e
         const nfePayload = {
@@ -5908,6 +5946,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 },
                 transp: { modFrete: 9 },
                 pag: { detPag: [{ tPag: "90", vPag: 0 }] },
+                infAdic: { infCpl: sanitizeFiscalText(infCplDevolucao, 5000) },
                 infRespTec: buildNFeInfRespTec(company, cnpjEmit, env),
             },
         };
