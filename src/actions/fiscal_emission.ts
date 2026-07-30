@@ -5754,7 +5754,9 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     itemTaxProfileMap.set(cProd, {
                         cfop: String(det.prod?.CFOP || "").replace(/\D/g, ""),
                         orig: Number(icmsValues?.orig || 0),
-                        vBC: Number(icmsValues?.vBC || vProd),
+                        // NF-e de origem com ICMS 60 possui somente ICMS-ST retido;
+                        // nao use o valor do produto como se fosse base de ICMS normal.
+                        vBC: Number(icmsValues?.vBC || 0),
                         pICMS: Number(icmsValues?.pICMS || 0),
                         vICMS: Number(icmsValues?.vICMS || 0),
                         modBC: Number(icmsValues?.modBC ?? 3),
