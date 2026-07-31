@@ -5780,13 +5780,10 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             }
         }
 
-        // 4. CFOP de devolução definido por item. O fallback cobre revenda
-        // comum; os mapeamentos especiais cobrem ST e lubrificantes.
+        // 4. CFOP padrão de devolução. O detalhamento por produto permanece
+        // pendente de uma regra centralizada na Nuvem Local.
         const mesmoEstado = company.uf === fornecedorUF;
-        const resolveDevolucaoCfop = (originCfop?: string) => {
-            const cfop = String(originCfop || "").replace(/\D/g, "");
-            if (cfop === "5655" || cfop === "6655") return mesmoEstado ? "5661" : "6661";
-            if (cfop === "5403" || cfop === "6403") return mesmoEstado ? "5411" : "6411";
+        const resolveDevolucaoCfop = () => {
             return mesmoEstado ? "5202" : "6202";
         };
         const cfopDevolucao = resolveDevolucaoCfop();
@@ -5841,7 +5838,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     vICMS: toFiscalNumberText(vICMS_item),
                 },
             };
-            const cfopItem = resolveDevolucaoCfop(originalTax?.cfop);
+            const cfopItem = resolveDevolucaoCfop();
             const combustivel = originalTax?.combustivel;
 
             return {
