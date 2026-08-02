@@ -4,10 +4,16 @@ import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY ou NEXT_PUBLIC_SUPABASE_URL nao configuradas');
+  }
+
+  return createClient(supabaseUrl, supabaseServiceKey);
+}
 
 async function getAuthenticatedOwner() {
   const cookieStore = cookies();
@@ -44,6 +50,7 @@ async function getAuthenticatedOwner() {
 
 export async function POST(req: Request) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const caller = await getAuthenticatedOwner();
     if (!caller) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });

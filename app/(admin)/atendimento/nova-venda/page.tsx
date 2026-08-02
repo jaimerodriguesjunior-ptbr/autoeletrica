@@ -27,6 +27,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 import { createClient } from "../../../../src/lib/supabase";
+import { ensureBillingAllowsNewOperations } from "@/src/lib/cobrancaGuardClient";
 import { useAuth } from "../../../../src/contexts/AuthContext";
 import { ScannerModal } from "@/components/ui/ScannerModal";
 import { fetchProductFromCosmos, normalizeBarcode } from "@/src/services/cosmosService";
@@ -302,6 +303,8 @@ function NovaVendaConteudo() {
         setSaving(true);
 
         try {
+            await ensureBillingAllowsNewOperations();
+
             // 1. Criar a Venda (Work Order do tipo Venda)
             // Usaremos vehicle_id: null se permitido, ou precisaremos de um dummy.
             // Status: 'entregue' (para indicar finalizada)

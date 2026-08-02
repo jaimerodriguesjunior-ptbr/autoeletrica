@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// --- AJUSTE DE PERMISSÃO ---
-// Usamos a SERVICE_ROLE_KEY para que a IA tenha acesso total aos dados (Admin),
-// ignorando as travas de segurança (RLS) que escondiam os clientes.
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || '' 
-);
+function getSupabase() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY ou NEXT_PUBLIC_SUPABASE_URL nao configuradas');
+  }
+
+  return createClient(supabaseUrl, supabaseServiceKey);
+}
 
 export async function POST(req: Request) {
   // --- LOG DE INÍCIO ---
@@ -28,6 +31,7 @@ export async function POST(req: Request) {
   }
 
   try {
+    const supabase = getSupabase();
     const { message, historyCount } = await req.json();
     console.log(`💬 [IA] Pergunta do usuário: "${message}"`);
 

@@ -9,6 +9,7 @@ import {
     CheckCircle, XCircle, Clock, Download, RefreshCw, Edit, Ban, Printer, MessageCircle, Undo2
 } from "lucide-react";
 import Link from "next/link";
+import { useBillingEmissionBlock } from "@/src/lib/useBillingEmissionBlock";
 
 type Invoice = {
     id: string;
@@ -37,6 +38,7 @@ type Invoice = {
 
 export default function FiscalDashboard() {
     const { profile } = useAuth();
+    const { isLoading: billingLoading, isBlocked: billingBlocked, message: billingMessage } = useBillingEmissionBlock();
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
@@ -345,17 +347,44 @@ export default function FiscalDashboard() {
                         <FileText size={20} /> Fechamento Mensal
                     </button>
                 </Link>
-                <Link href="/fiscal/nfe">
-                    <button className="bg-white border-2 border-stone-200 hover:border-[#FACC15] text-stone-700 px-6 py-3 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 transition hover:scale-105">
+                {billingBlocked ? (
+                    <button
+                        disabled
+                        title={billingMessage || "Emissoes fiscais bloqueadas."}
+                        className="bg-stone-100 border-2 border-stone-200 text-stone-400 px-6 py-3 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 cursor-not-allowed"
+                    >
                         <FileText size={20} /> NF-e Completa
                     </button>
-                </Link>
-                <Link href={`/fiscal/emitir?env=${environment}`}>
-                    <button className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-6 py-3 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105">
+                ) : (
+                    <Link href="/fiscal/nfe">
+                        <button className="bg-white border-2 border-stone-200 hover:border-[#FACC15] text-stone-700 px-6 py-3 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 transition hover:scale-105">
+                            <FileText size={20} /> NF-e Completa
+                        </button>
+                    </Link>
+                )}
+                {billingBlocked ? (
+                    <button
+                        disabled
+                        title={billingMessage || "Emissoes fiscais bloqueadas."}
+                        className="bg-stone-300 text-white px-6 py-3 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 cursor-not-allowed"
+                    >
                         <Plus size={20} /> Nova Nota
                     </button>
-                </Link>
+                ) : (
+                    <Link href={`/fiscal/emitir?env=${environment}`}>
+                        <button className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-6 py-3 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105">
+                            <Plus size={20} /> Nova Nota
+                        </button>
+                    </Link>
+                )}
             </div>
+
+            {!billingLoading && billingBlocked && (
+                <div className="rounded-[24px] border border-red-200 bg-red-50 px-5 py-4 text-red-700 shadow-sm">
+                    <p className="text-xs font-bold uppercase tracking-wide">Emissao Fiscal Bloqueada</p>
+                    <p className="mt-1 text-sm">{billingMessage || "As emissoes fiscais desta loja estao temporariamente bloqueadas."}</p>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-6 rounded-[24px] border border-stone-100 shadow-sm flex items-center gap-4">
@@ -488,7 +517,7 @@ export default function FiscalDashboard() {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex justify-end gap-2">
-                                                {isEntryInvoice(inv) && inv.status === "authorized" && (
+                                                {isEntryInvoice(inv) && inv.status === "authorized" && !billingBlocked && (
                                                     <Link href={`/fiscal/devolucao/${inv.id}`}>
                                                         <button
                                                             className="p-2 bg-orange-50 text-orange-600 hover:bg-orange-100 rounded-lg transition"
@@ -572,7 +601,7 @@ export default function FiscalDashboard() {
                                                     </button>
                                                 )}
 
-                                                {isOutputInvoice(inv) && inv.status === "error" && inv.tipo_documento !== "NFe" && (
+                                                {isOutputInvoice(inv) && inv.status === "error" && inv.tipo_documento !== "NFe" && !billingBlocked && (
                                                     <Link href={`/fiscal/corrigir/${inv.id}`}>
                                                         <button
                                                             className="p-2 bg-orange-50 text-orange-600 hover:bg-orange-100 rounded-lg transition"
