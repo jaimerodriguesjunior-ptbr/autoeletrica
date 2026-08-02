@@ -251,8 +251,8 @@ export default function ServiceOrderList() {
     <div className="flex h-full flex-col space-y-6">
       <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <h2 className="text-xl font-bold text-[#1A1A1A]">Ordens de Servico</h2>
-          <p className="text-sm text-stone-500">Manutencoes e servicos em veiculos</p>
+          <h2 className="text-xl font-bold text-[#1A1A1A]">Ordens de Serviço</h2>
+          <p className="text-sm text-stone-500">Manutenções e serviços em veículos</p>
         </div>
 
         <Link
