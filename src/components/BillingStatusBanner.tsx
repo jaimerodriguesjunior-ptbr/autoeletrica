@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Copy, QrCode, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 
 import type { CobrancaStoreBillingStatus } from "@/src/lib/nuvemLocalCobranca";
 import { createClient } from "@/src/utils/supabase/client";
@@ -47,11 +48,33 @@ function isTodayDate(value?: string | null) {
   );
 }
 
+function localDateKey() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function differenceInCalendarDays(target?: string | null) {
+  if (!target) return null;
+
+  const [year, month, day] = target.split("-").map(Number);
+  if (!year || !month || !day) return null;
+
+  const today = new Date();
+  const current = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const targetDate = Date.UTC(year, month - 1, day);
+  return Math.round((targetDate - current) / (24 * 60 * 60 * 1000));
+}
+
 export function BillingStatusBanner() {
+  const pathname = usePathname();
   const [status, setStatus] = useState<CobrancaStoreBillingStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [dismissedNoticeKey, setDismissedNoticeKey] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -91,18 +114,17 @@ export function BillingStatusBanner() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [pathname]);
+
+  const noticeKey = status
+    ? `billing-notice:${status.store?.store_id ?? "unknown"}:${status.status}:${localDateKey()}`
+    : null;
+
+  useEffect(() => {
+    setDismissedNoticeKey(noticeKey && window.localStorage.getItem(noticeKey) ? noticeKey : null);
+  }, [noticeKey]);
 
   if (loading || !status) return null;
-
-  const shouldShow =
-    status.shouldShowBillingReminder ||
-    status.shouldBlockNewOperations ||
-    status.status === "pendente" ||
-    status.status === "bloqueado" ||
-    status.paymentDueSoon;
-
-  if (!shouldShow) return null;
 
   const isBlocked = status.shouldBlockNewOperations || status.status === "bloqueado";
   const amount = formatCurrency(status.store?.monthly_amount);
@@ -112,6 +134,17 @@ export function BillingStatusBanner() {
   const isOverdue = isPastDate(status.store?.paid_until);
   const isDueToday = isTodayDate(status.store?.paid_until);
   const isFriendlyReminder = !isBlocked && !isOverdue;
+  const daysUntilBlock = differenceInCalendarDays(status.blockAfter);
+  const isFinalGraceDay = status.status === "pendente" && daysUntilBlock === 0;
+  const shouldShowBanner = status.paymentDueSoon || status.status === "pendente" || isBlocked;
+  const shouldShowPaymentButton =
+    status.status !== "vip" &&
+    status.status !== "liberado" &&
+    (status.status === "pendente" ||
+      isBlocked ||
+      status.paymentDueSoon ||
+      (status.daysUntilDue !== null && status.daysUntilDue !== undefined && status.daysUntilDue >= 0 && status.daysUntilDue <= 2));
+  const bannerDismissed = dismissedNoticeKey === noticeKey;
 
   const title = isBlocked
     ? "Mensalidade em atraso"
@@ -119,12 +152,18 @@ export function BillingStatusBanner() {
       ? "Mensalidade pendente"
       : "Mensalidade em dia";
   const message = isBlocked
-    ? "Entre em contato com o suporte para regularizar o acesso a novas operacoes."
-    : paidUntil
-      ? isOverdue
-        ? `Sua mensalidade venceu em ${paidUntil}. Valor: ${amount}.`
-        : `Sua mensalidade esta em dia${isDueToday ? " e vence hoje" : ` e vence em ${paidUntil}`}. Ja deixei o QR Code disponivel caso queira pagar por Pix. Valor: ${amount}.`
-      : `Existe uma mensalidade pendente. Valor: ${amount}.`;
+    ? "Novas operacoes estao bloqueadas por falta de pagamento. Seus dados, historicos e relatorios continuam salvos. Entre em contato com o administrador para regularizar o acesso."
+    : isFinalGraceDay
+      ? "Seu acesso sera bloqueado hoje, no fim do expediente. Seus dados continuarao salvos, mas novas operacoes ficarao bloqueadas."
+      : paidUntil
+        ? isOverdue
+          ? daysUntilBlock !== null && daysUntilBlock > 0 && daysUntilBlock <= 4
+            ? `Sua mensalidade esta em atraso. Seu acesso sera bloqueado em ${daysUntilBlock} ${daysUntilBlock === 1 ? "dia" : "dias"}. Seus dados continuarao salvos. Valor: ${amount}.`
+            : `Sua mensalidade venceu em ${paidUntil}. Regularize quando puder para evitar o bloqueio de novas operacoes. Valor: ${amount}.`
+          : isDueToday
+            ? `Sua mensalidade vence hoje. Use o QR Code para realizar o pagamento por Pix. Valor: ${amount}.`
+            : `Sua mensalidade vence em ${paidUntil}. O QR Code ja esta disponivel para pagamento antecipado. Valor: ${amount}.`
+        : `Existe uma mensalidade pendente. Valor: ${amount}.`;
   const bannerClasses = isBlocked
     ? "border-red-200 bg-red-50 text-red-950"
     : isOverdue
@@ -145,11 +184,23 @@ export function BillingStatusBanner() {
     window.setTimeout(() => setCopied(false), 1800);
   }
 
+  function dismissBanner() {
+    if (isFinalGraceDay) return;
+    if (!noticeKey) return;
+
+    window.localStorage.setItem(noticeKey, "dismissed");
+    setDismissedNoticeKey(noticeKey);
+  }
+
+  function closePaymentModal() {
+    setPaymentOpen(false);
+    window.alert("Se voce realizou o pagamento, logo que for dado baixa as janelas de cobranca sumirao sozinhas.");
+  }
+
   return (
     <>
-      <section
-        className={`mb-5 rounded-2xl border px-4 py-4 shadow-sm md:px-5 ${bannerClasses}`}
-      >
+      {shouldShowBanner && !bannerDismissed && (
+      <section className={`mb-5 rounded-2xl border px-4 py-4 shadow-sm md:px-5 ${bannerClasses}`}>
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-3">
             <div className={`mt-0.5 rounded-full p-2 ${iconClasses}`}>
@@ -161,18 +212,43 @@ export function BillingStatusBanner() {
             </div>
           </div>
 
-          {!isBlocked && (copyPaste || qrCode) && (
-            <button
-              type="button"
-              onClick={() => setPaymentOpen(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1A1A1A] px-4 py-3 text-sm font-extrabold text-white shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-black"
-            >
-              <QrCode size={18} />
-              Pagar
-            </button>
-          )}
+          <div className="flex items-center gap-2 self-end md:self-auto">
+            {shouldShowPaymentButton && (copyPaste || qrCode) && (
+              <button
+                type="button"
+                onClick={() => setPaymentOpen(true)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1A1A1A] px-4 py-3 text-sm font-extrabold text-white shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-black"
+              >
+                <QrCode size={18} />
+                Pagar
+              </button>
+            )}
+            {!isFinalGraceDay && (
+              <button
+                type="button"
+                onClick={dismissBanner}
+                className="rounded-full p-2 text-current/60 transition hover:bg-black/10 hover:text-current"
+                aria-label="Fechar aviso de cobranca"
+              >
+                <X size={20} />
+              </button>
+            )}
+          </div>
         </div>
       </section>
+      )}
+
+      {shouldShowPaymentButton && (copyPaste || qrCode) && (!shouldShowBanner || bannerDismissed) && (
+        <button
+          type="button"
+          onClick={() => setPaymentOpen(true)}
+          title="Clique para consultar as opcoes de pagamento."
+          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-[#1A1A1A] px-4 py-3 text-sm font-extrabold text-white shadow-xl shadow-black/20 transition hover:-translate-y-0.5 hover:bg-black"
+        >
+          <QrCode size={18} />
+          Pagar
+        </button>
+      )}
 
       {paymentOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
@@ -184,7 +260,7 @@ export function BillingStatusBanner() {
               </div>
               <button
                 type="button"
-                onClick={() => setPaymentOpen(false)}
+                onClick={closePaymentModal}
                 className="rounded-full p-2 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
                 aria-label="Fechar"
               >
