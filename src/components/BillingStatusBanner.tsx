@@ -101,7 +101,7 @@ export function BillingStatusBanner() {
           setStatus(data);
         }
       } catch (error) {
-        console.warn("Nao foi possivel consultar o status de cobranca.", error);
+        console.warn("Não foi possível consultar o status de cobrança.", error);
       } finally {
         if (active) {
           setLoading(false);
@@ -152,17 +152,17 @@ export function BillingStatusBanner() {
       ? "Mensalidade pendente"
       : "Mensalidade em dia";
   const message = isBlocked
-    ? "Novas operacoes estao bloqueadas por falta de pagamento. Seus dados, historicos e relatorios continuam salvos. Entre em contato com o administrador para regularizar o acesso."
+    ? "Novas operações estão bloqueadas por falta de pagamento. Seus dados, históricos e relatórios continuam salvos. Entre em contato com o administrador para regularizar o acesso."
     : isFinalGraceDay
-      ? "Seu acesso sera bloqueado hoje, no fim do expediente. Seus dados continuarao salvos, mas novas operacoes ficarao bloqueadas."
+      ? "Seu acesso será bloqueado hoje, no fim do expediente. Seus dados continuarão salvos, mas novas operações ficarão bloqueadas."
       : paidUntil
         ? isOverdue
           ? daysUntilBlock !== null && daysUntilBlock > 0 && daysUntilBlock <= 4
-            ? `Sua mensalidade esta em atraso. Seu acesso sera bloqueado em ${daysUntilBlock} ${daysUntilBlock === 1 ? "dia" : "dias"}. Seus dados continuarao salvos. Valor: ${amount}.`
-            : `Sua mensalidade venceu em ${paidUntil}. Regularize quando puder para evitar o bloqueio de novas operacoes. Valor: ${amount}.`
+            ? `Sua mensalidade está em atraso. Seu acesso será bloqueado em ${daysUntilBlock} ${daysUntilBlock === 1 ? "dia" : "dias"}. Seus dados continuarão salvos. Valor: ${amount}.`
+            : `Sua mensalidade venceu em ${paidUntil}. Regularize quando puder para evitar o bloqueio de novas operações. Valor: ${amount}.`
           : isDueToday
             ? `Sua mensalidade vence hoje. Use o QR Code para realizar o pagamento por Pix. Valor: ${amount}.`
-            : `Sua mensalidade vence em ${paidUntil}. O QR Code ja esta disponivel para pagamento antecipado. Valor: ${amount}.`
+            : `Sua mensalidade vence em ${paidUntil}. O QR Code já está disponível para pagamento antecipado. Valor: ${amount}.`
         : `Existe uma mensalidade pendente. Valor: ${amount}.`;
   const bannerClasses = isBlocked
     ? "border-red-200 bg-red-50 text-red-950"
@@ -194,7 +194,7 @@ export function BillingStatusBanner() {
 
   function closePaymentModal() {
     setPaymentOpen(false);
-    window.alert("Se voce realizou o pagamento, logo que for dado baixa as janelas de cobranca sumirao sozinhas.");
+    window.alert("Se você realizou o pagamento, logo que for dado baixa as janelas de cobrança sumirão sozinhas.");
   }
 
   return (
@@ -228,7 +228,7 @@ export function BillingStatusBanner() {
                 type="button"
                 onClick={dismissBanner}
                 className="rounded-full p-2 text-current/60 transition hover:bg-black/10 hover:text-current"
-                aria-label="Fechar aviso de cobranca"
+                aria-label="Fechar aviso de cobrança"
               >
                 <X size={20} />
               </button>
@@ -242,7 +242,7 @@ export function BillingStatusBanner() {
         <button
           type="button"
           onClick={() => setPaymentOpen(true)}
-          title="Clique para consultar as opcoes de pagamento."
+          title="Clique para consultar as opções de pagamento."
           className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-[#1A1A1A] px-4 py-3 text-sm font-extrabold text-white shadow-xl shadow-black/20 transition hover:-translate-y-0.5 hover:bg-black"
         >
           <QrCode size={18} />
@@ -294,7 +294,7 @@ export function BillingStatusBanner() {
                     <Copy size={18} />
                   </button>
                 </div>
-                {copied && <p className="mt-2 text-xs font-bold text-emerald-700">Codigo Pix copiado.</p>}
+                {copied && <p className="mt-2 text-xs font-bold text-emerald-700">Código Pix copiado.</p>}
               </div>
             )}
           </div>
