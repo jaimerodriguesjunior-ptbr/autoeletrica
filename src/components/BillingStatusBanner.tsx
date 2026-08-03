@@ -158,12 +158,12 @@ export function BillingStatusBanner() {
       : paidUntil
         ? isOverdue
           ? daysUntilBlock !== null && daysUntilBlock > 0 && daysUntilBlock <= 4
-            ? `Sua mensalidade está em atraso. Seu acesso será bloqueado em ${daysUntilBlock} ${daysUntilBlock === 1 ? "dia" : "dias"}. Seus dados continuarão salvos. Valor: ${amount}.`
-            : `Sua mensalidade venceu em ${paidUntil}. Regularize quando puder para evitar o bloqueio de novas operações. Valor: ${amount}.`
+            ? `Sua mensalidade está em atraso. Seu acesso será bloqueado em ${daysUntilBlock} ${daysUntilBlock === 1 ? "dia" : "dias"}. Seus dados continuarão salvos.`
+            : `Sua mensalidade venceu em ${paidUntil}. Regularize quando puder para evitar o bloqueio de novas operações.`
           : isDueToday
-            ? `Sua mensalidade vence hoje. Use o QR Code para realizar o pagamento por Pix. Valor: ${amount}.`
-            : `Sua mensalidade vence em ${paidUntil}. O QR Code já está disponível para pagamento antecipado. Valor: ${amount}.`
-        : `Existe uma mensalidade pendente. Valor: ${amount}.`;
+            ? "Sua mensalidade vence hoje. Use o QR Code para realizar o pagamento por Pix."
+            : `Sua mensalidade vence em ${paidUntil}. O QR Code já está disponível para pagamento antecipado.`
+        : "Existe uma mensalidade pendente.";
   const bannerClasses = isBlocked
     ? "border-red-200 bg-red-50 text-red-950"
     : isOverdue
