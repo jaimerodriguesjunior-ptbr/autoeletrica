@@ -5722,6 +5722,8 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         // pois uma mesma NF-e pode misturar revenda comum, ST e lubrificantes.
         const itemTaxProfileMap = new Map<string, {
             cfop: string;
+            cest?: string;
+            st: boolean;
             orig: number;
             vBC: number;
             pICMS: number;
@@ -5781,8 +5783,15 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     const icmsGroup = det?.imposto?.ICMS;
                     if (!icmsGroup) continue;
                     const icmsValues = Object.values(icmsGroup)[0] as any;
+                    const sourceCfop = String(det.prod?.CFOP || "").replace(/\D/g, "");
+                    const sourceCest = String(det.prod?.CEST || "").replace(/\D/g, "");
+                    const sourceCst = String(icmsValues?.CST || "").replace(/\D/g, "");
                     itemTaxProfileMap.set(cProd, {
-                        cfop: String(det.prod?.CFOP || "").replace(/\D/g, ""),
+                        cfop: sourceCfop,
+                        cest: sourceCest || undefined,
+                        st: ["10", "30", "60", "70"].includes(sourceCst) ||
+                            Number(icmsValues?.vBCSTRet || 0) > 0 ||
+                            Number(icmsValues?.vICMSSTRet || 0) > 0,
                         orig: Number(icmsValues?.orig || 0),
                         // NF-e de origem com ICMS 60 possui somente ICMS-ST retido;
                         // nao use o valor do produto como se fosse base de ICMS normal.
@@ -5919,6 +5928,23 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             };
         });
 
+        const returnCfopMetadata = {
+            devolucao: {
+                finalidadeCompra: "revenda",
+                itens: payload.itens.map((item, idx) => {
+                    const originalTax = itemTaxProfileMap.get(item.codigo || "");
+                    return {
+                        nItem: idx + 1,
+                        cProd: item.codigo || String(idx + 1),
+                        cfopOrigem: originalTax?.cfop || undefined,
+                        st: originalTax?.st ?? false,
+                        cest: originalTax?.cest,
+                        combustivel: Boolean(originalTax?.combustivel),
+                    };
+                }),
+            },
+        };
+
         const totalVBC = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.vBC, 0));
         const totalVICMS = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.vICMS, 0));
         const stInfo = detItemsComputed
@@ -5937,6 +5963,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         // 7. Montar payload NF-e
         const nfePayload = {
             ambiente: env === "production" ? "producao" : "homologacao",
+            metadados: returnCfopMetadata,
             infNFe: {
                 versao: "4.00",
                 ide: {
