@@ -122,6 +122,7 @@ export default function DevolucaoPage() {
             const result = await emitirNFeDevolucao({
                 organization_id: profile.organization_id,
                 entry_invoice_id: invoiceId,
+                modo: "rapida",
                 itens: itensPayload,
                 valor_total: parseFloat(valorTotal.toFixed(2)),
                 environment,

@@ -1845,6 +1845,7 @@ export default function NFeCompletaPage() {
             const result = await emitirNFeDevolucaoAction({
                 organization_id: profile.organization_id,
                 entry_invoice_id: selectedEntryInvoice.id,
+                modo: "completa",
                 itens: selectedReturnItems.map((item) => ({
                     codigo: item.codigo,
                     descricao: item.descricao,

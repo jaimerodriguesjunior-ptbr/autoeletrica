@@ -5614,6 +5614,9 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
 type DevolucaoPayload = {
     organization_id: string;
     entry_invoice_id: string;
+    // A devolução rápida considera somente o valor dos produtos. A emissão
+    // completa mantém o espelhamento fiscal detalhado da NF-e de origem.
+    modo?: "rapida" | "completa";
     itens: {
         codigo: string;
         descricao: string;
@@ -5842,13 +5845,26 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         const detItemsComputed = payload.itens.map((item, idx) => {
             const originalTax = itemTaxProfileMap.get(item.codigo || "");
             const itemVProd = toMoneyNumber(item.valor_total);
+            const isQuickReturn = payload.modo === "rapida";
             const quantityFactor = originalTax?.qCom && originalTax.qCom > 0
                 ? item.quantidade / originalTax.qCom
                 : originalTax?.vProd && originalTax.vProd > 0
                     ? itemVProd / originalTax.vProd
                     : 1;
-            const vBC_item = toMoneyNumber((originalTax?.vBC || 0) * quantityFactor);
-            const vICMS_item = toMoneyNumber((originalTax?.vICMS || 0) * quantityFactor);
+            const originalBaseItem = toMoneyNumber((originalTax?.vBC || 0) * quantityFactor);
+            const originalIcmsItem = toMoneyNumber((originalTax?.vICMS || 0) * quantityFactor);
+            const quickBaseItem = originalTax?.vBC && originalTax.vBC > 0
+                ? itemVProd
+                : 0;
+            const quickRate = originalTax?.pICMS && originalTax.pICMS > 0
+                ? originalTax.pICMS / 100
+                : originalTax?.vBC && originalTax.vBC > 0
+                    ? originalTax.vICMS / originalTax.vBC
+                    : 0;
+            const vBC_item = isQuickReturn ? quickBaseItem : originalBaseItem;
+            const vICMS_item = isQuickReturn
+                ? toMoneyNumber(quickBaseItem * quickRate)
+                : originalIcmsItem;
             const stRetained = {
                 vBCSTRet: toMoneyNumber((originalTax?.vBCSTRet || 0) * quantityFactor),
                 pST: toMoneyNumber(originalTax?.pST || 0),
