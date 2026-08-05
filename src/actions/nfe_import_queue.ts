@@ -23,6 +23,7 @@ export type NfeQueueItem = {
     valor_total: number | null;
     error_message: string | null;
     created_at: string;
+    ignored_at?: string | null;
 };
 
 type DistribuicaoDocumento = {
@@ -237,7 +238,7 @@ export async function listNfeImportQueue() {
 
         const { data, error } = await supabaseAdmin
             .from("nfe_import_queue")
-            .select("id, chave_acesso, nuvemfiscal_document_id, nsu, resumo, status, numero, serie, emitente_nome, emitente_cnpj, data_emissao, valor_total, error_message, created_at, xml_content")
+            .select("id, chave_acesso, nuvemfiscal_document_id, nsu, resumo, status, numero, serie, emitente_nome, emitente_cnpj, data_emissao, valor_total, error_message, created_at, ignored_at, xml_content")
             .eq("organization_id", organizationId)
             .in("status", ["pending", "error"])
             .order("data_emissao", { ascending: false, nullsFirst: false });
@@ -280,6 +281,75 @@ export async function listNfeImportQueue() {
         return { success: true, data: pendingItems };
     } catch (error: any) {
         return { success: false, error: error.message, data: [] as NfeQueueItem[] };
+    }
+}
+
+export async function listNfeArchivedQueue() {
+    try {
+        const { organizationId } = await getOrgAndCompany();
+        const supabaseAdmin = createAdminClient();
+        const { data, error } = await supabaseAdmin
+            .from("nfe_import_queue")
+            .select("id, chave_acesso, nuvemfiscal_document_id, nsu, resumo, status, numero, serie, emitente_nome, emitente_cnpj, data_emissao, valor_total, error_message, created_at, ignored_at, xml_content")
+            .eq("organization_id", organizationId)
+            .eq("status", "ignored")
+            .order("ignored_at", { ascending: false, nullsFirst: false });
+
+        if (error) throw error;
+
+        return {
+            success: true,
+            data: ((data || []) as any[]).map(({ xml_content, ...item }) => ({
+                ...item,
+                xml_completo_disponivel: xml_content ? hasCompleteNfeItems(String(xml_content)) : false,
+            })) as NfeQueueItem[],
+        };
+    } catch (error: any) {
+        return { success: false, error: error.message, data: [] as NfeQueueItem[] };
+    }
+}
+
+export async function archiveNfeQueueItem(queueId: string) {
+    try {
+        const { organizationId } = await getOrgAndCompany();
+        const supabaseAdmin = createAdminClient();
+        const { error } = await supabaseAdmin
+            .from("nfe_import_queue")
+            .update({
+                status: "ignored",
+                ignored_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            })
+            .eq("id", queueId)
+            .eq("organization_id", organizationId)
+            .in("status", ["pending", "error"]);
+
+        if (error) throw error;
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function unarchiveNfeQueueItem(queueId: string) {
+    try {
+        const { organizationId } = await getOrgAndCompany();
+        const supabaseAdmin = createAdminClient();
+        const { error } = await supabaseAdmin
+            .from("nfe_import_queue")
+            .update({
+                status: "pending",
+                ignored_at: null,
+                updated_at: new Date().toISOString(),
+            })
+            .eq("id", queueId)
+            .eq("organization_id", organizationId)
+            .eq("status", "ignored");
+
+        if (error) throw error;
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
     }
 }
 
@@ -363,23 +433,32 @@ export async function syncNfeFromSefaz() {
                 continue;
             }
 
+            const existingQueue = await supabaseAdmin
+                .from("nfe_import_queue")
+                .select("status")
+                .eq("organization_id", organizationId)
+                .eq("chave_acesso", doc.chave_acesso)
+                .maybeSingle();
+
+            const queuePayload = {
+                organization_id: organizationId,
+                chave_acesso: doc.chave_acesso,
+                nuvemfiscal_document_id: doc.id,
+                nsu: doc.nsu || null,
+                schema: doc.schema || null,
+                resumo: Boolean(doc.resumo),
+                ...(existingQueue.data ? {} : { status: "pending" }),
+                emitente_nome: doc.emitente_nome_razao_social || null,
+                emitente_cnpj: doc.emitente_cpf_cnpj || null,
+                data_emissao: doc.data_emissao || null,
+                valor_total: doc.valor_nfe || null,
+                metadata: doc,
+                updated_at: new Date().toISOString(),
+            };
+
             const { error: upsertError } = await supabaseAdmin
                 .from("nfe_import_queue")
-                .upsert({
-                    organization_id: organizationId,
-                    chave_acesso: doc.chave_acesso,
-                    nuvemfiscal_document_id: doc.id,
-                    nsu: doc.nsu || null,
-                    schema: doc.schema || null,
-                    resumo: Boolean(doc.resumo),
-                    status: "pending",
-                    emitente_nome: doc.emitente_nome_razao_social || null,
-                    emitente_cnpj: doc.emitente_cpf_cnpj || null,
-                    data_emissao: doc.data_emissao || null,
-                    valor_total: doc.valor_nfe || null,
-                    metadata: doc,
-                    updated_at: new Date().toISOString(),
-                }, { onConflict: "organization_id,chave_acesso" });
+                .upsert(queuePayload, { onConflict: "organization_id,chave_acesso" });
 
             if (upsertError) throw upsertError;
             inserted++;
@@ -477,23 +556,32 @@ export async function searchNfeByAccessKey(chaveAcesso: string) {
             };
         }
 
+        const existingQueue = await supabaseAdmin
+            .from("nfe_import_queue")
+            .select("status")
+            .eq("organization_id", organizationId)
+            .eq("chave_acesso", doc.chave_acesso)
+            .maybeSingle();
+
+        const queuePayload = {
+            organization_id: organizationId,
+            chave_acesso: doc.chave_acesso,
+            nuvemfiscal_document_id: doc.id,
+            nsu: doc.nsu || null,
+            schema: doc.schema || null,
+            resumo: Boolean(doc.resumo),
+            ...(existingQueue.data ? {} : { status: "pending" }),
+            emitente_nome: doc.emitente_nome_razao_social || null,
+            emitente_cnpj: doc.emitente_cpf_cnpj || null,
+            data_emissao: doc.data_emissao || doc.data_evento || null,
+            valor_total: doc.valor_nfe || null,
+            metadata: doc,
+            updated_at: new Date().toISOString(),
+        };
+
         const { data: queueItem, error: upsertError } = await supabaseAdmin
             .from("nfe_import_queue")
-            .upsert({
-                organization_id: organizationId,
-                chave_acesso: doc.chave_acesso,
-                nuvemfiscal_document_id: doc.id,
-                nsu: doc.nsu || null,
-                schema: doc.schema || null,
-                resumo: Boolean(doc.resumo),
-                status: "pending",
-                emitente_nome: doc.emitente_nome_razao_social || null,
-                emitente_cnpj: doc.emitente_cpf_cnpj || null,
-                data_emissao: doc.data_emissao || doc.data_evento || null,
-                valor_total: doc.valor_nfe || null,
-                metadata: doc,
-                updated_at: new Date().toISOString(),
-            }, { onConflict: "organization_id,chave_acesso" })
+            .upsert(queuePayload, { onConflict: "organization_id,chave_acesso" })
             .select("id")
             .single();
 

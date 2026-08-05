@@ -5,17 +5,20 @@ import { createClient } from "@/src/lib/supabase";
 import { useAuth } from "@/src/contexts/AuthContext";
 import {
     FileJson, AlertCircle, CheckCircle, Search,
-    ArrowRight, Save, Plus, X, Loader2, Upload, CloudDownload, FolderOpen, Inbox, RefreshCw, Copy
+    ArrowRight, Save, Plus, X, Loader2, Upload, CloudDownload, FolderOpen, Inbox, RefreshCw, Copy, Archive, ArchiveRestore
 } from "lucide-react";
 import { XMLParser } from "fast-xml-parser";
 import { ProductCombobox } from "./ProductCombobox";
 import { getCompanySettings } from "@/src/actions/fiscal";
 import {
     getNfeQueueXml,
+    archiveNfeQueueItem,
+    listNfeArchivedQueue,
     listNfeImportQueue,
     markNfeQueueImported,
     searchNfeByAccessKey,
     syncNfeFromSefaz,
+    unarchiveNfeQueueItem,
     type NfeQueueItem,
 } from "@/src/actions/nfe_import_queue";
 import { searchNfeDirectSefazByAccessKey } from "@/src/actions/sefaz_direct_distribution";
@@ -67,6 +70,9 @@ export default function ImportarXML() {
     const [isDragging, setIsDragging] = useState(false);
     const [sourceMode, setSourceMode] = useState<'computer' | 'sefaz'>('computer');
     const [queueItems, setQueueItems] = useState<NfeQueueItem[]>([]);
+    const [archivedQueueItems, setArchivedQueueItems] = useState<NfeQueueItem[]>([]);
+    const [showArchivedQueue, setShowArchivedQueue] = useState(false);
+    const [archivedLoading, setArchivedLoading] = useState(false);
     const [queueLoading, setQueueLoading] = useState(false);
     const [syncingSefaz, setSyncingSefaz] = useState(false);
     const [searchingKey, setSearchingKey] = useState(false);
@@ -114,6 +120,40 @@ export default function ImportarXML() {
             setQueueLoading(false);
         }
     }, []);
+
+    const loadArchivedQueue = useCallback(async () => {
+        setArchivedLoading(true);
+        try {
+            const result = await listNfeArchivedQueue();
+            if (!result.success) throw new Error(result.error);
+            setArchivedQueueItems(result.data || []);
+        } catch (error: any) {
+            alert("Erro ao carregar notas arquivadas: " + error.message);
+        } finally {
+            setArchivedLoading(false);
+        }
+    }, []);
+
+    const handleArchiveQueueItem = async (note: NfeQueueItem) => {
+        if (!window.confirm(`Arquivar a NF ${note.numero || "-"} sem importar? Ela poderá ser desarquivada depois.`)) return;
+        const result = await archiveNfeQueueItem(note.id);
+        if (!result.success) {
+            alert("Não foi possível arquivar a nota: " + result.error);
+            return;
+        }
+        setQueueItems((current) => current.filter((item) => item.id !== note.id));
+        setArchivedQueueItems((current) => [{ ...note, status: "ignored", ignored_at: new Date().toISOString() }, ...current.filter((item) => item.id !== note.id)]);
+    };
+
+    const handleUnarchiveQueueItem = async (note: NfeQueueItem) => {
+        const result = await unarchiveNfeQueueItem(note.id);
+        if (!result.success) {
+            alert("Não foi possível desarquivar a nota: " + result.error);
+            return;
+        }
+        setArchivedQueueItems((current) => current.filter((item) => item.id !== note.id));
+        setQueueItems((current) => [{ ...note, status: "pending", ignored_at: null }, ...current.filter((item) => item.id !== note.id)]);
+    };
 
     useEffect(() => {
         if (sourceMode === 'sefaz') {
@@ -636,6 +676,16 @@ export default function ImportarXML() {
                                 </p>
                             </div>
                             <div className="flex flex-col sm:flex-row gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowArchivedQueue((current) => !current);
+                                        if (!showArchivedQueue) void loadArchivedQueue();
+                                    }}
+                                    className="bg-white text-[#1A1A1A] px-5 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 border border-stone-200 hover:border-stone-400"
+                                >
+                                    <Archive size={18} /> Notas arquivadas
+                                </button>
                                 <div className="flex items-center overflow-hidden rounded-2xl border border-stone-200 bg-white">
                                     <input
                                         value={accessKeyInput}
@@ -663,6 +713,41 @@ export default function ImportarXML() {
                                 </button>
                             </div>
                         </div>
+
+                        {showArchivedQueue && (
+                            <div className="border-b border-stone-100 bg-stone-50">
+                                <div className="p-5 flex items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="font-bold text-[#1A1A1A] flex items-center gap-2"><Archive size={18} /> Notas arquivadas</h3>
+                                        <p className="text-xs text-stone-500 mt-1">Notas mantidas fora da fila principal. Nenhum XML ou registro fiscal foi excluído.</p>
+                                    </div>
+                                    <span className="text-xs font-bold text-stone-500">{archivedQueueItems.length} nota(s)</span>
+                                </div>
+                                {archivedLoading ? (
+                                    <div className="px-5 pb-5 text-sm text-stone-400 flex items-center gap-2"><Loader2 className="animate-spin" size={16} /> Carregando...</div>
+                                ) : archivedQueueItems.length === 0 ? (
+                                    <div className="px-5 pb-5 text-sm text-stone-400">Nenhuma nota arquivada.</div>
+                                ) : (
+                                    <div className="divide-y divide-stone-200 border-t border-stone-200">
+                                        {archivedQueueItems.map((note) => (
+                                            <div key={note.id} className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                <div className="min-w-0">
+                                                    <p className="font-bold text-[#1A1A1A] truncate">{note.emitente_nome || "Fornecedor nao identificado"}</p>
+                                                    <p className="text-xs text-stone-500 mt-1">NF {note.numero || "-"} {note.data_emissao ? `- ${new Date(note.data_emissao).toLocaleDateString('pt-BR')}` : ""} - Chave {note.chave_acesso}</p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleUnarchiveQueueItem(note)}
+                                                    className="bg-white text-[#1A1A1A] px-4 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-stone-200 hover:border-stone-400 shrink-0"
+                                                >
+                                                    <ArchiveRestore size={15} /> Desarquivar
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {queueLoading ? (
                             <div className="py-16 flex flex-col items-center gap-2 text-stone-400">
@@ -723,9 +808,9 @@ export default function ImportarXML() {
                                             <button
                                                 type="button"
                                                 onClick={() => handleCopyAccessKey(note.chave_acesso)}
-                                                className="bg-white text-[#1A1A1A] px-4 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-stone-200 hover:border-stone-400"
+                                                className="bg-white text-[#1A1A1A] px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-stone-200 hover:border-stone-400 leading-tight"
                                             >
-                                                <Copy size={15} /> Copiar chave
+                                                <Copy size={16} /> <span>Copiar<br />chave</span>
                                             </button>
                                             <a
                                                 href={buildNFePortalConsultaUrl(note.chave_acesso)}
@@ -734,23 +819,32 @@ export default function ImportarXML() {
                                                 onClick={() => {
                                                     void navigator.clipboard?.writeText(note.chave_acesso).catch(() => undefined);
                                                 }}
-                                                className="bg-white text-[#1A1A1A] px-4 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-stone-200 hover:border-stone-400"
+                                                className="bg-white text-[#1A1A1A] px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-stone-200 hover:border-stone-400 leading-tight"
                                                 title="Abre o Portal NF-e e copia a chave para consulta manual"
                                             >
-                                                <Search size={15} /> Portal NF-e
+                                                <Search size={16} /> <span>Portal<br />NF-e</span>
                                             </a>
                                             <button
                                                 type="button"
                                                 onClick={() => handleOpenQueueItem(note)}
                                                 disabled={loading}
-                                                className={`${note.xml_completo_disponivel ? "bg-[#1A1A1A] text-[#FACC15] border border-[#1A1A1A]" : "bg-stone-100 text-stone-600 border border-stone-200"} px-4 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-60`}
+                                                className={`${note.xml_completo_disponivel ? "bg-[#1A1A1A] text-[#FACC15] border border-[#1A1A1A]" : "bg-stone-100 text-stone-600 border border-stone-200"} px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-60 leading-tight`}
                                             >
                                                 {loading && selectedQueueId === note.id ? (
-                                                    <Loader2 className="animate-spin" size={15} />
+                                                    <Loader2 className="animate-spin" size={16} />
                                                 ) : (
-                                                    <ArrowRight size={15} />
+                                                    <ArrowRight size={16} />
                                                 )}
-                                                {note.xml_completo_disponivel ? "Importar XML" : "Baixar XML"}
+                                                <span>{note.xml_completo_disponivel ? <>Importar<br />XML</> : <>Baixar<br />XML</>}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleArchiveQueueItem(note)}
+                                                disabled={loading}
+                                                className="bg-white text-stone-600 px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-stone-200 hover:border-stone-400 disabled:opacity-60 leading-tight"
+                                                title="Retira a nota da fila sem importar; ela poderá ser desarquivada depois"
+                                            >
+                                                <Archive size={16} /> <span>Arquivar sem<br />importar</span>
                                             </button>
                                         </div>
                                     </div>
