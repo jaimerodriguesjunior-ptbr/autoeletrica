@@ -65,7 +65,15 @@ export default function ImportarXML() {
     const [loading, setLoading] = useState(false);
     const [items, setItems] = useState<ImportedProduct[]>([]);
     const [dbProducts, setDbProducts] = useState<DatabaseProduct[]>([]);
-    const [notaInfo, setNotaInfo] = useState<{ nNF: string, emitente: string, emitenteCNPJ: string, total: number, chNFe: string, dhEmi: string } | null>(null);
+    const [notaInfo, setNotaInfo] = useState<{
+        nNF: string;
+        emitente: string;
+        emitenteCNPJ: string;
+        total: number;
+        chNFe: string;
+        dhEmi: string;
+        environment: 'production' | 'homologation';
+    } | null>(null);
     const [rawXml, setRawXml] = useState<string>("");
     const [isDragging, setIsDragging] = useState(false);
     const [sourceMode, setSourceMode] = useState<'computer' | 'sefaz'>('computer');
@@ -254,7 +262,8 @@ export default function ImportarXML() {
                 emitenteCNPJ: emit.CNPJ,
                 total: Number(total),
                 chNFe,
-                dhEmi: ide.dhEmi || new Date().toISOString()
+                dhEmi: ide.dhEmi || new Date().toISOString(),
+                environment: String(ide.tpAmb) === '2' ? 'homologation' : 'production',
             });
 
             // Detalhes (Produtos)
@@ -554,7 +563,7 @@ export default function ImportarXML() {
                     emitente_cnpj: notaInfo.emitenteCNPJ,
                     data_emissao: notaInfo.dhEmi,
                     direction: 'entry',
-                    environment: 'production',
+                    environment: notaInfo.environment,
                     tipo_documento: 'NFe',
                     status: 'authorized'
                 });
