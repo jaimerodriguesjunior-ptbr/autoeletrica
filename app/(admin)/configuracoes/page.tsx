@@ -382,7 +382,7 @@ export default function Configuracoes() {
       const result = await response.json();
       if (!result.success) throw new Error(result.error);
 
-      alert(result.message);
+      alert(result.warning ? `${result.message}\n\n${result.warning}` : result.message);
       fetchCompany(); // Recarregar dados
       updateProfile({ logo_url: company.logo_url }); // Atualiza sidebar
     } catch (error: any) {

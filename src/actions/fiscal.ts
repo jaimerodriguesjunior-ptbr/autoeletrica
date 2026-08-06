@@ -308,6 +308,12 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
         };
 
         // 3. Executar configurações na Nuvem Fiscal APENAS se tiver CNPJ
+        // Empresas sem o módulo fiscal não precisam ser registradas na
+        // Nuvem Fiscal. O cadastro já foi salvo no banco acima.
+        if (!data.usa_fiscal) {
+            return { success: true, message: "Dados da empresa salvos" };
+        }
+
         if (data.cpf_cnpj) {
             const syncTasks = [
                 configureEnvironment('homologation'),
@@ -319,16 +325,35 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
                 .filter((r): r is PromiseRejectedResult => r.status === "rejected")
                 .map((r) => String(r.reason?.message || r.reason));
             if (failures.length) {
-                return { success: false, error: `Falha ao sincronizar com a Nuvem Fiscal: ${failures.join(" | ")}` };
+                return {
+                    success: true,
+                    message: "Dados da empresa salvos",
+                    warning: "A sincronização fiscal não foi concluída. Revise CNPJ, endereço e credenciais fiscais e tente novamente."
+                };
             }
-            return { success: true, message: "Empresa salva" };
+            return { success: true, message: "Dados da empresa e configurações fiscais salvos" };
         }
 
-        return { success: true, message: "Empresa salva" };
+        return { success: true, message: "Dados da empresa salvos" };
 
     } catch (error: any) {
         console.error("Erro em registerCompanyInNuvemFiscal:", error);
-        return { success: false, error: error.message };
+        const rawMessage = String(error?.message || "");
+        let message = "Não foi possível salvar os dados da empresa. Verifique os campos preenchidos e tente novamente.";
+
+        if (/Usuário não autenticado|Organização não encontrada/i.test(rawMessage)) {
+            message = "Sua sessão expirou. Entre novamente no sistema e tente salvar os dados.";
+        } else if (/Erro ao salvar no banco/i.test(rawMessage)) {
+            message = "Não foi possível salvar os dados no sistema. Tente novamente em alguns instantes.";
+        } else if (/Credenciais da Nuvem Fiscal/i.test(rawMessage)) {
+            message = "Os dados foram salvos, mas as credenciais da Nuvem Fiscal não estão configuradas para este ambiente.";
+        } else if (/Falha na autenticação|401|403/i.test(rawMessage)) {
+            message = "Os dados foram salvos, mas a autorização da Nuvem Fiscal foi recusada. Verifique as credenciais fiscais.";
+        } else if (/400|422|endereço|município|CNPJ|cpf_cnpj|regime_tributario/i.test(rawMessage)) {
+            message = "Os dados foram salvos, mas a Nuvem Fiscal rejeitou alguma informação. Confira CNPJ, endereço, município e regime tributário.";
+        }
+
+        return { success: false, error: message };
     }
 }
 
