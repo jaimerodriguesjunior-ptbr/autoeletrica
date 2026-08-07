@@ -668,7 +668,7 @@ export default function NFeCompletaPage() {
     // fechado (venda e devolução via "Outra operação"). Para reabrir qualquer uma,
     // trocar o flag para true após teste e registro em NUVEMLOCALFISCAL.md.
     const isRemessaConsertoMvp = false;
-    const isRemessaGarantiaMvp = false;
+    const isRemessaGarantiaMvp = operation === "shipment" && purpose === "Remessa em garantia";
     const isRetornoConsertoMvp = false;
     const isRetornoGarantiaMvp = false;
     const isRetornoDepositoMvp = false;
@@ -679,7 +679,7 @@ export default function NFeCompletaPage() {
     const usesOriginItems = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp;
     // MVP de NF-e: somente venda comum; devolução e venda com parâmetros fiscais de
     // venda/devolução entram pelo caminho de "Outra operação" (advanced).
-    const isEmissionSupported = isVendaComumMvp;
+    const isEmissionSupported = isVendaComumMvp || isRemessaGarantiaMvp;
     const destinationLabel = !participantUf || !companyUf
         ? "Aguardando endereco"
         : participantUf === companyUf
