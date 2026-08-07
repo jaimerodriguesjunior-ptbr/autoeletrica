@@ -5301,7 +5301,7 @@ export async function updateCompanyCredentials(organizationId: string, environme
 
 
 
-        console.log("[Update Company] Enviando credenciais NFS-e...", payload);
+        console.log("[Update Company] Atualizando configuração NFS-e municipal.");
 
 
 
@@ -5310,6 +5310,30 @@ export async function updateCompanyCredentials(organizationId: string, environme
             ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
 
             : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+
+        // A configuração do provedor é responsabilidade da Nuvem Local. Em
+        // especial, não podemos sobrescrever uma homologação Nacional com o
+        // payload histórico de credenciais IPM deste cliente.
+        const currentConfig = await fetch(
+            `${baseUrl}/empresas/${cnpj}/nfse?ambiente=${environment === 'production' ? 'producao' : 'homologacao'}`,
+            {
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+        if (currentConfig.ok) {
+            const current = await currentConfig.json();
+            if (current?.provedor === "nfse-nacional" || current?.provedor === "toledo-equiplano") {
+                return {
+                    success: true,
+                    message: "Configuração NFS-e da Nuvem Local preservada para o provedor atual."
+                };
+            }
+        } else if (currentConfig.status !== 404) {
+            console.warn("[Update Company] Não foi possível consultar o provedor NFS-e atual:", currentConfig.status);
+        }
 
 
 
