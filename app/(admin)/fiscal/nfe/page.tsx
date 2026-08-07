@@ -373,7 +373,7 @@ function getGuidedCfop(operation: OperationGroup, purpose: string, isInterstate:
     if (operation === "shipment") {
         if (purpose === "Remessa para conserto") return `${prefix}915`;
         if (purpose === "Retorno de conserto") return `${prefix}916`;
-        if (purpose === "Remessa em garantia") return `${prefix}915`;
+        if (purpose === "Remessa em garantia") return `${prefix}949`;
         if (purpose === "Retorno de garantia") return `${prefix}916`;
         if (purpose === "Remessa para demonstração") return `${prefix}912`;
         if (purpose === "Retorno de demonstração") return `${prefix}913`;
@@ -413,8 +413,8 @@ function getOperationRuleStatus(operation: OperationGroup, purpose: string) {
 function getShipmentRuleStatus(purpose: string) {
     if (purpose.includes("garantia")) {
         return {
-            title: "Sugestão inicial: tratar como conserto/garantia",
-            detail: "A tela sugere CFOP de conserto/reparo para remessa em garantia, mas a emissão real ainda precisa parametrização e validação do contador.",
+            title: "Remessa em garantia com emissão liberada",
+            detail: "Para envio à Scherer, use CFOP 5949 dentro do estado ou 6949 fora do estado e informe a NF de origem nos dados adicionais.",
         };
     }
 
@@ -1885,6 +1885,11 @@ export default function NFeCompletaPage() {
 
         if (pending.length > 0) {
             alert(`Corrija as pendencias antes de emitir:\n${pending.join("\n")}`);
+            return;
+        }
+
+        if (isRemessaGarantiaMvp && !infCpl.trim()) {
+            alert("Informe nos dados adicionais o número ou a chave da NF de origem da Scherer antes de emitir a remessa em garantia.");
             return;
         }
 
@@ -3456,7 +3461,11 @@ export default function NFeCompletaPage() {
 
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div>
-                                    <label className={labelClass}>Observações comerciais</label>
+                                    <label className={labelClass}>
+                                        {isRemessaGarantiaMvp
+                                            ? "Dados adicionais — informe a NF de origem da Scherer *"
+                                            : "Observações comerciais"}
+                                    </label>
                                     <textarea value={infCpl} onChange={(e) => setInfCpl(e.target.value)} rows={6} className={`${fieldClass} resize-none`} />
                                 </div>
                                 <div>

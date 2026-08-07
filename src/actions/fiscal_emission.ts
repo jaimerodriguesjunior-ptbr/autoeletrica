@@ -2428,7 +2428,9 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
         const destinatarioUF = String(payload.cliente.endereco?.uf || "").trim().toUpperCase();
         const emitenteUF = String(company.uf || "").trim().toUpperCase();
         const mesmoEstado = !destinatarioUF || destinatarioUF === emitenteUF;
-        const cfopRemessa = mesmoEstado ? "5915" : "6915";
+        // Garantia enviada à Scherer: a orientação fiscal do destinatário usa
+        // 5.949/6.949 (outra saída), não o CFOP de conserto/reparo.
+        const cfopRemessa = mesmoEstado ? "5949" : "6949";
         const nfeSerie = getCompanyNFeSerie(company);
         const nfeNumber = await getNextNFeNumber(supabase, payload.organization_id, env, nfeSerie);
         const { dhEmi } = getSaoPauloDatePartsWithSafety();
