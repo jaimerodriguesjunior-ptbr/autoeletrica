@@ -5521,7 +5521,11 @@ export async function updateCompanyCredentials(organizationId: string, environme
 
 
 
-export async function cancelarNota(invoiceId: string, justificativa: string = "Erro de preenchimento") {
+export async function cancelarNota(
+    invoiceId: string,
+    justificativa: string = "Erro de preenchimento",
+    codigoMotivo: string = "9"
+) {
 
     const supabase = createClient();
 
@@ -5607,7 +5611,7 @@ export async function cancelarNota(invoiceId: string, justificativa: string = "E
 
             body = {
 
-                codigo: "2", // 2 - Erro na emissão
+                codigo: ["1", "2", "9"].includes(codigoMotivo) ? codigoMotivo : "9",
 
                 motivo: justificativa
 

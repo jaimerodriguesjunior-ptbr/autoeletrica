@@ -257,11 +257,18 @@ export default function FiscalDashboard() {
         const justificativa = prompt("Motivo do cancelamento (Mínimo 15 caracteres):");
         if (!justificativa) return;
         if (justificativa.length < 15) return alert("Justificativa muito curta.");
+        const codigoMotivo = prompt(
+            "Código do motivo: 1 = erro na emissão; 2 = serviço não prestado; 9 = outros.",
+            "9"
+        );
+        if (!codigoMotivo || !["1", "2", "9"].includes(codigoMotivo.trim())) {
+            return alert("Código inválido. Use 1, 2 ou 9.");
+        }
 
         if (!confirm("Tem certeza que deseja cancelar esta nota? Ação irreversível.")) return;
 
         try {
-            const res = await cancelarNota(invoiceId, justificativa);
+            const res = await cancelarNota(invoiceId, justificativa, codigoMotivo.trim());
             if (res.success) {
                 alert("Sucesso: " + res.message);
                 fetchInvoices();
