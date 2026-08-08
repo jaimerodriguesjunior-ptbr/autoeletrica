@@ -4141,6 +4141,10 @@ export async function emitirNFSe(payload: EmissionPayload) {
                     : "CNPJ do tomador invalido. Verifique se o cliente informou um CNPJ completo e valido."
             );
         }
+        const prestadorDoc = normalizeDocument(cnpj) || "";
+        if (prestadorDoc && clienteDoc === prestadorDoc) {
+            throw new Error("O CPF/CNPJ do tomador não pode ser o mesmo da empresa prestadora. Confira o cadastro do cliente antes de emitir.");
+        }
 
 
 

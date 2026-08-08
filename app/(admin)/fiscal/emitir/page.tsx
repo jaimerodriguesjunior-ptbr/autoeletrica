@@ -157,6 +157,7 @@ export default function EmitirNotaPage() {
     const [itensServico, setItensServico] = useState<any[]>([]);
     const [produtoDocumento, setProdutoDocumento] = useState<"NFCe" | "NFe">("NFCe");
     const [emitenteUF, setEmitenteUF] = useState("");
+    const [emitenteCnpj, setEmitenteCnpj] = useState("");
 
     const [emitting, setEmitting] = useState(false);
     const [loadingCep, setLoadingCep] = useState(false);
@@ -221,6 +222,9 @@ export default function EmitirNotaPage() {
         if (!clienteNome.trim()) pendencias.push("Informe o nome do tomador para emitir NFS-e.");
         if (docDigits.length !== 11 && docDigits.length !== 14) {
             pendencias.push("NFS-e exige CPF/CNPJ valido do tomador.");
+        }
+        if (docDigits && emitenteCnpj && docDigits === emitenteCnpj) {
+            pendencias.push("O CPF/CNPJ do tomador não pode ser o mesmo da empresa emissora.");
         }
 
         return pendencias;
@@ -328,6 +332,7 @@ export default function EmitirNotaPage() {
         const loadCompanyUf = async () => {
             const settings = await getCompanySettings();
             setEmitenteUF(String(settings?.uf || "").trim().toUpperCase());
+            setEmitenteCnpj(String(settings?.cnpj || settings?.cpf_cnpj || "").replace(/\D/g, ""));
         };
 
         loadCompanyUf();
@@ -388,7 +393,11 @@ export default function EmitirNotaPage() {
 
         setClienteNome(os.clients?.nome || "");
 
-        setClienteDoc(os.clients?.cpf_cnpj || "");
+        // Nunca reutilizar o CNPJ do emitente como documento do tomador.
+        // Isso pode ocorrer quando o cadastro legado da OS não possui documento
+        // e evita que a SEFIN rejeite a DPS com E0202.
+        const clientDoc = String(os.clients?.cpf_cnpj || "").replace(/\D/g, "");
+        setClienteDoc(clientDoc && clientDoc !== emitenteCnpj ? clientDoc : "");
 
         setClienteEndereco({
             cep: "",
