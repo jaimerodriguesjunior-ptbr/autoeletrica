@@ -4565,6 +4565,102 @@ export async function emitirNFSe(payload: EmissionPayload) {
                 (normalizedError.includes("1824") && normalizedError.includes("nrinscricaomunicipal")) ||
                 normalizedError.includes("8003");
 
+            // A SEFIN Nacional retorna E0014 quando esta mesma DPS ja originou
+            // uma NFS-e. Isso nao e uma nova rejeicao: devemos consultar o
+            // documento local pelo id retornado, recuperar a autorizacao e
+            // sincronizar a nota com a Autoeletrica sem reenviar a DPS.
+            const fiscalDocumentId = typeof result?.id === "string" ? result.id.trim() : "";
+            const isNationalDpsAlreadyIssued =
+                Boolean(fiscalDocumentId) &&
+                normalizedError.includes("e0014") &&
+                normalizedError.includes("dps");
+
+            if (isNationalDpsAlreadyIssued) {
+                try {
+                    const consultResponse = await fetch(
+                        `${baseUrl}/nfse/${encodeURIComponent(fiscalDocumentId)}?consultar_nacional=1`,
+                        {
+                            method: "GET",
+                            headers: {
+                                "Authorization": `Bearer ${token}`,
+                                "Content-Type": "application/json"
+                            }
+                        }
+                    );
+                    const consultText = await consultResponse.text();
+                    let consulted: any = {};
+                    try {
+                        consulted = consultText ? JSON.parse(consultText) : {};
+                    } catch {
+                        consulted = {};
+                    }
+
+                    const consultedStatus = String(consulted?.status || "").toLowerCase();
+                    const recoveredAuthorization =
+                        consultResponse.ok &&
+                        (consultedStatus === "autorizado" || consultedStatus === "autorizada");
+
+                    if (recoveredAuthorization) {
+                        const xmlContent = await tryFetchXmlByUuid(token, baseUrl, "NFSe", fiscalDocumentId);
+                        const authorizedUpdate: Record<string, any> = {
+                            status: "authorized",
+                            nuvemfiscal_uuid: fiscalDocumentId,
+                            chave_acesso: consulted.chave || consulted.codigo_verificacao || result.chave || null,
+                            numero: String(consulted.numero || result.numero || ""),
+                            serie: String(consulted.serie || result.serie || ""),
+                            xml_url: consulted.xml_url || null,
+                            pdf_url: consulted.pdf_url || null,
+                            error_message: null,
+                            payload_json: dpsPayload
+                        };
+                        if (xmlContent) authorizedUpdate.xml_content = xmlContent;
+                        await supabase.from("fiscal_invoices").update(authorizedUpdate).eq("id", invoice.id);
+
+                        return {
+                            success: true,
+                            invoiceId: invoice.id,
+                            message: "NFS-e Nacional ja havia sido autorizada e foi recuperada automaticamente."
+                        };
+                    }
+
+                    // Mesmo se a SEFIN ainda estiver processando, guardamos o
+                    // identificador para que a tela consiga consultar depois.
+                    await supabase.from("fiscal_invoices").update({
+                        status: "processing",
+                        nuvemfiscal_uuid: fiscalDocumentId,
+                        chave_acesso: consulted.chave || consulted.codigo_verificacao || result.chave || null,
+                        numero: String(consulted.numero || result.numero || "") || null,
+                        serie: String(consulted.serie || result.serie || "") || null,
+                        error_message: "DPS ja recebida pela SEFIN Nacional; aguardando a consulta da autorizacao.",
+                        payload_json: dpsPayload
+                    }).eq("id", invoice.id);
+
+                    return {
+                        success: true,
+                        invoiceId: invoice.id,
+                        message: "DPS ja recebida pela SEFIN Nacional; a NFS-e sera consultada automaticamente."
+                    };
+                } catch (recoveryError: any) {
+                    // A emissao nao pode perder o id devolvido pela Nuvem Local:
+                    // ele permite a recuperacao manual na tela de notas.
+                    await supabase.from("fiscal_invoices").update({
+                        status: "processing",
+                        nuvemfiscal_uuid: fiscalDocumentId,
+                        chave_acesso: result.chave || null,
+                        numero: String(result.numero || "") || null,
+                        serie: String(result.serie || "") || null,
+                        error_message: `DPS ja recebida pela SEFIN Nacional; falha ao consultar automaticamente: ${recoveryError?.message || "erro desconhecido"}.`,
+                        payload_json: dpsPayload
+                    }).eq("id", invoice.id);
+
+                    return {
+                        success: true,
+                        invoiceId: invoice.id,
+                        message: "DPS ja recebida pela SEFIN Nacional; use Atualizar status para concluir a consulta."
+                    };
+                }
+            }
+
             if (isToledo && env === 'production' && isToledoCredentialIssue) {
                 await supabase
                     .from("fiscal_invoices")
