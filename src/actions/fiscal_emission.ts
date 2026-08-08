@@ -8,7 +8,7 @@ import { cookies } from "next/headers";
 
 import { BillingBlockedError, assertOrganizationCanCreateNewOperations } from "@/src/lib/billing-guard";
 
-import { getNuvemFiscalToken } from "@/src/lib/nuvemfiscal";
+import { getNuvemFiscalToken, getNuvemLocalFiscalBaseUrl } from "@/src/lib/nuvemfiscal";
 
 
 
@@ -4914,11 +4914,7 @@ export async function consultarNFSe(invoiceId: string) {
         // 3. Consultar na NuvemFiscal
         // Usa o endpoint conforme o tipo do documento.
 
-        const baseUrl = env === 'production'
-
-            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
-
-            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+        const baseUrl = getNuvemLocalFiscalBaseUrl(env);
 
 
 
@@ -5623,13 +5619,7 @@ export async function cancelarNota(
 
         console.log(`[Cancelar] Enviando pedido para ${endpoint}...`);
 
-
-
-        const baseUrl = env === 'production'
-
-            ? (process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br")
-
-            : (process.env.NUVEMFISCAL_HOM_URL || "https://api.sandbox.nuvemfiscal.com.br");
+        const baseUrl = getNuvemLocalFiscalBaseUrl(env);
 
 
 
@@ -5659,7 +5649,11 @@ export async function cancelarNota(
             result = { message: responseText };
         }
 
-        console.log("[Cancelar] Resultado:", JSON.stringify(result, null, 2));
+        console.log("[Cancelar] Resposta recebida:", {
+            httpStatus: response.status,
+            status: result.status ?? null,
+            codigoStatus: result.codigo_status ?? result.cancelamento?.codigo_status ?? null
+        });
 
         const apiErrorMessage =
             result.error?.message ||
@@ -5678,6 +5672,9 @@ export async function cancelarNota(
         const isProcessing =
             result.status === "processamento" ||
             result.status === "processing";
+        const isNationalNfse = invoice.tipo_documento === "NFSe";
+        const isConfirmedNfseCancellation =
+            result.status === "cancelado" || result.status === "cancelada";
 
         if (!response.ok && !isAlreadyCancelled) {
             return { success: false, error: apiErrorMessage || "Erro ao cancelar nota." };
@@ -5692,6 +5689,16 @@ export async function cancelarNota(
                 success: true,
                 status: "processing",
                 message: "Cancelamento em processamento. O status sera atualizado apos a confirmacao da prefeitura."
+            };
+        }
+
+        // A Nuvem Local usa `status=cancelado` como a unica confirmacao para
+        // NFS-e. Um 2xx incompleto nao pode baixar a nota local.
+        if (isNationalNfse && !isConfirmedNfseCancellation) {
+            return {
+                success: false,
+                status: "authorized",
+                error: apiErrorMessage || "A SEFIN nao confirmou o cancelamento. A nota permanece autorizada."
             };
         }
 

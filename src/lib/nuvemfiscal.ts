@@ -6,9 +6,6 @@ type CachedToken = {
 };
 
 const TOKEN_EXPIRY_SAFETY_MS = 60_000;
-const OFFICIAL_AUTH_URL = "https://auth.nuvemfiscal.com.br/oauth/token";
-const OFFICIAL_API_URL = "https://api.nuvemfiscal.com.br";
-const OFFICIAL_SANDBOX_API_URL = "https://api.sandbox.nuvemfiscal.com.br";
 const tokenCache: Record<string, CachedToken | undefined> = {};
 const tokenRequests: Record<string, Promise<string> | undefined> = {};
 
@@ -17,34 +14,22 @@ function resolveBaseUrl(environment: 'production' | 'homologation') {
     ? process.env.NUVEMFISCAL_PROD_URL
     : process.env.NUVEMFISCAL_HOM_URL;
 
-  if (explicitBaseUrl) {
-    return explicitBaseUrl.replace(/\/$/, '');
+  if (!explicitBaseUrl) {
+    throw new Error(`URL da Nuvem Local Fiscal (${environment}) nao configurada.`);
   }
+  try {
+    return new URL(explicitBaseUrl).toString().replace(/\/$/, '');
+  } catch {
+    throw new Error(`URL da Nuvem Local Fiscal (${environment}) invalida.`);
+  }
+}
 
-  return environment === 'production'
-    ? OFFICIAL_API_URL
-    : OFFICIAL_SANDBOX_API_URL;
+export function getNuvemLocalFiscalBaseUrl(environment: 'production' | 'homologation') {
+  return resolveBaseUrl(environment);
 }
 
 function resolveAuthUrl(environment: 'production' | 'homologation') {
-  const explicitAuthUrl = environment === 'production'
-    ? process.env.NUVEMFISCAL_PROD_AUTH_URL
-    : process.env.NUVEMFISCAL_HOM_AUTH_URL;
-
-  if (explicitAuthUrl) {
-    return explicitAuthUrl.replace(/\/$/, '');
-  }
-
-  const baseUrl = resolveBaseUrl(environment);
-  if (
-    baseUrl &&
-    baseUrl !== OFFICIAL_API_URL &&
-    baseUrl !== OFFICIAL_SANDBOX_API_URL
-  ) {
-    return `${baseUrl}/oauth/token`;
-  }
-
-  return OFFICIAL_AUTH_URL;
+  return `${resolveBaseUrl(environment)}/oauth/token`;
 }
 
 export async function getNuvemFiscalToken(
