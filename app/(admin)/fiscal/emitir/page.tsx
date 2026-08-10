@@ -160,6 +160,8 @@ export default function EmitirNotaPage() {
     const [emitenteCnpj, setEmitenteCnpj] = useState("");
 
     const [emitting, setEmitting] = useState(false);
+    const [emissionError, setEmissionError] = useState<string | null>(null);
+    const [emissionErrorCopied, setEmissionErrorCopied] = useState(false);
     const [loadingCep, setLoadingCep] = useState(false);
 
     const [focusedField, setFocusedField] = useState<{ type: 'prod' | 'serv', idx: number } | null>(null);
@@ -843,7 +845,8 @@ export default function EmitirNotaPage() {
 
             if (errors.length > 0) {
 
-                alert(`Erro na emissão:\n${errors.map(e => `${e.type}: ${e.error}`).join('\n')}`);
+                setEmissionError(`Erro na emissão:\n${errors.map(e => `${e.type}: ${e.error}`).join('\n')}`);
+                setEmissionErrorCopied(false);
 
             } else {
 
@@ -872,6 +875,41 @@ export default function EmitirNotaPage() {
     return (
 
         <div className="max-w-6xl mx-auto pb-16 relative">
+            {emissionError && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="emission-error-title">
+                    <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
+                        <div className="mb-4 flex items-start justify-between gap-4">
+                            <div>
+                                <h2 id="emission-error-title" className="text-lg font-bold text-slate-900">Erro na emissão</h2>
+                                <p className="mt-1 text-sm text-slate-600">Copie o detalhe abaixo para enviar ao suporte.</p>
+                            </div>
+                            <button type="button" onClick={() => setEmissionError(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Fechar aviso">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <textarea readOnly value={emissionError} className="min-h-48 w-full resize-y rounded-xl border border-slate-300 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800" aria-label="Detalhes do erro de emissão" />
+                        <div className="mt-5 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    try {
+                                        await navigator.clipboard.writeText(emissionError);
+                                        setEmissionErrorCopied(true);
+                                    } catch {
+                                        setEmissionErrorCopied(false);
+                                    }
+                                }}
+                                className="rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700"
+                            >
+                                {emissionErrorCopied ? "Erro copiado!" : "Copiar erro"}
+                            </button>
+                            <button type="button" onClick={() => setEmissionError(null)} className="rounded-xl border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50">
+                                Fechar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {(billingLoading || billingBlocked) && (
                 <div className="absolute inset-0 z-40 rounded-[28px] bg-[#F8F7F2]/96 backdrop-blur-sm flex items-start justify-center px-4 py-24">
