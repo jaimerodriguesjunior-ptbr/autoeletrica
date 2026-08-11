@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, Save, AlertCircle } from "lucide-react";
@@ -15,6 +15,7 @@ export default function CorrigirNotaPage({ params }: { params: { id: string } })
     const [submitting, setSubmitting] = useState(false);
     const [invoice, setInvoice] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
+    const resubmitLockRef = useRef(false);
 
     // Form States
     const [clienteNome, setClienteNome] = useState("");
@@ -100,10 +101,13 @@ export default function CorrigirNotaPage({ params }: { params: { id: string } })
     };
 
     const handleResubmit = async () => {
+        if (resubmitLockRef.current) return;
         if (!profile?.organization_id) {
             alert("Erro: Organização não encontrada.");
             return;
         }
+        resubmitLockRef.current = true;
+        const resubmitOperationId = crypto.randomUUID();
         setSubmitting(true);
         try {
             let result;
@@ -117,6 +121,7 @@ export default function CorrigirNotaPage({ params }: { params: { id: string } })
                     itens: itens,
                     valor_total: itens.reduce((acc, i) => acc + i.valor_total, 0),
                     meio_pagamento: '01',
+                    idempotency_key: `corrigir-nfse-${params.id}-${resubmitOperationId}`,
                     environment
                 });
             } else {
@@ -156,6 +161,7 @@ export default function CorrigirNotaPage({ params }: { params: { id: string } })
         } catch (e: any) {
             alert("Erro inesperado: " + e.message);
         } finally {
+            resubmitLockRef.current = false;
             setSubmitting(false);
         }
     };

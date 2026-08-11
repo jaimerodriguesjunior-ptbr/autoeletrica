@@ -45,6 +45,7 @@ export default function FiscalDashboard() {
     const [environment, setEnvironment] = useState<"production" | "homologation">("production");
 
     const [statusFilter, setStatusFilter] = useState("all");
+    const [cancellingInvoiceId, setCancellingInvoiceId] = useState<string | null>(null);
     const [startDate, setStartDate] = useState(() => {
         const now = new Date();
         return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
@@ -55,6 +56,7 @@ export default function FiscalDashboard() {
     });
 
     const invoicesRef = useRef<Invoice[]>([]);
+    const cancellationLocksRef = useRef(new Set<string>());
     invoicesRef.current = invoices;
 
     const isEntryInvoice = (invoice: Invoice) => invoice.direction === "entry";
@@ -267,6 +269,10 @@ export default function FiscalDashboard() {
 
         if (!confirm("Tem certeza que deseja cancelar esta nota? Ação irreversível.")) return;
 
+        if (cancellationLocksRef.current.has(invoiceId)) return;
+        cancellationLocksRef.current.add(invoiceId);
+        setCancellingInvoiceId(invoiceId);
+
         try {
             const res = await cancelarNota(invoiceId, justificativa, codigoMotivo.trim());
             if (res.success) {
@@ -277,6 +283,9 @@ export default function FiscalDashboard() {
             }
         } catch (e: any) {
             alert("Erro ao cancelar: " + e.message);
+        } finally {
+            cancellationLocksRef.current.delete(invoiceId);
+            setCancellingInvoiceId((current) => current === invoiceId ? null : current);
         }
     };
 
@@ -581,10 +590,13 @@ export default function FiscalDashboard() {
                                                 {isOutputInvoice(inv) && inv.status === "authorized" && (
                                                     <button
                                                         onClick={() => handleCancelar(inv.id)}
-                                                        className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition"
+                                                        disabled={cancellingInvoiceId === inv.id}
+                                                        className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition disabled:cursor-not-allowed disabled:opacity-50"
                                                         title="Cancelar nota"
                                                     >
-                                                        <Ban size={16} />
+                                                        {cancellingInvoiceId === inv.id
+                                                            ? <Loader2 size={16} className="animate-spin" />
+                                                            : <Ban size={16} />}
                                                     </button>
                                                 )}
 

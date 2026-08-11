@@ -104,6 +104,8 @@ type EmissionPayload = {
 
     environment?: 'production' | 'homologation';
 
+    idempotency_key?: string;
+
     tipo_documento?: "NFCe" | "NFe";
 
     natureza_operacao?: string;
@@ -4519,7 +4521,9 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
                 "Authorization": `Bearer ${token}`,
 
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+
+                "Idempotency-Key": payload.idempotency_key || `autoeletrica-nfse-${invoice.id}`
 
             },
 

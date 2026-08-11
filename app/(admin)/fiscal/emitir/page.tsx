@@ -169,6 +169,7 @@ export default function EmitirNotaPage() {
     const [fetchingNCM, setFetchingNCM] = useState<number | null>(null);
     const [ncmModalData, setNcmModalData] = useState<{ idx: number, options: { code: string, description: string }[] } | null>(null);
     const osLoadMoreRef = useRef<HTMLDivElement | null>(null);
+    const emissionLockRef = useRef(false);
     const destinatarioUF = String(clienteEndereco?.uf || "").trim().toUpperCase();
     const isNFCeVendaRapida = produtoDocumento === "NFCe";
     const isNFeVendaRapida = produtoDocumento === "NFe";
@@ -709,6 +710,9 @@ export default function EmitirNotaPage() {
             return;
         }
 
+        if (emissionLockRef.current) return;
+        emissionLockRef.current = true;
+        const emissionOperationId = crypto.randomUUID();
         setEmitting(true);
 
         try {
@@ -830,6 +834,8 @@ export default function EmitirNotaPage() {
 
                         meio_pagamento: '01',
 
+                        idempotency_key: `emitir-nfse-${emissionOperationId}`,
+
                         environment
 
                     });
@@ -864,6 +870,7 @@ export default function EmitirNotaPage() {
 
         } finally {
 
+            emissionLockRef.current = false;
             setEmitting(false);
 
         }
