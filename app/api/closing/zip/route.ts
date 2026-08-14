@@ -18,7 +18,7 @@ export async function buildFiscalReportData(
     const nextMonth = month === 12 ? 1 : month + 1;
     const nextYear = month === 12 ? year + 1 : year;
     const endDate = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01T00:00:00.000Z`;
-    const fields = "id, tipo_documento, valor_total, xml_content, data_emissao, created_at";
+    const fields = "id, tipo_documento, valor_total, xml_content, payload_json, data_emissao, created_at";
 
     const [
         { data: datedInvoices, error: datedError },
@@ -56,6 +56,10 @@ export async function buildFiscalReportData(
 
     const cfopTotals = new Map<string, number>();
     let productSales = 0;
+    let nfeSales = 0;
+    let nfeSalesCount = 0;
+    let nfeReturns = 0;
+    let nfeReturnsCount = 0;
     let serviceSales = 0;
 
     for (const invoice of invoices) {
@@ -66,6 +70,20 @@ export async function buildFiscalReportData(
         } else if (invoice.tipo_documento === "NFSe") {
             serviceSales += total;
             continue;
+        } else if (invoice.tipo_documento === "NFe") {
+            const finality = String(
+                invoice.payload_json?.infNFe?.ide?.finNFe ||
+                String(invoice.xml_content || "").match(/<finNFe>([^<]+)<\/finNFe>/)?.[1] ||
+                ""
+            ).trim();
+
+            if (finality === "1") {
+                nfeSales += total;
+                nfeSalesCount += 1;
+            } else if (finality === "4") {
+                nfeReturns += total;
+                nfeReturnsCount += 1;
+            }
         }
 
         if (!invoice.xml_content || !["NFCe", "NFe"].includes(invoice.tipo_documento)) {
@@ -83,7 +101,15 @@ export async function buildFiscalReportData(
         ...closingData,
         faturamento: {
             total_pecas: productSales,
+            total_nfe_vendas: nfeSales,
             total_servicos: serviceSales,
+        },
+        fiscal: {
+            ...closingData.fiscal,
+            nfe_vendas_qtd: nfeSalesCount,
+            nfe_vendas_valor: nfeSales,
+            devolucoes_qtd: nfeReturnsCount,
+            devolucoes_valor: nfeReturns,
         },
         faturamento_por_cfop: Array.from(cfopTotals, ([cfop, total]) => ({ cfop, total }))
             .sort((a, b) => a.cfop.localeCompare(b.cfop)),

@@ -19,7 +19,7 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
 };
 
 export type ClosingData = {
-    faturamento: { total_pecas: number; total_servicos: number };
+    faturamento: { total_pecas: number; total_nfe_vendas: number; total_servicos: number };
     faturamento_por_cfop: { cfop: string; total: number }[];
     pagamentos: { metodo: string; total: number }[];
     fiscal: {
@@ -29,6 +29,8 @@ export type ClosingData = {
         canceladas_nfce: number;
         entradas_qtd: number;
         entradas_valor: number;
+        nfe_vendas_qtd: number;
+        nfe_vendas_valor: number;
         devolucoes_qtd: number;
         devolucoes_valor: number;
     };
@@ -75,8 +77,9 @@ export async function buildClosingZip(
         [""],
         ["FATURAMENTO FISCAL AUTORIZADO"],
         ["NFC-e - Venda de Produtos", data.faturamento.total_pecas.toFixed(2)],
+        ["NF-e - Venda de Produtos", data.faturamento.total_nfe_vendas.toFixed(2)],
         ["NFS-e - Prestacao de Servicos", data.faturamento.total_servicos.toFixed(2)],
-        ["Total Fiscal Autorizado", (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
+        ["Total Fiscal Autorizado", (data.faturamento.total_pecas + data.faturamento.total_nfe_vendas + data.faturamento.total_servicos).toFixed(2)],
         [""],
         ["SAIDAS FISCAIS POR CFOP (XML)"],
         ...data.faturamento_por_cfop.map(c => [c.cfop, c.total.toFixed(2)]),
@@ -87,6 +90,8 @@ export async function buildClosingZip(
         ["Canceladas (NFS-e + NFC-e)", data.fiscal.canceladas_nfse + data.fiscal.canceladas_nfce],
         ["NFe Compras (Qtd)", data.fiscal.entradas_qtd],
         ["NFe Compras (Valor)", data.fiscal.entradas_valor.toFixed(2)],
+        ["NF-e Vendas (Qtd)", data.fiscal.nfe_vendas_qtd],
+        ["NF-e Vendas (Valor)", data.fiscal.nfe_vendas_valor.toFixed(2)],
         ["NF-e Devolucoes (Qtd)", data.fiscal.devolucoes_qtd],
         ["NF-e Devolucoes (Valor)", data.fiscal.devolucoes_valor.toFixed(2)],
         [""],
@@ -106,8 +111,9 @@ export async function buildClosingZip(
         head: [["Faturamento Fiscal Autorizado", "Valor (R$)"]],
         body: [
             ["Venda de Peças (Produtos)", data.faturamento.total_pecas.toFixed(2)],
+            ["NF-e de Venda", data.faturamento.total_nfe_vendas.toFixed(2)],
             ["Prestação de Serviços", data.faturamento.total_servicos.toFixed(2)],
-            ["Total Fiscal Autorizado", (data.faturamento.total_pecas + data.faturamento.total_servicos).toFixed(2)],
+            ["Total Fiscal Autorizado", (data.faturamento.total_pecas + data.faturamento.total_nfe_vendas + data.faturamento.total_servicos).toFixed(2)],
         ]
     });
     autoTable(pdfDoc, {
@@ -124,6 +130,8 @@ export async function buildClosingZip(
             ["Canceladas (NFS-e + NFC-e)", (data.fiscal.canceladas_nfse + data.fiscal.canceladas_nfce).toString()],
             ["NFe Compras — Qtd", data.fiscal.entradas_qtd.toString()],
             ["NFe Compras — Valor (R$)", data.fiscal.entradas_valor.toFixed(2)],
+            ["NF-e Vendas — Qtd", data.fiscal.nfe_vendas_qtd.toString()],
+            ["NF-e Vendas — Valor (R$)", data.fiscal.nfe_vendas_valor.toFixed(2)],
             ["NF-e Devoluções — Qtd", data.fiscal.devolucoes_qtd.toString()],
             ["NF-e Devoluções — Valor (R$)", data.fiscal.devolucoes_valor.toFixed(2)],
         ]
