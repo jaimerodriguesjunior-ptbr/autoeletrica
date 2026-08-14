@@ -193,6 +193,19 @@ export default function EmitirNotaPage() {
             pendencias.push("NFC-e nao permite venda interestadual. Para cliente de outra UF, selecione NF-e.");
         }
 
+        const produtosComNcmInvalido = itens.filter((item) => {
+            const ncm = String(item.ncm || "").trim();
+            return !/^\d{8}$/.test(ncm) || ncm === "00000000";
+        });
+        if (produtosComNcmInvalido.length > 0) {
+            const produtos = produtosComNcmInvalido
+                .slice(0, 3)
+                .map((item) => `"${item.descricao || item.codigo || "Produto sem descricao"}" (${String(item.ncm || "em branco").trim() || "em branco"})`)
+                .join(", ");
+            const restantes = produtosComNcmInvalido.length - 3;
+            pendencias.push(`Corrija o NCM de ${produtos}${restantes > 0 ? ` e de mais ${restantes} produto(s)` : ""}. O NCM deve ter 8 digitos, sem pontos.`);
+        }
+
         return pendencias;
     };
 
@@ -1723,30 +1736,25 @@ export default function EmitirNotaPage() {
 
 
                             {(() => {
-                                const hasMissingNCM = itens.some(i => !i.ncm || i.ncm === '00000000');
                                 const nfePendencias = getNFeVendaRapidaPendencias();
-                                const hasBlockingPendencias = hasMissingNCM || nfePendencias.length > 0;
+                                const nfcePendencias = getNFCeVendaRapidaPendencias();
+                                const pendencias = isNFeVendaRapida ? nfePendencias : isNFCeVendaRapida ? nfcePendencias : [];
+                                const hasBlockingPendencias = pendencias.length > 0;
                                 return (
                                     <>
                                         <button
                                             onClick={handleEmitir}
                                             disabled={emitting || hasBlockingPendencias}
-                                            title={hasMissingNCM ? "Algum produto não possui um NCM válido." : ""}
+                                            title={hasBlockingPendencias ? pendencias[0] : ""}
                                             className="w-full bg-[#FACC15] text-[#1A1A1A] py-3 rounded-xl font-bold text-sm hover:bg-white transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                                         >
                                             {emitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
                                             {emitting ? "Emitindo..." : isNFeVendaRapida ? "Emitir NF-e de Venda" : "Emitir Nota"}
                                         </button>
                                         
-                                        {hasBlockingPendencias && isNFeVendaRapida && (
+                                        {hasBlockingPendencias && (
                                             <p className="text-[10px] text-red-400 text-center mt-2 font-medium bg-red-900/30 p-2 rounded-lg border border-red-500/20">
-                                                Bloqueado: {nfePendencias[0]}
-                                            </p>
-                                        )}
-
-                                        {hasBlockingPendencias && !isNFeVendaRapida && (
-                                            <p className="text-[10px] text-red-400 text-center mt-2 font-medium bg-red-900/30 p-2 rounded-lg border border-red-500/20">
-                                                Bloqueado: Preencha todos os NCMs dos produtos.
+                                                Bloqueado: {pendencias[0]}
                                             </p>
                                         )}
                                     </>

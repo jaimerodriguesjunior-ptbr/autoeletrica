@@ -1135,6 +1135,47 @@ function getFiscalStatusReason(result: any) {
         "Motivo nao informado"
     ).trim();
 }
+function getInvalidNcmItems(itens: EmissionPayload["itens"]) {
+    return itens
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => {
+            const ncm = String(item.ncm || "").trim();
+            return !/^\d{8}$/.test(ncm) || ncm === "00000000";
+        });
+}
+
+function formatNfceNcmValidationMessage(itens: EmissionPayload["itens"]) {
+    const invalidItems = getInvalidNcmItems(itens);
+    if (!invalidItems.length) return null;
+
+    const products = invalidItems
+        .slice(0, 3)
+        .map(({ item }) => `"${item.descricao || item.codigo || "Produto sem descricao"}" (NCM informado: ${String(item.ncm || "em branco").trim() || "em branco"})`)
+        .join("; ");
+    const remaining = invalidItems.length - 3;
+
+    return `NFC-e nao enviada. Corrija o NCM de ${products}${remaining > 0 ? ` e de mais ${remaining} produto(s)` : ""}. O NCM deve ter 8 digitos, sem pontos, e nao pode ser 00000000.`;
+}
+
+function formatNfceSefazError(result: any, itens: EmissionPayload["itens"]) {
+    const code = getFiscalStatusCode(result);
+    const reason = getFiscalStatusReason(result);
+
+    if (code === "778") {
+        const itemMatch = reason.match(/\[nItem\s*:\s*(\d+)\]/i);
+        const itemNumber = itemMatch ? Number(itemMatch[1]) : null;
+        const item = itemNumber && itemNumber > 0 ? itens[itemNumber - 1] : null;
+
+        if (item) {
+            return `NFC-e rejeitada pela SEFAZ: o NCM do item ${itemNumber}, "${item.descricao || item.codigo || "Produto sem descricao"}", nao existe na tabela fiscal. NCM informado: ${String(item.ncm || "em branco").trim() || "em branco"}. Corrija o cadastro do produto e emita novamente.`;
+        }
+
+        return "NFC-e rejeitada pela SEFAZ: ha um NCM inexistente nos produtos da nota. Corrija o NCM no cadastro do produto e emita novamente.";
+    }
+
+    return `NFC-e rejeitada pela SEFAZ${code ? ` (codigo ${code})` : ""}: ${reason}`;
+}
+
 function buildNFeInfRespTec(company: any, cnpjEmit: string, environment: "production" | "homologation") {
     const isProduction = environment === "production";
     const rtCnpj = String(
@@ -1210,6 +1251,11 @@ export async function emitirNFCe(payload: EmissionPayload) {
         const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFCe", env);
         if (duplicateError) {
             return { success: false, error: duplicateError };
+        }
+
+        const ncmValidationMessage = formatNfceNcmValidationMessage(payload.itens);
+        if (ncmValidationMessage) {
+            return { success: false, error: ncmValidationMessage };
         }
 
         const token = await getNuvemFiscalToken(env);
@@ -1703,26 +1749,26 @@ export async function emitirNFCe(payload: EmissionPayload) {
         const realStatus = result.status;
         console.log("[NuvemFiscal] Status real retornado:", realStatus);
 
-        if (realStatus === 'rejeitado') {
+        if (["erro", "rejeitado", "denegado"].includes(String(realStatus || "").toLowerCase())) {
             // REJEITADO pela SEFAZ
-            const codigoErro = result.autorizacao?.codigo_status || 'N/A';
-            const motivoErro = result.autorizacao?.motivo_status || 'Motivo não informado';
+            const mensagemAmigavel = formatNfceSefazError(result, payload.itens);
 
             await supabase
                 .from("fiscal_invoices")
                 .update({
-                    status: "rejected",
+                    status: "error",
                     nuvemfiscal_uuid: result.id,
                     chave_acesso: result.chave,
                     numero: result.numero,
                     serie: result.serie,
-                    motivo_rejeicao: `Erro ${codigoErro}: ${motivoErro}`
+                    motivo_rejeicao: mensagemAmigavel,
+                    error_message: mensagemAmigavel,
                 })
                 .eq("id", invoice.id);
 
             return {
                 success: false,
-                error: `NFC-e Rejeitada: Erro ${codigoErro} - ${motivoErro}`,
+                error: mensagemAmigavel,
                 invoiceId: invoice.id
             };
         }
@@ -4998,6 +5044,21 @@ export async function consultarNFSe(invoiceId: string) {
                     rejectedNumber,
                 );
                 errorMessage = `Erro 539: ${errorMessage}`;
+            }
+
+            if (invoice.tipo_documento === "NFCe") {
+                const invoicePayload = typeof invoice.payload_json === "string"
+                    ? JSON.parse(invoice.payload_json)
+                    : invoice.payload_json;
+                const invoiceItems = Array.isArray(invoicePayload?.infNFe?.det)
+                    ? invoicePayload.infNFe.det.map((det: any) => ({
+                        codigo: det?.prod?.cProd || "",
+                        descricao: det?.prod?.xProd || "",
+                        ncm: det?.prod?.NCM || "",
+                    }))
+                    : [];
+                errorMessage = formatNfceSefazError(result, invoiceItems);
+                result.mensagem_amigavel = errorMessage;
             }
 
             // Log completo para debug

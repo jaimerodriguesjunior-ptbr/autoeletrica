@@ -221,18 +221,20 @@ export default function FiscalDashboard() {
 
     const handleRefreshStatus = async (invoiceId: string) => {
         alert("Consultando status...");
+        const invoice = invoices.find((currentInvoice) => currentInvoice.id === invoiceId);
         try {
             const res = await consultarNFSe(invoiceId);
             if (res.success) {
                 if (res.status === "error") {
-                    let msg = res.data?.motivo_status || res.data?.error?.message;
+                    let msg = res.data?.mensagem_amigavel || res.data?.motivo_status || res.data?.error?.message;
 
-                    if (res.data?.mensagens && Array.isArray(res.data.mensagens)) {
+                    if (!msg && res.data?.mensagens && Array.isArray(res.data.mensagens)) {
                         const detalhes = res.data.mensagens.map((m: any) => `${m.codigo}: ${m.descricao}`).join("\n");
                         if (detalhes) msg = detalhes;
                     }
 
-                    alert(`Erro da Prefeitura:\n${msg || "Erro desconhecido"}`);
+                    const origem = invoice?.tipo_documento === "NFSe" ? "Prefeitura" : "SEFAZ";
+                    alert(`Erro da ${origem}:\n${msg || "Erro desconhecido"}`);
                 } else {
                     alert(`Status atualizado: ${res.status}`);
                 }
