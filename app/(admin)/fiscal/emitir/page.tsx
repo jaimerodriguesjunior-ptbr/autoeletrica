@@ -1,47 +1,26 @@
+
 "use client";
 
-
-
 import { useEffect, useRef, useState } from "react";
-
 import { useAuth } from "@/src/contexts/AuthContext";
-
-
-
 import { emitirNFCe, emitirNFSe } from "@/src/actions/fiscal_emission";
-
 import {
-
     ArrowLeft, FileText, Loader2, CheckCircle,
-
     ShoppingCart, Wrench, User, Trash2, Plus, MapPin, Search, X, Sparkles
-
 } from "lucide-react";
-
 import Link from "next/link";
-
 import { useRouter, useSearchParams } from "next/navigation";
-
 import { getPendingWorkOrders, searchProducts, searchServices, getProductFiscalData, getServiceFiscalData, updateProductNCM } from "@/src/actions/fiscal_db";
 import { getCompanySettings } from "@/src/actions/fiscal";
 import { useBillingEmissionBlock } from "@/src/lib/useBillingEmissionBlock";
-
-
-
-// Tipos
+import { NcmAutocomplete } from "@/components/ui/NcmAutocomplete";
 
 type PendingOS = {
-
     id: number;
-
     client_id: string;
-
     created_at: string;
-
     total: number;
-
     status: string;
-
     clients: { nome: string; cpf_cnpj?: string } | null;
 
     vehicles: { placa: string; modelo: string } | null;
@@ -1448,28 +1427,39 @@ export default function EmitirNotaPage() {
                                             </div>
 
                                             <div className="col-span-2 relative">
-
-                                                <input value={item.ncm} onChange={e => {
-
-                                                    const newItens = [...itens]; newItens[idx].ncm = e.target.value; setItens(newItens);
-
-                                                }} onBlur={async e => {
-                                                    const manualNcm = String(e.target.value || "").replace(/\D/g, "").slice(0, 8);
-                                                    if (manualNcm.length !== 8) return;
-                                                    const currentItem = itens[idx];
-                                                    if (!currentItem?.codigo || currentItem.codigo === 'GEN' || currentItem.codigo === 'NEW') return;
-                                                    await updateProductNCM(currentItem.codigo, manualNcm);
-                                                }} className={`w-full bg-white p-1.5 pr-7 rounded-lg text-xs font-medium outline-none text-center border ${(!item.ncm || item.ncm === '00000000') ? 'border-red-400 bg-red-50' : 'border-stone-300'} focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all`} placeholder="NCM" title={(!item.ncm || item.ncm === '00000000') ? 'NCM obigatório' : ''} />
+                                                <NcmAutocomplete
+                                                    value={item.ncm}
+                                                    onChange={val => {
+                                                        const newItens = [...itens];
+                                                        newItens[idx].ncm = val;
+                                                        setItens(newItens);
+                                                    }}
+                                                    onBlur={async e => {
+                                                        const manualNcm = String(e.target.value || "").replace(/\D/g, "").slice(0, 8);
+                                                        if (manualNcm.length !== 8) return;
+                                                        const currentItem = itens[idx];
+                                                        if (!currentItem?.codigo || currentItem.codigo === 'GEN' || currentItem.codigo === 'NEW') return;
+                                                        await updateProductNCM(currentItem.codigo, manualNcm);
+                                                    }}
+                                                    onSelectNcm={async (ncmItem) => {
+                                                        const currentItem = itens[idx];
+                                                        if (currentItem?.codigo && currentItem.codigo !== 'GEN' && currentItem.codigo !== 'NEW') {
+                                                            await updateProductNCM(currentItem.codigo, ncmItem.codigo);
+                                                        }
+                                                    }}
+                                                    className={`w-full bg-white p-1.5 pr-7 rounded-lg text-xs font-medium outline-none text-center border ${(!item.ncm || item.ncm === '00000000') ? 'border-red-400 bg-red-50' : 'border-stone-300'} focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all`}
+                                                    placeholder="NCM"
+                                                    title={(!item.ncm || item.ncm === '00000000') ? 'NCM obrigatório' : ''}
+                                                />
 
                                                 <button
                                                     onClick={() => handleFetchNCM(idx)}
                                                     disabled={fetchingNCM === idx}
                                                     title="Buscar NCM com IA"
-                                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#FACC15] hover:scale-110 transition disabled:opacity-50"
+                                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#FACC15] hover:scale-110 transition disabled:opacity-50 z-10"
                                                 >
                                                     {fetchingNCM === idx ? <Loader2 size={14} className="animate-spin text-stone-400" /> : <Sparkles size={14} />}
                                                 </button>
-
                                             </div>
 
                                             <div className="col-span-1">

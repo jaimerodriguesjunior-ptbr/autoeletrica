@@ -6,7 +6,7 @@ import { getFiscalInvoices, backfillEntryInvoicesChave } from "@/src/actions/fis
 import { consultarNFSe, cancelarNota } from "@/src/actions/fiscal_emission";
 import {
     FileText, Plus, Search, Loader2, AlertCircle,
-    CheckCircle, XCircle, Clock, Download, RefreshCw, Edit, Ban, Printer, MessageCircle, Undo2
+    CheckCircle, XCircle, Clock, Download, RefreshCw, Edit, Ban, Printer, MessageCircle, Undo2, Database
 } from "lucide-react";
 import Link from "next/link";
 import { useBillingEmissionBlock } from "@/src/lib/useBillingEmissionBlock";
@@ -37,10 +37,11 @@ type Invoice = {
 };
 
 export default function FiscalDashboard() {
-    const { profile } = useAuth();
+    const { profile, isAdmin } = useAuth();
     const { isLoading: billingLoading, isBlocked: billingBlocked, message: billingMessage } = useBillingEmissionBlock();
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(true);
+    const [syncingNcm, setSyncingNcm] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [environment, setEnvironment] = useState<"production" | "homologation">("production");
 
@@ -179,6 +180,25 @@ export default function FiscalDashboard() {
             console.error(error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSyncNcm = async () => {
+        if (syncingNcm) return;
+        if (!confirm("Deseja sincronizar o catálogo de NCMs com o portal do Siscomex?\nIsso pode levar alguns minutos.")) return;
+        setSyncingNcm(true);
+        try {
+            const res = await fetch("/api/fiscal/ncm-sync", { method: "POST" });
+            const json = await res.json();
+            if (res.ok) {
+                alert(`✅ Sincronização concluída!\n${json.total_inseridos} NCMs atualizados.`);
+            } else {
+                alert(`❌ Erro: ${json.error || "Falha desconhecida"}`);
+            }
+        } catch (e: any) {
+            alert(`❌ Erro de rede: ${e.message}`);
+        } finally {
+            setSyncingNcm(false);
         }
     };
 
@@ -359,7 +379,17 @@ export default function FiscalDashboard() {
                 </div>
             </div>
 
-            <div className="flex justify-end gap-4">
+            <div className="flex justify-end gap-4 flex-wrap">
+                {isAdmin && (
+                    <button
+                        onClick={handleSyncNcm}
+                        disabled={syncingNcm}
+                        className="bg-white border-2 border-stone-200 hover:border-blue-400 text-stone-600 px-6 py-3 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 transition hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {syncingNcm ? <Loader2 size={20} className="animate-spin" /> : <Database size={20} />}
+                        {syncingNcm ? "Sincronizando NCMs..." : "Sincronizar NCMs"}
+                    </button>
+                )}
                 <Link href="/financeiro/fechamento">
                     <button className="bg-white border-2 border-stone-200 hover:border-stone-400 text-stone-600 px-6 py-3 rounded-full font-bold text-sm shadow-sm flex items-center gap-2 transition hover:scale-105">
                         <FileText size={20} /> Fechamento Mensal

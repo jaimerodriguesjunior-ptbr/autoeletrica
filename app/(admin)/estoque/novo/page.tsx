@@ -10,6 +10,7 @@ import {
   ArrowLeft, Package, DollarSign, Barcode,
   Save, AlertCircle, Calculator, Loader2, Wallet, Sparkles, X
 } from "lucide-react";
+import { NcmAutocomplete } from "@/components/ui/NcmAutocomplete";
 
 export default function NovoProduto() {
   const router = useRouter();
@@ -281,23 +282,23 @@ export default function NovoProduto() {
                     {typeof ncmAiStatus.confidence === "number" && <span>{ncmAiStatus.confidence}%</span>}
                   </div>
                 )}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={ncm}
-                    onChange={e => {
-                      setNcm(e.target.value.replace(/\D/g, "").slice(0, 8));
-                      setNcmAiStatus(null);
-                    }}
-                    placeholder="Ex: 84099120"
-                    maxLength={8}
-                    className="flex-1 bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
-                  />
+                <div className="flex gap-2 items-center">
+                  <div className="flex-1 relative">
+                    <NcmAutocomplete
+                      value={ncm}
+                      onChange={val => {
+                        setNcm(val.replace(/\D/g, "").slice(0, 8));
+                        setNcmAiStatus(null);
+                      }}
+                      placeholder="Ex: 84099120 ou nome da peça..."
+                      className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={handleFetchNCM}
                     disabled={fetchingNCM}
-                    className="px-4 rounded-2xl border-2 border-stone-300 bg-white hover:bg-stone-50 text-[#1A1A1A] font-bold text-xs flex items-center gap-2 disabled:opacity-60"
+                    className="h-[58px] px-4 rounded-2xl border-2 border-stone-300 bg-white hover:bg-stone-50 text-[#1A1A1A] font-bold text-xs flex items-center gap-2 disabled:opacity-60 shrink-0"
                   >
                     {fetchingNCM ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                     IA
@@ -350,7 +351,7 @@ export default function NovoProduto() {
                   <input
                     type="number"
                     value={custoContabil}
-                    onChange={(e) => handleCustoRealChange(e.target.value)} // Gatilho duplo
+                    onChange={(e) => handleCustoRealChange(e.target.value)}
                     placeholder="0.00"
                     className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 pl-10 font-bold text-white outline-none focus:border-[#FACC15] transition focus:bg-white/10"
                   />

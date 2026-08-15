@@ -410,3 +410,195 @@ export async function updateProductNCM(productId: string, ncm: string) {
 
     return { success: true };
 }
+
+export interface LocalNcmItem {
+    codigo: string;
+    descricao: string;
+    vigente?: boolean;
+}
+
+function sanitizePostgrestSearch(text: string): string {
+    return text.replace(/[(),."':;\\%*?[\]{}]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function getSearchVariants(text: string): string[] {
+    const clean = sanitizePostgrestSearch(text);
+    if (!clean) return [];
+    const noAccents = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    
+    const variants = new Set<string>([clean, noAccents]);
+
+    // Trata termos frequentes em autoelétrica para garantir correspondência com acentuação
+    const lower = noAccents.toLowerCase();
+    if (lower.includes("rele")) variants.add(lower.replace(/rele/g, "relé"));
+    if (lower.includes("lampada")) variants.add(lower.replace(/lampada/g, "lâmpada"));
+    if (lower.includes("fusivel")) variants.add(lower.replace(/fusivel/g, "fusível"));
+    if (lower.includes("ignicao")) variants.add(lower.replace(/ignicao/g, "ignição"));
+    if (lower.includes("eletronico")) variants.add(lower.replace(/eletronico/g, "eletrônico"));
+    if (lower.includes("eletrico")) variants.add(lower.replace(/eletrico/g, "elétrico"));
+
+    return Array.from(variants).filter(v => v.length >= 2);
+}
+
+function checkIsVigente(dataFim?: string | null): boolean {
+    if (!dataFim) return true;
+    const clean = String(dataFim).trim();
+    if (clean === "31/12/9999" || clean === "9999-12-31") return true;
+
+    let endDate: Date | null = null;
+    if (clean.includes("/")) {
+        const parts = clean.split("/");
+        if (parts.length === 3) {
+            endDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+        }
+    } else if (clean.includes("-")) {
+        endDate = new Date(clean);
+    }
+
+    if (!endDate || isNaN(endDate.getTime())) return true;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return endDate >= today;
+}
+
+export async function searchLocalNcm(query: string): Promise<LocalNcmItem[]> {
+    if (!query || query.trim().length < 2) return [];
+
+    const supabase = createClient();
+    const variants = getSearchVariants(query);
+    if (variants.length === 0) return [];
+
+    const digitsOnly = query.replace(/\D/g, "");
+
+    let queryBuilder = supabase
+        .from("ncm_catalog")
+        .select("codigo, descricao, vigente")
+        .eq("vigente", true);
+
+    const conditions: string[] = [];
+    if (digitsOnly.length >= 2) {
+        conditions.push(`codigo.ilike.${digitsOnly}%`);
+    }
+
+    for (const v of variants) {
+        conditions.push(`descricao.ilike.%${v}%`);
+    }
+
+    if (conditions.length > 0) {
+        queryBuilder = queryBuilder.or(conditions.join(","));
+    }
+
+    const { data, error } = await queryBuilder.limit(20);
+
+    if (error) {
+        console.error("Erro ao buscar NCM local:", error);
+        return [];
+    }
+
+    return (data || []) as LocalNcmItem[];
+}
+
+export async function syncNcmDatabase() {
+    try {
+        const { createAdminClient } = await import("@/src/utils/supabase/admin");
+        const supabaseAdmin = createAdminClient();
+
+        console.log("[NCM Sync] Iniciando download do JSON oficial do Siscomex...");
+        const response = await fetch("https://portalunico.siscomex.gov.br/classif/api/publico/nomenclatura/download/json", {
+            headers: {
+                "Accept": "application/json",
+                "User-Agent": "AutoEletrica-Fiscal/1.0"
+            },
+            cache: "no-store"
+        });
+
+        if (!response.ok) {
+            throw new Error(`Falha no download da tabela NCM (${response.status}): ${response.statusText}`);
+        }
+
+        const json = await response.json();
+        const rawList = Array.isArray(json) ? json : (json.Nomenclaturas || json.nomenclaturas || []);
+
+        if (!Array.isArray(rawList) || rawList.length === 0) {
+            throw new Error("Formato inválido do JSON do Siscomex ou lista vazia.");
+        }
+
+        console.log(`[NCM Sync] ${rawList.length} registros recebidos. Montando mapa hierárquico de categorias...`);
+
+        // Mapeia todas as descrições (2, 4, 5, 6, 7 e 8 dígitos) para enriquecer os itens folha
+        const byCode = new Map<string, string>();
+        for (const item of rawList) {
+            const cleanCode = String(item.Codigo || item.codigo || "").replace(/\D/g, "");
+            const rawDesc = String(item.Descricao || item.descricao || "").replace(/^[-—\s]+/, "").trim();
+            if (cleanCode && rawDesc) {
+                byCode.set(cleanCode, rawDesc);
+            }
+        }
+
+        const formatted = rawList
+            .filter((item: any) => {
+                const code = String(item.Codigo || item.codigo || "").replace(/\D/g, "");
+                return code.length === 8;
+            })
+            .map((item: any) => {
+                const code = String(item.Codigo || item.codigo || "").replace(/\D/g, "").slice(0, 8);
+                const dataFim = item.Data_Fim || item.data_fim || null;
+
+                // Constrói descrição contextualizada combinando a categoria pai e o item folha
+                const prefixes = [
+                    code.slice(0, 4),
+                    code.slice(0, 5),
+                    code.slice(0, 6),
+                    code.slice(0, 7),
+                    code
+                ];
+                const parts: string[] = [];
+                const seen = new Set<string>();
+                for (const p of prefixes) {
+                    const desc = byCode.get(p);
+                    if (desc && !seen.has(desc.toLowerCase())) {
+                        parts.push(desc);
+                        seen.add(desc.toLowerCase());
+                    }
+                }
+
+                const fullDescription = parts.length > 0 ? parts.join(" - ") : (item.Descricao || item.descricao || "").trim();
+
+                return {
+                    codigo: code,
+                    descricao: fullDescription,
+                    data_inicio: item.Data_Inicio || item.data_inicio || null,
+                    data_fim: dataFim,
+                    tipo: item.Tipo || item.tipo || "NCM",
+                    vigente: checkIsVigente(dataFim),
+                    updated_at: new Date().toISOString()
+                };
+            });
+
+        console.log(`[NCM Sync] ${formatted.length} NCMs válidos prontos para upsert. Inserindo em lotes...`);
+
+        const CHUNK_SIZE = 1000;
+        let totalUpserted = 0;
+
+        for (let i = 0; i < formatted.length; i += CHUNK_SIZE) {
+            const chunk = formatted.slice(i, i + CHUNK_SIZE);
+            const { error } = await supabaseAdmin
+                .from("ncm_catalog")
+                .upsert(chunk, { onConflict: "codigo" });
+
+            if (error) {
+                console.error(`[NCM Sync] Erro no lote ${i} - ${i + chunk.length}:`, error);
+                throw error;
+            }
+
+            totalUpserted += chunk.length;
+        }
+
+        return { success: true, count: totalUpserted };
+    } catch (e: any) {
+        console.error("[NCM Sync] Erro ao sincronizar banco de NCMs:", e);
+        return { success: false, error: e.message || "Erro desconhecido" };
+    }
+}
+

@@ -10,6 +10,7 @@ import {
   Save, Calculator, Trash2, Loader2, AlertCircle, Wallet, Sparkles, X
 } from "lucide-react";
 import { getCompanySettings } from "@/src/actions/fiscal";
+import { NcmAutocomplete } from "@/components/ui/NcmAutocomplete";
 
 export default function EditarProduto() {
   const router = useRouter();
@@ -330,23 +331,23 @@ export default function EditarProduto() {
                     {typeof ncmAiStatus.confidence === "number" && <span>{ncmAiStatus.confidence}%</span>}
                   </div>
                 )}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={ncm}
-                    onChange={e => {
-                      setNcm(e.target.value.replace(/\D/g, "").slice(0, 8));
-                      setNcmAiStatus(null);
-                    }}
-                    placeholder="Ex: 84099120"
-                    maxLength={8}
-                    className="flex-1 bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
-                  />
+                <div className="flex gap-2 items-center">
+                  <div className="flex-1 relative">
+                    <NcmAutocomplete
+                      value={ncm}
+                      onChange={val => {
+                        setNcm(val.replace(/\D/g, "").slice(0, 8));
+                        setNcmAiStatus(null);
+                      }}
+                      placeholder="Ex: 84099120 ou nome da peça..."
+                      className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={handleFetchNCM}
                     disabled={fetchingNCM}
-                    className="px-4 rounded-2xl border-2 border-stone-300 bg-white hover:bg-stone-50 text-[#1A1A1A] font-bold text-xs flex items-center gap-2 disabled:opacity-60"
+                    className="h-[58px] px-4 rounded-2xl border-2 border-stone-300 bg-white hover:bg-stone-50 text-[#1A1A1A] font-bold text-xs flex items-center gap-2 disabled:opacity-60 shrink-0"
                   >
                     {fetchingNCM ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                     IA
@@ -383,7 +384,6 @@ export default function EditarProduto() {
           </div>
         </div>
 
-        {/* PREÇOS (DIREITA) */}
         <div className="space-y-6">
           <div className="bg-[#1A1A1A] text-white rounded-[32px] p-6 shadow-xl relative overflow-hidden">
             <div className="absolute top-[-20%] right-[-20%] w-40 h-40 bg-[#FACC15] rounded-full blur-[60px] opacity-20"></div>
