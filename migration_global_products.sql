@@ -29,7 +29,7 @@ CREATE POLICY "global_products_select" ON global_products
 
 -- Permite INSERT/UPDATE via service_role (backfill e upsert_global_product)
 CREATE POLICY "global_products_insert" ON global_products
-  FOR INSERT TO authenticated WITH CHECK (true);
+  FOR INSERT TO service_role WITH CHECK (true);
 
 -- 3. Coluna de rastreabilidade em products
 ALTER TABLE products ADD COLUMN IF NOT EXISTS global_product_id UUID REFERENCES global_products(id);
@@ -47,8 +47,8 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  -- Aceita EAN-8, UPC-A (12) e EAN-13
-  IF p_ean !~ '^\d{8}$' AND p_ean !~ '^\d{12}$' AND p_ean !~ '^\d{13}$' THEN
+  -- Aceita EAN-8, UPC-A (12), EAN-13 e GTIN-14
+  IF p_ean !~ '^\d{8}$' AND p_ean !~ '^\d{12}$' AND p_ean !~ '^\d{13}$' AND p_ean !~ '^\d{14}$' THEN
     RETURN;
   END IF;
 

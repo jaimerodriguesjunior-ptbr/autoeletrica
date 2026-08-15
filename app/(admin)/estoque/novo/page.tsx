@@ -7,10 +7,18 @@ import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
 import { getCompanySettings } from "@/src/actions/fiscal";
 import {
-  ArrowLeft, Package, DollarSign, Barcode,
+  ArrowLeft, Package, DollarSign, Barcode, Globe2,
   Save, AlertCircle, Calculator, Loader2, Wallet, Sparkles, X
 } from "lucide-react";
 import { NcmAutocomplete } from "@/components/ui/NcmAutocomplete";
+
+type GlobalProductSuggestion = {
+  id: string;
+  ean: string;
+  name: string;
+  brand: string | null;
+  reference_code: string | null;
+};
 
 export default function NovoProduto() {
   const router = useRouter();
@@ -23,6 +31,9 @@ export default function NovoProduto() {
   const [ncmAiStatus, setNcmAiStatus] = useState<{ label: string; tone: "green" | "yellow" | "red"; confidence?: number } | null>(null);
   const [brandSuggestions, setBrandSuggestions] = useState<string[]>([]);
   const [brandOpen, setBrandOpen] = useState(false);
+  const [globalProductSuggestions, setGlobalProductSuggestions] = useState<GlobalProductSuggestion[]>([]);
+  const [globalProductsLoading, setGlobalProductsLoading] = useState(false);
+  const [globalProductsOpen, setGlobalProductsOpen] = useState(false);
 
   // Estados dos Campos
   const [nome, setNome] = useState("");
@@ -129,16 +140,6 @@ export default function NovoProduto() {
 
       if (error) throw error;
 
-      // Contribui para a base global se EAN for válido
-      if (ean && /^\d{8}$|^\d{12}$|^\d{13}$/.test(ean)) {
-        await supabase.rpc('upsert_global_product', {
-          p_ean: ean,
-          p_name: nome,
-          p_brand: marca || null,
-          p_reference_code: codigoRef || null
-        });
-      }
-
       alert("Produto cadastrado!");
       router.push("/estoque");
 
@@ -192,6 +193,43 @@ export default function NovoProduto() {
     brand.toLowerCase().includes(marca.toLowerCase().trim())
   ).slice(0, 8);
 
+  useEffect(() => {
+    const search = nome.trim();
+    if (search.length < 2) {
+      setGlobalProductSuggestions([]);
+      setGlobalProductsLoading(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setGlobalProductsLoading(true);
+      const { data, error } = await supabase
+        .from("global_products")
+        .select("id, ean, name, brand, reference_code")
+        .ilike("name", "%" + search + "%")
+        .order("name", { ascending: true })
+        .limit(8);
+
+      if (error) {
+        console.error("Erro ao buscar produtos no catálogo global:", error);
+        setGlobalProductSuggestions([]);
+      } else {
+        setGlobalProductSuggestions((data || []) as GlobalProductSuggestion[]);
+      }
+      setGlobalProductsLoading(false);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [nome]);
+
+  const handleSelectGlobalProduct = (product: GlobalProductSuggestion) => {
+    setNome(product.name);
+    setMarca(product.brand || "");
+    setCodigoRef(product.reference_code || "");
+    setEan(product.ean);
+    setGlobalProductsOpen(false);
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-32">
 
@@ -220,7 +258,48 @@ export default function NovoProduto() {
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-stone-400 ml-2">NOME DA PEÇA</label>
-                <input type="text" value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex: Lâmpada H4" className="w-full bg-[#F8F7F2] rounded-2xl p-4 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]" />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={nome}
+                    onChange={e => {
+                      setNome(e.target.value);
+                      setGlobalProductsOpen(true);
+                    }}
+                    onFocus={() => setGlobalProductsOpen(true)}
+                    onBlur={() => setTimeout(() => setGlobalProductsOpen(false), 150)}
+                    placeholder="Ex: Lâmpada H4"
+                    className="w-full bg-[#F8F7F2] rounded-2xl p-4 pr-12 font-medium text-[#1A1A1A] outline-none border-2 border-stone-300 focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]"
+                  />
+                  {globalProductsOpen && nome.trim().length >= 2 && (
+                    <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl">
+                      <div className="flex items-center gap-2 border-b border-stone-100 px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-stone-400">
+                        <Globe2 size={13} className="text-[#B8860B]" />
+                        Catálogo global
+                        {globalProductsLoading && <Loader2 size={13} className="ml-auto animate-spin" />}
+                      </div>
+                      {!globalProductsLoading && globalProductSuggestions.length === 0 && (
+                        <p className="px-4 py-4 text-sm text-stone-500">
+                          Nenhum produto encontrado no catálogo global.
+                        </p>
+                      )}
+                      {globalProductSuggestions.map((product) => (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => handleSelectGlobalProduct(product)}
+                          className="block w-full border-b border-stone-100 px-4 py-3 text-left last:border-b-0 hover:bg-stone-50"
+                        >
+                          <span className="block text-sm font-bold text-[#1A1A1A]">{product.name}</span>
+                          <span className="mt-1 block text-xs text-stone-500">
+                            {[product.brand, product.reference_code, product.ean].filter(Boolean).join(" • ")}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

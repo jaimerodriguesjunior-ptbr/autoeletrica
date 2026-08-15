@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "classify:ncm": "tsx scripts/classify_ncms.ts",
+    "audit:global-products": "tsx scripts/audit_global_products.ts",
+    "test:global-product-trigger": "tsx scripts/test_global_product_trigger.ts",
     "test:cobranca": "tsx scripts/test_gateway_cobranca.ts"
   },
   "dependencies": {

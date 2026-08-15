@@ -16,6 +16,47 @@ interface NcmAutocompleteProps {
     autoFocus?: boolean;
 }
 
+const segmentLabels: Record<string, string> = {
+    autoeletrica: 'Autoel\u00e9trica',
+    som_automotivo: 'Som automotivo',
+    mecanica: 'Mec\u00e2nica',
+    ferramentas: 'Ferramentas',
+    epi_oficina: 'EPI / Oficina',
+    lubrificantes: 'Lubrificantes',
+    pneus_rodas: 'Pneus e rodas',
+    consumiveis_oficina: 'Consum\u00edveis',
+    funilaria_pintura: 'Funilaria e pintura',
+};
+
+function normalizeText(value: string) {
+    return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function formatAlias(alias: string) {
+    const names: Record<string, string> = {
+        rele: 'Rel\u00e9',
+        fusivel: 'Fus\u00edvel',
+        ignicao: 'Igni\u00e7\u00e3o',
+        autoeletrico: 'Autoel\u00e9trico',
+        'alto falante': 'Alto-falante',
+        altifalante: 'Alto-falante',
+    };
+    const value = names[alias] || alias;
+    return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function getResultTitle(item: LocalNcmItem, query: string) {
+    const aliases = (item.termos_busca || '').split(';').map(term => term.trim()).filter(Boolean);
+    const normalizedQuery = normalizeText(query.trim()).replace(/\bauto ?falante\b/g, 'alto falante');
+    const matchingAlias = aliases.find(alias => {
+        const normalizedAlias = normalizeText(alias);
+        return normalizedAlias.includes(normalizedQuery) || normalizedQuery.includes(normalizedAlias);
+    });
+    const segment = segmentLabels[item.segmento || ''] || 'Classifica\u00e7\u00e3o fiscal';
+
+    return matchingAlias ? `${formatAlias(matchingAlias)} \u00b7 ${segment}` : segment;
+}
+
 export function NcmAutocomplete({
     value,
     onChange,
@@ -140,9 +181,13 @@ export function NcmAutocomplete({
 
             {isOpen && suggestions.length > 0 && (
                 <div className="absolute left-0 right-0 z-50 mt-1 max-h-56 min-w-[280px] overflow-y-auto rounded-lg border border-stone-200 bg-white p-1 shadow-xl text-left">
-                    <div className="px-2 py-1 text-[10px] font-bold uppercase text-stone-400 border-b border-stone-100 flex items-center gap-1">
+                    <div className="hidden">
                         <Search size={10} />
                         Catálogo NCM ({suggestions.length})
+                    </div>
+                    <div className="flex items-center gap-1 border-b border-stone-100 px-2 py-1 text-[10px] font-bold uppercase text-stone-400">
+                        <Search size={10} />
+                        Sugest\u00f5es NCM para oficina ({suggestions.length})
                     </div>
                     {suggestions.map((item, idx) => {
                         const isSelected = selectedIndex === idx;
@@ -152,17 +197,34 @@ export function NcmAutocomplete({
                                 key={item.codigo}
                                 type="button"
                                 onClick={() => handleSelect(item)}
-                                className={`w-full px-2.5 py-1.5 text-xs rounded-md text-left transition flex flex-col gap-0.5 ${
+                                title={item.descricao}
+                                aria-label={`${getResultTitle(item, inputValue)}. NCM ${item.codigo}. Descrição fiscal: ${item.descricao}`}
+                                className={`w-full px-2.5 py-2 text-xs rounded-md text-left transition flex flex-col gap-1 ${
                                     isSelected
                                         ? 'bg-amber-50 text-amber-900 border border-amber-200'
                                         : 'hover:bg-stone-50 text-stone-700'
                                 }`}
                             >
-                                <div className="flex items-center justify-between font-mono font-bold text-stone-900">
-                                    <span>{item.codigo.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1.$2.$3")}</span>
-                                    {isCurrent && <Check size={12} className="text-emerald-600" />}
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className="truncate font-bold text-stone-900">
+                                            {getResultTitle(item, inputValue)}
+                                        </div>
+                                        <div className="mt-0.5 font-mono text-[10px] font-bold text-stone-500">
+                                            NCM {item.codigo.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1.$2.$3")}
+                                        </div>
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-1">
+                                        {item.segmento && segmentLabels[item.segmento] && (
+                                            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">
+                                                {segmentLabels[item.segmento]}
+                                            </span>
+                                        )}
+                                        {isCurrent && <Check size={12} className="text-emerald-600" />}
+                                    </div>
                                 </div>
-                                <div className="text-[11px] text-stone-500 line-clamp-2 leading-snug">
+                                <div className="line-clamp-2 text-[10px] leading-snug text-stone-500">
+                                    <span className="font-semibold text-stone-400">Descri\u00e7\u00e3o fiscal: </span>
                                     {item.descricao}
                                 </div>
                             </button>

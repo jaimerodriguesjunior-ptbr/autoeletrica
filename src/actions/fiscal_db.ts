@@ -415,6 +415,9 @@ export interface LocalNcmItem {
     codigo: string;
     descricao: string;
     vigente?: boolean;
+    segmento?: string;
+    relevancia_oficina?: number;
+    termos_busca?: string;
 }
 
 function sanitizePostgrestSearch(text: string): string {
@@ -430,6 +433,18 @@ function getSearchVariants(text: string): string[] {
 
     // Trata termos frequentes em autoelétrica para garantir correspondência com acentuação
     const lower = noAccents.toLowerCase();
+    if (lower.includes("rele")) variants.add(lower.replace(/rele/g, "rel\u00e9"));
+    if (lower.includes("lampada")) variants.add(lower.replace(/lampada/g, "l\u00e2mpada"));
+    if (lower.includes("fusivel")) variants.add(lower.replace(/fusivel/g, "fus\u00edvel"));
+    if (lower.includes("ignicao")) variants.add(lower.replace(/ignicao/g, "igni\u00e7\u00e3o"));
+    if (lower.includes("eletronico")) variants.add(lower.replace(/eletronico/g, "eletr\u00f4nico"));
+    if (lower.includes("eletrico")) variants.add(lower.replace(/eletrico/g, "el\u00e9trico"));
+
+    if (/(?:auto ?falante|alto ?falante|altifalante|falante)/.test(lower)) {
+        variants.add("alto-falante");
+        variants.add("alto falante");
+        variants.add("altifalante");
+    }
     if (lower.includes("rele")) variants.add(lower.replace(/rele/g, "relé"));
     if (lower.includes("lampada")) variants.add(lower.replace(/lampada/g, "lâmpada"));
     if (lower.includes("fusivel")) variants.add(lower.replace(/fusivel/g, "fusível"));
@@ -473,7 +488,7 @@ export async function searchLocalNcm(query: string): Promise<LocalNcmItem[]> {
 
     let queryBuilder = supabase
         .from("ncm_catalog")
-        .select("codigo, descricao, vigente")
+        .select("codigo, descricao, vigente, segmento, relevancia_oficina, termos_busca")
         .eq("vigente", true);
 
     const conditions: string[] = [];
@@ -483,13 +498,17 @@ export async function searchLocalNcm(query: string): Promise<LocalNcmItem[]> {
 
     for (const v of variants) {
         conditions.push(`descricao.ilike.%${v}%`);
+        conditions.push(`termos_busca.ilike.%${v}%`);
     }
 
     if (conditions.length > 0) {
         queryBuilder = queryBuilder.or(conditions.join(","));
     }
 
-    const { data, error } = await queryBuilder.limit(20);
+    const { data, error } = await queryBuilder
+        .order("relevancia_oficina", { ascending: false })
+        .order("codigo", { ascending: true })
+        .limit(20);
 
     if (error) {
         console.error("Erro ao buscar NCM local:", error);
