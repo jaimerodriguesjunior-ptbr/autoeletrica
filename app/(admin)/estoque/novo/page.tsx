@@ -20,6 +20,16 @@ type GlobalProductSuggestion = {
   reference_code: string | null;
 };
 
+type LocalProductSuggestion = {
+  id: string;
+  nome: string;
+  marca: string | null;
+  codigo_ref: string | null;
+  preco_venda: number | null;
+};
+
+const normalizeCatalogText = (value: string) => value.trim().toLocaleUpperCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]+/g, ' ');
+
 export default function NovoProduto() {
   const router = useRouter();
   const supabase = createClient();
@@ -34,6 +44,8 @@ export default function NovoProduto() {
   const [globalProductSuggestions, setGlobalProductSuggestions] = useState<GlobalProductSuggestion[]>([]);
   const [globalProductsLoading, setGlobalProductsLoading] = useState(false);
   const [globalProductsOpen, setGlobalProductsOpen] = useState(false);
+  const [localProductSuggestions, setLocalProductSuggestions] = useState<LocalProductSuggestion[]>([]);
+  const [localProductsLoading, setLocalProductsLoading] = useState(false);
 
   // Estados dos Campos
   const [nome, setNome] = useState("");
@@ -123,6 +135,19 @@ export default function NovoProduto() {
     setSaving(true);
 
     try {
+      const { data: sameNameProducts, error: duplicateLookupError } = await supabase
+        .from('products')
+        .select('id, nome, marca')
+        .eq('organization_id', profile.organization_id)
+        .ilike('nome', nome.trim());
+      if (duplicateLookupError) throw duplicateLookupError;
+      const duplicate = (sameNameProducts || []).find((product) => normalizeCatalogText(product.marca || '') === normalizeCatalogText(marca || ''));
+      if (duplicate) {
+        alert(`Já existe este produto com a mesma marca: ${duplicate.nome} — ${duplicate.marca || 'Sem marca'}.`);
+        setSaving(false);
+        return;
+      }
+
       const { error } = await supabase.from('products').insert({
         organization_id: profile.organization_id,
         nome,
@@ -222,6 +247,33 @@ export default function NovoProduto() {
     return () => clearTimeout(timer);
   }, [nome]);
 
+  useEffect(() => {
+    const search = nome.trim();
+    if (!profile?.organization_id || search.length < 2) {
+      setLocalProductSuggestions([]);
+      setLocalProductsLoading(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setLocalProductsLoading(true);
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, nome, marca, codigo_ref, preco_venda')
+        .eq('organization_id', profile.organization_id)
+        .ilike('nome', `%${search}%`)
+        .order('nome')
+        .limit(8);
+      if (error) {
+        console.error('Erro ao buscar produtos locais:', error);
+        setLocalProductSuggestions([]);
+      } else {
+        setLocalProductSuggestions((data || []) as LocalProductSuggestion[]);
+      }
+      setLocalProductsLoading(false);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [nome, profile?.organization_id]);
+
   const handleSelectGlobalProduct = (product: GlobalProductSuggestion) => {
     setNome(product.name);
     setMarca(product.brand || "");
@@ -273,6 +325,25 @@ export default function NovoProduto() {
                   />
                   {globalProductsOpen && nome.trim().length >= 2 && (
                     <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl">
+                      <div className="flex items-center gap-2 border-b border-stone-100 px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-stone-400">
+                        <Package size={13} className="text-[#B8860B]" />
+                        Já cadastrados nesta loja
+                        {localProductsLoading && <Loader2 size={13} className="ml-auto animate-spin" />}
+                      </div>
+                      {!localProductsLoading && localProductSuggestions.length === 0 && (
+                        <p className="px-4 py-3 text-xs text-stone-500">Nenhum produto parecido nesta loja.</p>
+                      )}
+                      {localProductSuggestions.map((product) => (
+                        <div key={product.id} className="border-b border-stone-100 px-4 py-3 last:border-b-0">
+                          <span className="block text-sm font-bold text-[#1A1A1A]">{product.nome}</span>
+                          <span className="mt-1 block text-xs text-stone-500">
+                            {[product.marca || 'Sem marca', product.codigo_ref, product.preco_venda != null ? `R$ ${Number(product.preco_venda).toFixed(2)}` : null].filter(Boolean).join(" • ")}
+                          </span>
+                          {normalizeCatalogText(product.marca || '') === normalizeCatalogText(marca) && normalizeCatalogText(product.nome) === normalizeCatalogText(nome) && (
+                            <span className="mt-1 block text-xs font-bold text-red-600">Mesmo nome e marca já cadastrados</span>
+                          )}
+                        </div>
+                      ))}
                       <div className="flex items-center gap-2 border-b border-stone-100 px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-stone-400">
                         <Globe2 size={13} className="text-[#B8860B]" />
                         Catálogo global

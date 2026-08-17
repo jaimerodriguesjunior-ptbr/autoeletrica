@@ -26,6 +26,8 @@ type WorkOrderItem = {
   total_price: number;
   tipo: string;
   product_id: string | null;
+  marca?: string | null;
+  catalog_status?: string | null;
   peca_cliente: boolean;
 };
 
@@ -75,7 +77,7 @@ type WorkOrderFull = {
   }[];
 };
 
-type CatalogItem = { id: string; nome: string; price?: number; preco_venda?: number; estoque_atual?: number; ean?: string };
+type CatalogItem = { id: string; nome: string; marca?: string | null; codigo_ref?: string | null; price?: number; preco_venda?: number; estoque_atual?: number; ean?: string | null };
 type GlobalProduct = { id: string; ean: string; name: string; brand: string | null; reference_code: string | null };
 type CheckoutPayment = { amount: string; method: string; installments: number; chequeDate: string };
 
@@ -255,7 +257,7 @@ export default function DetalhesOS() {
           *,
           clients ( id, nome, whatsapp ),
           vehicles ( id, modelo, placa, fabricante ),
-          work_order_items ( id, name, unit_price, quantity, total_price, tipo, product_id, peca_cliente ),
+          work_order_items ( id, name, marca, catalog_status, unit_price, quantity, total_price, tipo, product_id, peca_cliente ),
           appointments ( id, type, status, description, start_time, duration_minutes )
         `)
         .eq('id', id)
@@ -297,7 +299,7 @@ export default function DetalhesOS() {
     if (!profile?.organization_id) return;
     try {
       const [prodRes, servRes] = await Promise.all([
-        supabase.from("products").select("id, nome, preco_venda, estoque_atual, ean").order("nome"),
+        supabase.from("products").select("id, nome, marca, codigo_ref, preco_venda, estoque_atual, ean").order("nome"),
         supabase.from("services").select("id, nome, price").order("nome"),
       ]);
       setListaProdutos(prodRes.data || []);
@@ -1202,6 +1204,8 @@ export default function DetalhesOS() {
           organization_id: profile.organization_id,
           product_id: tipo === "peca" ? item.id : null,
           service_id: tipo === "servico" ? item.id : null,
+          marca: tipo === "peca" ? (item.marca || null) : null,
+          catalog_status: "resolved",
           tipo: tipo,
           name: item.nome,
           quantity: quantidade,
@@ -1260,6 +1264,47 @@ export default function DetalhesOS() {
     }
   };
 
+  const handleAdicionarAvulso = async () => {
+    const nomeAvulso = termoBusca.trim();
+    if (!nomeAvulso || !os || !profile?.organization_id) return;
+    setAdicionandoItem(true);
+    try {
+      const { data: itemData, error } = await supabase
+        .from('work_order_items')
+        .insert({
+          work_order_id: os.id,
+          organization_id: profile.organization_id,
+          product_id: null,
+          service_id: null,
+          tipo: 'peca',
+          name: nomeAvulso,
+          marca: null,
+          catalog_status: 'pending',
+          quantity: 1,
+          unit_price: 0,
+          total_price: 0,
+          peca_cliente: false,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      if (usaComissao && osCreatorIsEmployee && os.employee_id && itemData?.id) {
+        await supabase.from('work_order_item_assignments').insert({
+          organization_id: profile.organization_id,
+          work_order_item_id: itemData.id,
+          employee_id: os.employee_id,
+        });
+      }
+      setModalAdicionarTipo(null);
+      setTermoBusca('');
+      fetchOS();
+    } catch (error: any) {
+      alert('Erro ao adicionar item avulso: ' + error.message);
+    } finally {
+      setAdicionandoItem(false);
+    }
+  };
+
   const handleAdicionarGlobal = async (gp: GlobalProduct) => {
     if (!profile?.organization_id) return;
     setAdicionandoItem(true);
@@ -1279,13 +1324,13 @@ export default function DetalhesOS() {
           preco_venda: 0,
           global_product_id: gp.id
         })
-        .select('id, nome, preco_venda, estoque_atual, ean')
+        .select('id, nome, marca, codigo_ref, preco_venda, estoque_atual, ean')
         .single();
 
       if (error) throw error;
 
       await handleAdicionarItem(
-        { id: novoProduto.id, nome: novoProduto.nome, preco_venda: 0, estoque_atual: 0, ean: novoProduto.ean },
+        { id: novoProduto.id, nome: novoProduto.nome, marca: novoProduto.marca, codigo_ref: novoProduto.codigo_ref, preco_venda: 0, estoque_atual: 0, ean: novoProduto.ean },
         'peca'
       );
     } catch (err: any) {
@@ -1362,7 +1407,7 @@ export default function DetalhesOS() {
           custo_contabil: 0,
           preco_venda: 0,
         })
-        .select('id, nome, preco_venda, estoque_atual, ean')
+        .select('id, nome, marca, codigo_ref, preco_venda, estoque_atual, ean')
         .single();
 
       if (insertError) throw insertError;
@@ -1399,6 +1444,22 @@ export default function DetalhesOS() {
       let insertedItem: any;
 
       if (modalCadastroRapidoTipo === 'peca') {
+        const { data: existingProduct } = await supabase
+          .from('products')
+          .select('id, nome, marca, preco_venda, estoque_atual, ean, codigo_ref')
+          .eq('organization_id', profile.organization_id)
+          .ilike('nome', nomeNovoItem.trim())
+          .ilike('marca', 'Sem Marca')
+          .limit(1)
+          .maybeSingle();
+        if (existingProduct) {
+          setSalvandoNovoItem(false);
+          setModalCadastroRapidoTipo(null);
+          setModalAdicionarTipo('peca');
+          setTermoBusca(existingProduct.nome);
+          alert('Este produto já está cadastrado. Selecione-o na lista para usar na OS.');
+          return;
+        }
         const { data, error } = await supabase.from('products').insert({
           organization_id: profile.organization_id,
           nome: nomeNovoItem,
@@ -1409,13 +1470,28 @@ export default function DetalhesOS() {
           custo_reposicao: 0,
           custo_contabil: 0,
           preco_venda: 0
-        }).select('id, nome, preco_venda, estoque_atual').single();
+        }).select('id, nome, marca, codigo_ref, preco_venda, estoque_atual, ean').single();
 
         if (error) throw error;
         insertedItem = data;
         setListaProdutos(prev => [...prev, insertedItem as CatalogItem]);
 
       } else {
+        const { data: existingService } = await supabase
+          .from('services')
+          .select('id, nome, price')
+          .eq('organization_id', profile.organization_id)
+          .ilike('nome', nomeNovoItem.trim())
+          .limit(1)
+          .maybeSingle();
+        if (existingService) {
+          setSalvandoNovoItem(false);
+          setModalCadastroRapidoTipo(null);
+          setModalAdicionarTipo('servico');
+          setTermoBusca(existingService.nome);
+          alert('Este serviço já está cadastrado. Selecione-o na lista para usar na OS.');
+          return;
+        }
         const { data, error } = await supabase.from('services').insert({
           organization_id: profile.organization_id,
           nome: nomeNovoItem,
@@ -2104,6 +2180,10 @@ export default function DetalhesOS() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className={`text-stone-600 font-medium ${item.peca_cliente ? 'line-through opacity-60' : ''}`}>{item.name}</p>
+                      {item.tipo === 'peca' && item.marca && <p className="text-xs font-semibold text-stone-400">{item.marca}</p>}
+                      {item.catalog_status === 'pending' && (
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">Aguardando cadastro oficial</p>
+                      )}
                       <p className="text-[10px] text-stone-400">
                         {item.quantity}x R$ {(item.unit_price || 0).toFixed(2)}
                       </p>
@@ -2592,7 +2672,10 @@ export default function DetalhesOS() {
                   listaProdutos
                     .filter((p) => {
                       const termo = termoBusca.toLowerCase();
-                      return p.nome.toLowerCase().includes(termo) || (p.ean && p.ean.includes(termoBusca));
+                      return p.nome.toLowerCase().includes(termo) ||
+                        (p.marca || '').toLowerCase().includes(termo) ||
+                        (p.codigo_ref || '').toLowerCase().includes(termo) ||
+                        (p.ean && p.ean.includes(termoBusca));
                     })
                     .map((p) => (
                       <button
@@ -2602,6 +2685,7 @@ export default function DetalhesOS() {
                       >
                         <div>
                           <p className="font-bold text-[#1A1A1A]">{p.nome}</p>
+                          <p className="text-xs font-semibold text-stone-500">{p.marca || 'Sem marca'}{p.codigo_ref ? ` · ${p.codigo_ref}` : ''}</p>
                           <p className="text-xs text-stone-400">Estoque: {p.estoque_atual}</p>
                         </div>
                         <span className="font-bold text-[#1A1A1A]">R$ {p.preco_venda?.toFixed(2)}</span>
@@ -2624,8 +2708,22 @@ export default function DetalhesOS() {
                       </button>
                     ))}
 
+                {!adicionandoItem && modalAdicionarTipo === 'peca' && termoBusca.trim().length >= 2 && listaProdutos.filter((p) => {
+                  const termo = termoBusca.toLowerCase();
+                  return p.nome.toLowerCase().includes(termo) || (p.marca || '').toLowerCase().includes(termo) || (p.codigo_ref || '').toLowerCase().includes(termo) || (p.ean && p.ean.includes(termoBusca));
+                }).length === 0 && produtosGlobais.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={handleAdicionarAvulso}
+                    className="w-full mb-3 rounded-xl border-2 border-dashed border-[#FACC15] bg-yellow-50 p-3 text-left hover:bg-yellow-100 transition"
+                  >
+                    <p className="font-bold text-[#1A1A1A]">Usar “{termoBusca.trim()}” nesta OS</p>
+                    <p className="text-xs text-stone-500">Item avulso, sem criar cadastro no estoque</p>
+                  </button>
+                )}
+
                 {!adicionandoItem && (
-                  <div className="mt-4 border-t border-stone-200 pt-4 flex flex-col items-center">
+                  <div className="mt-4 border-t border-stone-200 pt-4 flex flex-col items-center [&>p:first-child]:hidden">
                     <p className="text-xs text-stone-500 mb-2">Não encontrou o que procurava?</p>
                     <button
                       onClick={() => {
@@ -2633,7 +2731,7 @@ export default function DetalhesOS() {
                         setModalCadastroRapidoTipo(modalAdicionarTipo);
                         setModalAdicionarTipo(null);
                       }}
-                      className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2"
+                      className="hidden"
                     >
                       Cadastrar {modalAdicionarTipo === 'servico' ? 'Novo Serviço' : 'Nova Peça'} <Plus size={14} />
                     </button>

@@ -44,6 +44,7 @@ export default function EstoqueEServicos() {
   // Dados
   const [products, setProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [pendingCatalogCount, setPendingCatalogCount] = useState(0);
 
   // Estados do Modal de Serviço
   const [modalServiceOpen, setModalServiceOpen] = useState(false);
@@ -76,6 +77,13 @@ export default function EstoqueEServicos() {
 
       setProducts(prodRes.data || []);
       setServices(servRes.data || []);
+      const { count } = await supabase.from('work_order_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', profile?.organization_id)
+        .eq('catalog_status', 'pending')
+        .eq('tipo', 'peca')
+        .eq('peca_cliente', false);
+      setPendingCatalogCount(count || 0);
     } catch (error) {
       console.error("Erro ao buscar dados:", error);
     } finally {
@@ -214,6 +222,13 @@ export default function EstoqueEServicos() {
           </button>
         )}
       </div>
+
+      {view === 'products' && pendingCatalogCount > 0 && (
+        <button onClick={() => router.push('/estoque/pendencias')} className="flex w-full items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-left hover:bg-amber-100 transition">
+          <span><span className="block font-bold text-amber-900">{pendingCatalogCount} item(ns) avulso(s) aguardando cadastro oficial</span><span className="text-xs text-amber-800">Clique para completar o cadastro e vincular à OS original.</span></span>
+          <AlertTriangle size={20} className="text-amber-700" />
+        </button>
+      )}
 
       {/* 2. SELETOR DE ABAS PRINCIPAIS (MOVIDO PARA CIMA) */}
       <div className="flex p-1.5 bg-stone-200 rounded-[24px] w-fit border-2 border-stone-300 shadow-sm gap-1">

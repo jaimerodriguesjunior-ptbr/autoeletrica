@@ -27,6 +27,7 @@ import { useAuth } from "../../src/contexts/AuthContext";
 import { GlobalAppointmentAlert } from "../../src/components/GlobalAppointmentAlert";
 import { ClosingAutoSend } from "../../src/components/ClosingAutoSend";
 import { BillingStatusBanner } from "../../src/components/BillingStatusBanner";
+import { createClient } from "../../src/lib/supabase";
 
 export default function AdminLayout({
   children,
@@ -38,12 +39,25 @@ export default function AdminLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { signOut, user, profile, loading } = useAuth();
+  const [pendingCatalogCount, setPendingCatalogCount] = useState(0);
+  const supabase = createClient();
 
   useEffect(() => {
     if (!loading && !user) {
       router.push("/");
     }
   }, [loading, user, router]);
+
+  useEffect(() => {
+    if (!profile?.organization_id || profile.cargo !== 'owner') return;
+    supabase.from('work_order_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', profile.organization_id)
+      .eq('catalog_status', 'pending')
+      .eq('tipo', 'peca')
+      .eq('peca_cliente', false)
+      .then(({ count }) => setPendingCatalogCount(count || 0));
+  }, [profile?.organization_id, profile?.cargo]);
 
   const allMenuItems = [
     { name: "Dashboard", category: "Visão Geral", icon: LayoutDashboard, path: "/dashboard", restricted: false },
@@ -170,9 +184,8 @@ export default function AdminLayout({
                   title={isCollapsed ? item.name : undefined}
                 >
                   <item.icon size={20} className={`transition-transform duration-300 ${isActive ? "text-[#FACC15]" : "group-hover:scale-110"}`} />
-                  {!isCollapsed && (
-                    <span className="truncate">{item.name}</span>
-                  )}
+                  {!isCollapsed && <span className="flex min-w-0 items-center gap-2 truncate"><span className="truncate">{item.name}</span>{item.path === '/estoque' && pendingCatalogCount > 0 && <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-extrabold text-white">{pendingCatalogCount}</span>}</span>}
+                  {isCollapsed && item.path === '/estoque' && pendingCatalogCount > 0 && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-red-500" />}
                 </Link>
               );
             })}
