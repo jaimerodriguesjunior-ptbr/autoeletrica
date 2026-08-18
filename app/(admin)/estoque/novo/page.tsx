@@ -18,6 +18,7 @@ type GlobalProductSuggestion = {
   name: string;
   brand: string | null;
   reference_code: string | null;
+  ncm?: string | null;
 };
 
 type LocalProductSuggestion = {
@@ -26,6 +27,12 @@ type LocalProductSuggestion = {
   marca: string | null;
   codigo_ref: string | null;
   preco_venda: number | null;
+};
+
+type PendingCatalogItem = {
+  id: string;
+  name: string;
+  marca: string | null;
 };
 
 const normalizeCatalogText = (value: string) => value.trim().toLocaleUpperCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]+/g, ' ');
@@ -46,6 +53,8 @@ export default function NovoProduto() {
   const [globalProductsOpen, setGlobalProductsOpen] = useState(false);
   const [localProductSuggestions, setLocalProductSuggestions] = useState<LocalProductSuggestion[]>([]);
   const [localProductsLoading, setLocalProductsLoading] = useState(false);
+  const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  const [pendingItemLoading, setPendingItemLoading] = useState(false);
 
   // Estados dos Campos
   const [nome, setNome] = useState("");
@@ -65,6 +74,39 @@ export default function NovoProduto() {
   // --- ALTERADO: Margem padrão agora é 100% ---
   const [margem, setMargem] = useState("100");
   const [precoVenda, setPrecoVenda] = useState("");
+
+  useEffect(() => {
+    setPendingItemId(new URLSearchParams(window.location.search).get("pendingItemId"));
+  }, []);
+
+  useEffect(() => {
+    if (!pendingItemId || !profile?.organization_id) return;
+
+    const loadPendingItem = async () => {
+      setPendingItemLoading(true);
+      const { data, error } = await supabase
+        .from("work_order_items")
+        .select("id, name, marca")
+        .eq("id", pendingItemId)
+        .eq("organization_id", profile.organization_id)
+        .eq("catalog_status", "pending")
+        .eq("tipo", "peca")
+        .eq("peca_cliente", false)
+        .maybeSingle();
+
+      if (error || !data) {
+        alert(error?.message || "Item avulso pendente nao encontrado.");
+        setPendingItemId(null);
+      } else {
+        const item = data as PendingCatalogItem;
+        setNome(item.name);
+        setMarca(item.marca || "");
+      }
+      setPendingItemLoading(false);
+    };
+
+    void loadPendingItem();
+  }, [pendingItemId, profile?.organization_id]);
 
   // Markup da empresa
   const [markupAtivo, setMarkupAtivo] = useState(false);
@@ -148,7 +190,7 @@ export default function NovoProduto() {
         return;
       }
 
-      const { error } = await supabase.from('products').insert({
+      const { data: createdProduct, error } = await supabase.from('products').insert({
         organization_id: profile.organization_id,
         nome,
         marca,
@@ -161,12 +203,33 @@ export default function NovoProduto() {
         custo_contabil: Number(custoContabil) || 0,
         preco_venda: Number(precoVenda) || 0,
         localizacao
-      });
+      }).select("id, nome, marca").single();
 
       if (error) throw error;
 
-      alert("Produto cadastrado!");
-      router.push("/estoque");
+      if (pendingItemId && createdProduct?.id) {
+        const { data: linkedItem, error: linkError } = await supabase
+          .from("work_order_items")
+          .update({
+            product_id: createdProduct.id,
+            name: createdProduct.nome,
+            marca: createdProduct.marca?.trim() || null,
+            catalog_status: "resolved",
+          })
+          .eq("id", pendingItemId)
+          .eq("organization_id", profile.organization_id)
+          .eq("catalog_status", "pending")
+          .select("id")
+          .maybeSingle();
+
+        if (linkError) throw linkError;
+        if (!linkedItem) throw new Error("O produto foi criado, mas o item pendente da OS nao foi encontrado para vinculo.");
+        alert("Produto cadastrado e OS corrigida!");
+        router.replace("/estoque");
+      } else {
+        alert("Produto cadastrado!");
+        router.replace("/estoque");
+      }
 
     } catch (error: any) {
       console.error(error);
@@ -228,12 +291,23 @@ export default function NovoProduto() {
 
     const timer = setTimeout(async () => {
       setGlobalProductsLoading(true);
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("global_products")
-        .select("id, ean, name, brand, reference_code")
+        .select("id, ean, name, brand, reference_code, ncm")
         .ilike("name", "%" + search + "%")
         .order("name", { ascending: true })
         .limit(8);
+
+      if (error?.message?.includes("global_products.ncm")) {
+        const fallback = await supabase
+          .from("global_products")
+          .select("id, ean, name, brand, reference_code")
+          .ilike("name", "%" + search + "%")
+          .order("name", { ascending: true })
+          .limit(8);
+        data = (fallback.data || []).map((item) => ({ ...item, ncm: null }));
+        error = fallback.error;
+      }
 
       if (error) {
         console.error("Erro ao buscar produtos no catálogo global:", error);
@@ -279,6 +353,7 @@ export default function NovoProduto() {
     setMarca(product.brand || "");
     setCodigoRef(product.reference_code || "");
     setEan(product.ean);
+    setNcm(product.ncm || "");
     setGlobalProductsOpen(false);
   };
 
@@ -293,7 +368,7 @@ export default function NovoProduto() {
           </button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-[#1A1A1A]">Novo Produto</h1>
+          <h1 className="text-2xl font-bold text-[#1A1A1A]">{pendingItemId ? "Regularizar produto" : "Novo Produto"}</h1>
           <p className="text-stone-500 text-xs">Cadastre peças ou itens de revenda</p>
         </div>
       </div>
@@ -334,7 +409,13 @@ export default function NovoProduto() {
                         <p className="px-4 py-3 text-xs text-stone-500">Nenhum produto parecido nesta loja.</p>
                       )}
                       {localProductSuggestions.map((product) => (
-                        <div key={product.id} className="border-b border-stone-100 px-4 py-3 last:border-b-0">
+                        <button
+                          key={product.id}
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => router.push(`/estoque/${product.id}`)}
+                          className="block w-full border-b border-stone-100 px-4 py-3 text-left last:border-b-0 hover:bg-stone-50"
+                        >
                           <span className="block text-sm font-bold text-[#1A1A1A]">{product.nome}</span>
                           <span className="mt-1 block text-xs text-stone-500">
                             {[product.marca || 'Sem marca', product.codigo_ref, product.preco_venda != null ? `R$ ${Number(product.preco_venda).toFixed(2)}` : null].filter(Boolean).join(" • ")}
@@ -342,7 +423,7 @@ export default function NovoProduto() {
                           {normalizeCatalogText(product.marca || '') === normalizeCatalogText(marca) && normalizeCatalogText(product.nome) === normalizeCatalogText(nome) && (
                             <span className="mt-1 block text-xs font-bold text-red-600">Mesmo nome e marca já cadastrados</span>
                           )}
-                        </div>
+                        </button>
                       ))}
                       <div className="flex items-center gap-2 border-b border-stone-100 px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-stone-400">
                         <Globe2 size={13} className="text-[#B8860B]" />
@@ -363,6 +444,7 @@ export default function NovoProduto() {
                           className="block w-full border-b border-stone-100 px-4 py-3 text-left last:border-b-0 hover:bg-stone-50"
                         >
                           <span className="block text-sm font-bold text-[#1A1A1A]">{product.name}</span>
+                          {product.ncm && <span className="mt-1 block text-xs font-semibold text-emerald-700">NCM: {product.ncm}</span>}
                           <span className="mt-1 block text-xs text-stone-500">
                             {[product.brand, product.reference_code, product.ean].filter(Boolean).join(" • ")}
                           </span>
@@ -571,11 +653,11 @@ export default function NovoProduto() {
       <div className="fixed bottom-24 md:bottom-6 right-6 left-6 md:left-auto md:w-96 z-40">
         <button
           onClick={handleSalvar}
-          disabled={saving}
+          disabled={saving || pendingItemLoading}
           className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-full shadow-lg flex justify-center items-center gap-2 hover:scale-105 transition active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
         >
           {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-          {saving ? "Salvando..." : "Salvar Produto"}
+          {pendingItemLoading ? "Carregando item..." : saving ? "Salvando..." : "Salvar Produto"}
         </button>
       </div>
 

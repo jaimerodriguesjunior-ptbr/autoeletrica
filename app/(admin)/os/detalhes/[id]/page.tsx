@@ -78,7 +78,7 @@ type WorkOrderFull = {
 };
 
 type CatalogItem = { id: string; nome: string; marca?: string | null; codigo_ref?: string | null; price?: number; preco_venda?: number; estoque_atual?: number; ean?: string | null };
-type GlobalProduct = { id: string; ean: string; name: string; brand: string | null; reference_code: string | null };
+type GlobalProduct = { id: string; ean: string; name: string; brand: string | null; reference_code: string | null; ncm?: string | null };
 type CheckoutPayment = { amount: string; method: string; installments: number; chequeDate: string };
 
 export default function DetalhesOS() {
@@ -518,11 +518,20 @@ export default function DetalhesOS() {
     const timer = setTimeout(async () => {
       setBuscandoGlobal(true);
       try {
-        const { data } = await supabase
+        let { data, error } = await supabase
           .from('global_products')
-          .select('id, ean, name, brand, reference_code')
+          .select('id, ean, name, brand, reference_code, ncm')
           .ilike('name', `%${termoBusca}%`)
           .limit(10);
+        if (error?.message?.includes('global_products.ncm')) {
+          const fallback = await supabase
+            .from('global_products')
+            .select('id, ean, name, brand, reference_code')
+            .ilike('name', `%${termoBusca}%`)
+            .limit(10);
+          data = (fallback.data || []).map((item) => ({ ...item, ncm: null }));
+          error = fallback.error;
+        }
         setProdutosGlobais(data || []);
       } finally {
         setBuscandoGlobal(false);
@@ -1317,6 +1326,7 @@ export default function DetalhesOS() {
           marca: gp.brand || '',
           codigo_ref: gp.reference_code || '',
           ean: gp.ean,
+          ncm: gp.ncm || null,
           estoque_atual: 0,
           estoque_min: 0,
           custo_reposicao: 0,
@@ -1324,7 +1334,7 @@ export default function DetalhesOS() {
           preco_venda: 0,
           global_product_id: gp.id
         })
-        .select('id, nome, marca, codigo_ref, preco_venda, estoque_atual, ean')
+        .select('id, nome, marca, codigo_ref, preco_venda, estoque_atual, ean, ncm')
         .single();
 
       if (error) throw error;
@@ -2684,8 +2694,9 @@ export default function DetalhesOS() {
                         className="w-full flex justify-between p-3 bg-white border border-stone-100 hover:border-[#FACC15] shadow-sm hover:shadow-md rounded-xl text-left transition"
                       >
                         <div>
-                          <p className="font-bold text-[#1A1A1A]">{p.nome}</p>
-                          <p className="text-xs font-semibold text-stone-500">{p.marca || 'Sem marca'}{p.codigo_ref ? ` · ${p.codigo_ref}` : ''}</p>
+                          <p className="text-base font-bold leading-tight text-[#1A1A1A]">{p.nome}</p>
+                          <p className="mt-1 text-sm font-bold leading-tight text-stone-700">Marca: {p.marca || 'Sem marca'}</p>
+                          {p.codigo_ref && <p className="mt-1 text-xs text-stone-400">Ref.: {p.codigo_ref}</p>}
                           <p className="text-xs text-stone-400">Estoque: {p.estoque_atual}</p>
                         </div>
                         <span className="font-bold text-[#1A1A1A]">R$ {p.preco_venda?.toFixed(2)}</span>
@@ -2759,10 +2770,12 @@ export default function DetalhesOS() {
                                 className="w-full flex justify-between items-center p-3 bg-stone-50 border border-stone-200 hover:border-[#FACC15] rounded-xl text-left transition"
                               >
                                 <div>
-                                  <p className="font-bold text-[#1A1A1A] text-sm">{gp.name}</p>
-                                  <p className="text-xs text-stone-400">
-                                    {gp.brand || ''}{gp.reference_code ? ` · ${gp.reference_code}` : ''}
+                                  <p className="text-base font-bold leading-tight text-[#1A1A1A]">{gp.name}</p>
+                                  <p className="mt-1 text-sm font-bold leading-tight text-stone-700">
+                                    Marca: {gp.brand || 'Sem marca'}
                                   </p>
+                                  {gp.reference_code && <p className="mt-1 text-xs text-stone-400">Ref.: {gp.reference_code}</p>}
+                                  {gp.ncm && <p className="mt-1 text-xs font-semibold text-emerald-700">NCM: {gp.ncm}</p>}
                                 </div>
                                 <span className="text-xs bg-stone-200 text-stone-600 px-2 py-1 rounded-lg font-bold shrink-0 ml-2">
                                   Global

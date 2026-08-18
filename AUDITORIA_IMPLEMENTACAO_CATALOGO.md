@@ -24,6 +24,16 @@ O registro abaixo que menciona a migration como "necessaria" e historico: neste 
 - O status de itens oficiais na OS foi simplificado para `resolved`.
 - O item avulso continua sem marca por decisao de usabilidade; a marca pode ser preenchida durante a regularizacao administrativa.
 - As contagens do banco registradas acima foram obtidas diretamente no Supabase por consulta somente leitura.
+- A lista de pendencias encaminha cada item para a tela normal de Novo Produto por `pendingItemId`.
+- A lista de pendencias passou a aparecer diretamente no card de alerta de Estoque e Servicos; nao existe etapa intermediaria de pendencias.
+- O nome e a marca do item avulso sao carregados como valores iniciais e podem ser ajustados antes do salvamento.
+- Ao salvar, o produto oficial e criado e o item original da OS recebe `product_id`, nome, marca e `catalog_status = 'resolved'`.
+- O preco e o total historicos da OS nao sao alterados durante o vinculo.
+- Depois da regularizacao, o administrador retorna para Estoque e Servicos; os demais itens continuam visiveis no mesmo card.
+- No cadastro normal de produto, os resultados da propria loja agora sao clicaveis e abrem diretamente a edicao do produto existente.
+- Os resultados do catalogo global continuam preenchendo o formulario para revisao antes de salvar uma copia na loja.
+- O catalogo global recebeu marcas explicitas em 45 registros, incluindo `BATERIA BOSH S6 38AH` com marca `Bosh`.
+- A migration `migration_global_products_ncm.sql` adiciona NCM ao catalogo global e classifica apenas correspondencias de alta confianca do catalogo local.
 
 Evitar duplicações reais no cadastro sem impedir o atendimento quando o mecânico não encontrar uma peça ou serviço.
 
@@ -40,7 +50,7 @@ Evitar duplicações reais no cadastro sem impedir o atendimento quando o mecân
 - O item avulso é gravado diretamente em `work_order_items`, sem criar produto no estoque.
 - Foi adicionada a coluna `marca` em `work_order_items` para preservar a identificação de itens avulsos.
 - Itens avulsos passam a usar `catalog_status = 'pending'` e aparecem como pendência administrativa.
-- A tela `/estoque/pendencias` permite vincular o item a produto existente ou criar e vincular um novo produto.
+- A antiga tela `/estoque/pendencias` foi removida; as pendencias agora aparecem diretamente em Estoque e Servicos.
 - O vínculo atualiza a referência fiscal da OS sem substituir o preço histórico do item.
 - NCM, preço, estoque e referências de cadastros existentes não são alterados por esse fluxo.
 

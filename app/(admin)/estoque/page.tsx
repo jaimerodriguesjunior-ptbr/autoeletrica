@@ -29,6 +29,14 @@ type Service = {
   price: number;
 };
 
+type PendingCatalogItem = {
+  id: string;
+  work_order_id: number | string;
+  name: string;
+  marca: string | null;
+  unit_price: number;
+};
+
 export default function EstoqueEServicos() {
   const supabase = createClient();
   const { profile } = useAuth();
@@ -45,6 +53,7 @@ export default function EstoqueEServicos() {
   const [products, setProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [pendingCatalogCount, setPendingCatalogCount] = useState(0);
+  const [pendingCatalogItems, setPendingCatalogItems] = useState<PendingCatalogItem[]>([]);
 
   // Estados do Modal de Serviço
   const [modalServiceOpen, setModalServiceOpen] = useState(false);
@@ -77,13 +86,14 @@ export default function EstoqueEServicos() {
 
       setProducts(prodRes.data || []);
       setServices(servRes.data || []);
-      const { count } = await supabase.from('work_order_items')
-        .select('id', { count: 'exact', head: true })
+      const { data: pendingItems, count } = await supabase.from('work_order_items')
+        .select('id, work_order_id, name, marca, unit_price', { count: 'exact' })
         .eq('organization_id', profile?.organization_id)
         .eq('catalog_status', 'pending')
         .eq('tipo', 'peca')
         .eq('peca_cliente', false);
       setPendingCatalogCount(count || 0);
+      setPendingCatalogItems((pendingItems || []) as PendingCatalogItem[]);
     } catch (error) {
       console.error("Erro ao buscar dados:", error);
     } finally {
@@ -224,10 +234,31 @@ export default function EstoqueEServicos() {
       </div>
 
       {view === 'products' && pendingCatalogCount > 0 && (
-        <button onClick={() => router.push('/estoque/pendencias')} className="flex w-full items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-left hover:bg-amber-100 transition">
-          <span><span className="block font-bold text-amber-900">{pendingCatalogCount} item(ns) avulso(s) aguardando cadastro oficial</span><span className="text-xs text-amber-800">Clique para completar o cadastro e vincular à OS original.</span></span>
-          <AlertTriangle size={20} className="text-amber-700" />
-        </button>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <div className="flex items-center gap-2 text-amber-900">
+            <AlertTriangle size={20} className="text-amber-700" />
+            <div>
+              <p className="font-bold">Itens avulsos aguardando cadastro oficial</p>
+              <p className="text-xs text-amber-800">Escolha um item para completar o cadastro e corrigir a OS original.</p>
+            </div>
+            <span className="ml-auto rounded-full bg-amber-200 px-2.5 py-1 text-xs font-extrabold text-amber-900">{pendingCatalogCount}</span>
+          </div>
+          <div className="mt-4 space-y-2">
+            {pendingCatalogItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => router.push(`/estoque/novo?pendingItemId=${encodeURIComponent(item.id)}`)}
+                className="flex w-full items-center justify-between gap-4 rounded-xl border border-amber-200 bg-white px-4 py-3 text-left transition hover:border-amber-400 hover:bg-amber-50"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-bold text-[#1A1A1A]">{item.name}</span>
+                  <span className="mt-1 block text-xs text-stone-600">{item.marca || "Marca nao informada"} · OS #{item.work_order_id} · R$ {Number(item.unit_price || 0).toFixed(2)}</span>
+                </span>
+                <span className="shrink-0 rounded-lg bg-[#1A1A1A] px-3 py-2 text-[11px] font-bold text-[#FACC15]">Corrigir</span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* 2. SELETOR DE ABAS PRINCIPAIS (MOVIDO PARA CIMA) */}

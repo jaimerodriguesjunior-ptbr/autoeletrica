@@ -87,6 +87,7 @@ export default function EditarProduto() {
   }, [id, profile?.organization_id]);
 
   const fetchProduct = async () => {
+    if (!id || Array.isArray(id)) return;
     try {
       const { data, error } = await supabase
         .from('products')
@@ -116,7 +117,7 @@ export default function EditarProduto() {
       }
     } catch (error) {
       console.error(error);
-      alert("Erro ao carregar produto.");
+      alert("Erro ao carregar produto: " + (error instanceof Error ? error.message : "registro não encontrado"));
       router.push("/estoque");
     } finally {
       setLoading(false);
