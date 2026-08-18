@@ -7,6 +7,7 @@ import "./globals.css";
 import { AuthProvider } from "@/src/contexts/AuthContext";
 // Note que agora importamos da pasta que você acabou de criar
 import AiButton from "@/components/AiButton";
+import PwaRegistration from "@/components/PwaRegistration";
 
 export const viewport: Viewport = {
   themeColor: "#FACC15",
@@ -42,6 +43,7 @@ export default function RootLayout({
     <html lang="pt-br">
       <body className="font-[family-name:var(--font-jakarta)] antialiased">
         <AuthProvider>
+          <PwaRegistration />
           {children}
           {/* <AiButton /> */}
         </AuthProvider>
