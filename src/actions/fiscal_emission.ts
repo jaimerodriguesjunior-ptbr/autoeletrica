@@ -6184,6 +6184,13 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         const totalVICMS = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.vICMS, 0));
         const totalVBCST = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.stTax.vBCST, 0));
         const totalVICMSST = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.stTax.vICMSST, 0));
+        const totalProdutosDevolucao = toMoneyNumber(
+            detItemsComputed.reduce((s, d) => s + Number(d.det.prod.vProd || 0), 0),
+        );
+        // Na operação original com cobrança de ICMS-ST, o imposto integra o
+        // valor total da NF-e. A devolução deve reproduzir essa composição
+        // proporcionalmente, sem tratar o ST como IPI ou despesa acessória.
+        const totalNotaDevolucao = toMoneyNumber(totalProdutosDevolucao + totalVICMSST);
         const stInfo = detItemsComputed
             .map((item, index) => {
                 const st = item.stTax;
@@ -6260,10 +6267,10 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     ICMSTot: {
                         vBC: toFiscalNumberText(totalVBC), vICMS: toFiscalNumberText(totalVICMS), vICMSDeson: 0, vFCP: 0,
                         vBCST: toFiscalNumberText(totalVBCST), vST: toFiscalNumberText(totalVICMSST), vFCPST: 0, vFCPSTRet: 0,
-                        vProd: toMoneyNumber(payload.valor_total),
+                        vProd: totalProdutosDevolucao,
                         vFrete: 0, vSeg: 0, vDesc: 0, vII: 0,
                         vIPI: 0, vIPIDevol: 0, vPIS: 0, vCOFINS: 0,
-                        vOutro: 0, vNF: toMoneyNumber(payload.valor_total),
+                        vOutro: 0, vNF: totalNotaDevolucao,
                     },
                     ...buildRtcHomologationTotal(env, rtcNFeDevolucaoContext, toMoneyNumber(payload.valor_total)),
                 },
@@ -6281,7 +6288,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 organization_id: payload.organization_id,
                 direction: "output",
                 data_emissao: dhEmi,
-                valor_total: toMoneyNumber(payload.valor_total),
+                valor_total: totalNotaDevolucao,
                 emitente_nome: company.razao_social || company.nome_fantasia || null,
                 emitente_cnpj: cnpjEmit,
                 destinatario_nome: entryInvoice.emitente_nome,
