@@ -107,6 +107,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
                         headers: {
                             "Content-Type": "application/pdf",
                             "Content-Disposition": pdfDisposition,
+                            "Cache-Control": "no-store, max-age=0",
                         },
                     });
                 }
@@ -175,6 +176,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
                         headers: {
                             "Content-Type": "application/pdf",
                             "Content-Disposition": pdfDisposition,
+                            "Cache-Control": "no-store, max-age=0",
                         },
                     });
                 }
@@ -187,6 +189,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
             headers: {
                 "Content-Type": "application/pdf",
                 "Content-Disposition": pdfDisposition,
+                "Cache-Control": "no-store, max-age=0",
             },
         });
     } catch (error: any) {
