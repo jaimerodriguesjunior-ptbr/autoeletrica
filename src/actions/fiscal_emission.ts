@@ -5931,6 +5931,12 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             pICMS: number;
             vICMS: number;
             modBC: number;
+            modBCST: number;
+            pMVAST: number;
+            pRedBCST: number;
+            vBCST: number;
+            pICMSST: number;
+            vICMSST: number;
             vBCSTRet: number;
             pST: number;
             vICMSSubstituto: number;
@@ -6001,6 +6007,12 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         pICMS: Number(icmsValues?.pICMS || 0),
                         vICMS: Number(icmsValues?.vICMS || 0),
                         modBC: Number(icmsValues?.modBC ?? 3),
+                        modBCST: Number(icmsValues?.modBCST ?? 4),
+                        pMVAST: Number(icmsValues?.pMVAST || 0),
+                        pRedBCST: Number(icmsValues?.pRedBCST || 0),
+                        vBCST: Number(icmsValues?.vBCST || 0),
+                        pICMSST: Number(icmsValues?.pICMSST || 0),
+                        vICMSST: Number(icmsValues?.vICMSST || 0),
                         vBCSTRet: Number(icmsValues?.vBCSTRet || 0),
                         pST: Number(icmsValues?.pST || 0),
                         vICMSSubstituto: Number(icmsValues?.vICMSSubstituto || 0),
@@ -6024,7 +6036,11 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         // 4. CFOP padrão de devolução. O detalhamento por produto permanece
         // pendente de uma regra centralizada na Nuvem Local.
         const mesmoEstado = company.uf === fornecedorUF;
-        const resolveDevolucaoCfop = () => {
+        const resolveDevolucaoCfop = (originalTax?: { st?: boolean }) => {
+            // Compra para revenda com ICMS-ST usa o CFOP específico de
+            // devolução. Para os demais itens, mantém-se a devolução de compra
+            // para comercialização.
+            if (originalTax?.st) return mesmoEstado ? "5411" : "6411";
             return mesmoEstado ? "5202" : "6202";
         };
         const cfopDevolucao = resolveDevolucaoCfop();
@@ -6076,12 +6092,19 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             const vICMS_item = isQuickReturn
                 ? toMoneyNumber(quickBaseItem * quickRate)
                 : originalIcmsItem;
-            const stRetained = {
+            const stTax = {
+                modBCST: originalTax?.modBCST ?? 4,
+                pMVAST: toMoneyNumber(originalTax?.pMVAST || 0),
+                pRedBCST: toMoneyNumber(originalTax?.pRedBCST || 0),
+                vBCST: toMoneyNumber((originalTax?.vBCST || 0) * quantityFactor),
+                pICMSST: toMoneyNumber(originalTax?.pICMSST || 0),
+                vICMSST: toMoneyNumber((originalTax?.vICMSST || 0) * quantityFactor),
                 vBCSTRet: toMoneyNumber((originalTax?.vBCSTRet || 0) * quantityFactor),
                 pST: toMoneyNumber(originalTax?.pST || 0),
                 vICMSSubstituto: toMoneyNumber((originalTax?.vICMSSubstituto || 0) * quantityFactor),
                 vICMSSTRet: toMoneyNumber((originalTax?.vICMSSTRet || 0) * quantityFactor),
             };
+            const hasSt = stTax.vBCST > 0 || stTax.vICMSST > 0;
             const icmsImposto = {
                 ICMSSN900: {
                     orig: originalTax?.orig ?? 0,
@@ -6090,9 +6113,19 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     vBC: toFiscalNumberText(vBC_item),
                     pICMS: toFiscalNumberText(originalTax?.pICMS || 0),
                     vICMS: toFiscalNumberText(vICMS_item),
+                    ...(hasSt
+                        ? {
+                            modBCST: stTax.modBCST,
+                            pMVAST: toFiscalNumberText(stTax.pMVAST),
+                            pRedBCST: toFiscalNumberText(stTax.pRedBCST),
+                            vBCST: toFiscalNumberText(stTax.vBCST),
+                            pICMSST: toFiscalNumberText(stTax.pICMSST),
+                            vICMSST: toFiscalNumberText(stTax.vICMSST),
+                        }
+                        : {}),
                 },
             };
-            const cfopItem = resolveDevolucaoCfop();
+            const cfopItem = resolveDevolucaoCfop(originalTax);
             const combustivel = originalTax?.combustivel;
 
             return {
@@ -6126,7 +6159,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 vBC: vBC_item,
                 vICMS: vICMS_item,
                 cfop: cfopItem,
-                stRetained,
+                stTax,
             };
         });
 
@@ -6149,9 +6182,14 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
 
         const totalVBC = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.vBC, 0));
         const totalVICMS = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.vICMS, 0));
+        const totalVBCST = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.stTax.vBCST, 0));
+        const totalVICMSST = toMoneyNumber(detItemsComputed.reduce((s, d) => s + d.stTax.vICMSST, 0));
         const stInfo = detItemsComputed
             .map((item, index) => {
-                const st = item.stRetained;
+                const st = item.stTax;
+                if (st.vBCST > 0 || st.vICMSST > 0) {
+                    return `Item ${index + 1}: ICMS-ST da NF-e de origem - BC ST R$ ${st.vBCST.toFixed(2)}, aliquota ST ${st.pICMSST.toFixed(2)}%, ICMS-ST R$ ${st.vICMSST.toFixed(2)}.`;
+                }
                 if (st.vBCSTRet <= 0 && st.vICMSSTRet <= 0) return null;
                 return `Item ${index + 1}: ICMS-ST retido na NF-e de origem - BC ST R$ ${st.vBCSTRet.toFixed(2)}, aliquota ST ${st.pST.toFixed(2)}%, ICMS do substituto R$ ${st.vICMSSubstituto.toFixed(2)}, ICMS-ST retido R$ ${st.vICMSSTRet.toFixed(2)}.`;
             })
@@ -6221,7 +6259,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 total: {
                     ICMSTot: {
                         vBC: toFiscalNumberText(totalVBC), vICMS: toFiscalNumberText(totalVICMS), vICMSDeson: 0, vFCP: 0,
-                        vBCST: 0, vST: 0, vFCPST: 0, vFCPSTRet: 0,
+                        vBCST: toFiscalNumberText(totalVBCST), vST: toFiscalNumberText(totalVICMSST), vFCPST: 0, vFCPSTRet: 0,
                         vProd: toMoneyNumber(payload.valor_total),
                         vFrete: 0, vSeg: 0, vDesc: 0, vII: 0,
                         vIPI: 0, vIPIDevol: 0, vPIS: 0, vCOFINS: 0,
