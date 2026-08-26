@@ -14,6 +14,7 @@ import heic2any from "heic2any";
 import { createClient } from "../../../../../src/lib/supabase";
 import { useAuth } from "../../../../../src/contexts/AuthContext";
 import { ScannerModal } from "@/components/ui/ScannerModal";
+import { NcmAutocomplete } from "@/components/ui/NcmAutocomplete";
 import { fetchProductFromCosmos, normalizeBarcode } from "@/src/services/cosmosService";
 import { reopenOS } from "@/src/actions/os";
 
@@ -81,6 +82,8 @@ type CatalogItem = { id: string; nome: string; marca?: string | null; codigo_ref
 type GlobalProduct = { id: string; ean: string; name: string; brand: string | null; reference_code: string | null; ncm?: string | null };
 type CheckoutPayment = { amount: string; method: string; installments: number; chequeDate: string };
 
+const normalizeCatalogText = (value: string) => value.trim().toLocaleUpperCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]+/g, ' ');
+
 export default function DetalhesOS() {
   const { id } = useParams();
   const router = useRouter();
@@ -104,12 +107,14 @@ export default function DetalhesOS() {
   const [descricaoLocal, setDescricaoLocal] = useState("");
 
   // Speech Recognition (Laudo)
+  const recognitionRelatoRef = useRef<any>(null);
   const recognitionDefeitosRef = useRef<any>(null);
   const recognitionServicosRef = useRef<any>(null);
+  const [isListeningRelato, setIsListeningRelato] = useState(false);
   const [isListeningDefeitos, setIsListeningDefeitos] = useState(false);
   const [isListeningServicos, setIsListeningServicos] = useState(false);
 
-  const startSpeech = (target: 'defeitos' | 'servicos') => {
+  const startSpeech = (target: 'relato' | 'defeitos' | 'servicos') => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert('Seu navegador n\u00e3o suporta reconhecimento de voz. Use o Google Chrome.');
@@ -127,7 +132,9 @@ export default function DetalhesOS() {
         }
       }
       if (transcript) {
-        if (target === 'defeitos') {
+        if (target === 'relato') {
+          setDescricaoLocal(prev => prev ? prev + ' ' + transcript : transcript);
+        } else if (target === 'defeitos') {
           setDefeitosConstatados(prev => prev ? prev + ' ' + transcript : transcript);
         } else {
           setServicosExecutados(prev => prev ? prev + ' ' + transcript : transcript);
@@ -135,14 +142,19 @@ export default function DetalhesOS() {
       }
     };
     recognition.onend = () => {
-      if (target === 'defeitos') setIsListeningDefeitos(false);
+      if (target === 'relato') setIsListeningRelato(false);
+      else if (target === 'defeitos') setIsListeningDefeitos(false);
       else setIsListeningServicos(false);
     };
     recognition.onerror = () => {
-      if (target === 'defeitos') setIsListeningDefeitos(false);
+      if (target === 'relato') setIsListeningRelato(false);
+      else if (target === 'defeitos') setIsListeningDefeitos(false);
       else setIsListeningServicos(false);
     };
-    if (target === 'defeitos') {
+    if (target === 'relato') {
+      recognitionRelatoRef.current = recognition;
+      setIsListeningRelato(true);
+    } else if (target === 'defeitos') {
       recognitionDefeitosRef.current = recognition;
       setIsListeningDefeitos(true);
     } else {
@@ -152,8 +164,10 @@ export default function DetalhesOS() {
     recognition.start();
   };
 
-  const stopSpeech = (target: 'defeitos' | 'servicos') => {
-    if (target === 'defeitos') {
+  const stopSpeech = (target: 'relato' | 'defeitos' | 'servicos') => {
+    if (target === 'relato') {
+      recognitionRelatoRef.current?.stop();
+    } else if (target === 'defeitos') {
       recognitionDefeitosRef.current?.stop();
     } else {
       recognitionServicosRef.current?.stop();
@@ -176,6 +190,8 @@ export default function DetalhesOS() {
   // Base global de produtos
   const [produtosGlobais, setProdutosGlobais] = useState<GlobalProduct[]>([]);
   const [buscandoGlobal, setBuscandoGlobal] = useState(false);
+  const [consultaGlobalPendente, setConsultaGlobalPendente] = useState(false);
+  const globalSearchRequestRef = useRef(0);
 
   const [modalAdicionarTipo, setModalAdicionarTipo] = useState<'peca' | 'servico' | null>(null);
   const [modalEditarItemAberto, setModalEditarItemAberto] = useState(false);
@@ -187,6 +203,9 @@ export default function DetalhesOS() {
   // Cadastro Rápido de Item
   const [modalCadastroRapidoTipo, setModalCadastroRapidoTipo] = useState<'peca' | 'servico' | null>(null);
   const [nomeNovoItem, setNomeNovoItem] = useState("");
+  const [marcaNovoItem, setMarcaNovoItem] = useState("");
+  const [ncmNovoItem, setNcmNovoItem] = useState("");
+  const [precoNovoItem, setPrecoNovoItem] = useState("");
   const [salvandoNovoItem, setSalvandoNovoItem] = useState(false);
 
   // Scanner PDF
@@ -503,20 +522,28 @@ export default function DetalhesOS() {
 
   // Busca na base global quando busca local não retorna resultado
   useEffect(() => {
+    const requestId = ++globalSearchRequestRef.current;
     if (modalAdicionarTipo !== 'peca' || termoBusca.length < 3) {
       setProdutosGlobais([]);
+      setBuscandoGlobal(false);
+      setConsultaGlobalPendente(false);
       return;
     }
     const localResults = listaProdutos.filter(p =>
       p.nome.toLowerCase().includes(termoBusca.toLowerCase()) ||
+      (p.marca || '').toLowerCase().includes(termoBusca.toLowerCase()) ||
+      (p.codigo_ref || '').toLowerCase().includes(termoBusca.toLowerCase()) ||
       (p.ean && p.ean.includes(termoBusca))
     );
     if (localResults.length > 0) {
       setProdutosGlobais([]);
+      setBuscandoGlobal(false);
+      setConsultaGlobalPendente(false);
       return;
     }
+    setProdutosGlobais([]);
+    setBuscandoGlobal(true);
     const timer = setTimeout(async () => {
-      setBuscandoGlobal(true);
       try {
         let { data, error } = await supabase
           .from('global_products')
@@ -532,9 +559,14 @@ export default function DetalhesOS() {
           data = (fallback.data || []).map((item) => ({ ...item, ncm: null }));
           error = fallback.error;
         }
-        setProdutosGlobais(data || []);
+        if (requestId === globalSearchRequestRef.current) {
+          setProdutosGlobais(data || []);
+        }
       } finally {
-        setBuscandoGlobal(false);
+        if (requestId === globalSearchRequestRef.current) {
+          setBuscandoGlobal(false);
+          setConsultaGlobalPendente(false);
+        }
       }
     }, 400);
     return () => clearTimeout(timer);
@@ -1197,7 +1229,7 @@ export default function DetalhesOS() {
     }
   };
 
-  const handleAdicionarItem = async (item: CatalogItem, tipo: "peca" | "servico") => {
+  const handleAdicionarItem = async (item: CatalogItem, tipo: "peca" | "servico", baixarEstoque = true) => {
     if (!os || !profile?.organization_id) return;
     setAdicionandoItem(true);
 
@@ -1237,7 +1269,7 @@ export default function DetalhesOS() {
         setAssignmentsMap(prev => ({ ...prev, [itemData.id]: [os!.employee_id!] }));
       }
 
-      if (tipo === "peca") {
+      if (tipo === "peca" && baixarEstoque) {
         const { data: prodData } = await supabase
           .from('products')
           .select('estoque_atual')
@@ -1264,7 +1296,7 @@ export default function DetalhesOS() {
       setModalAdicionarTipo(null);
       setTermoBusca("");
       fetchOS();
-      alert("Item adicionado e estoque atualizado!");
+      alert(baixarEstoque ? "Item adicionado e estoque atualizado!" : "Item cadastrado e adicionado à OS!");
 
     } catch (error: any) {
       alert("Erro ao adicionar item: " + error.message);
@@ -1273,42 +1305,110 @@ export default function DetalhesOS() {
     }
   };
 
-  const handleAdicionarAvulso = async () => {
-    const nomeAvulso = termoBusca.trim();
-    if (!nomeAvulso || !os || !profile?.organization_id) return;
+  const handleCadastrarEAdicionarPeca = async () => {
+    const nome = nomeNovoItem.trim();
+    const marca = marcaNovoItem.trim();
+    if (!nome || !os || !profile?.organization_id) {
+      if (!nome) alert('O nome da peça é obrigatório.');
+      return;
+    }
+
     setAdicionandoItem(true);
     try {
-      const { data: itemData, error } = await supabase
-        .from('work_order_items')
+      const { data: sameNameProducts, error: duplicateLookupError } = await supabase
+        .from('products')
+        .select('id, nome, marca')
+        .eq('organization_id', profile.organization_id)
+        .ilike('nome', nome);
+      if (duplicateLookupError) throw duplicateLookupError;
+
+      const duplicate = (sameNameProducts || []).find((product) =>
+        normalizeCatalogText(product.marca || '') === normalizeCatalogText(marca)
+      );
+      if (duplicate) {
+        setTermoBusca(duplicate.nome);
+        setNomeNovoItem(duplicate.nome);
+        alert(`Já existe este produto com a mesma marca: ${duplicate.nome} — ${duplicate.marca || 'Sem marca'}. Selecione-o na lista para usar na OS.`);
+        return;
+      }
+
+      const precoVenda = Math.max(0, Number(precoNovoItem.replace(',', '.')) || 0);
+      const { data: novoProduto, error } = await supabase
+        .from('products')
         .insert({
-          work_order_id: os.id,
           organization_id: profile.organization_id,
-          product_id: null,
-          service_id: null,
-          tipo: 'peca',
-          name: nomeAvulso,
-          marca: null,
-          catalog_status: 'pending',
-          quantity: 1,
-          unit_price: 0,
-          total_price: 0,
-          peca_cliente: false,
+          nome,
+          marca: marca || null,
+          codigo_ref: null,
+          ean: null,
+          ncm: ncmNovoItem.replace(/\D/g, '').slice(0, 8) || null,
+          estoque_atual: 0,
+          estoque_min: 0,
+          custo_reposicao: 0,
+          custo_contabil: 0,
+          preco_venda: precoVenda,
+          localizacao: null,
         })
-        .select('id')
+        .select('id, nome, marca, codigo_ref, preco_venda, estoque_atual, ean')
         .single();
       if (error) throw error;
-      if (usaComissao && osCreatorIsEmployee && os.employee_id && itemData?.id) {
-        await supabase.from('work_order_item_assignments').insert({
-          organization_id: profile.organization_id,
-          work_order_item_id: itemData.id,
-          employee_id: os.employee_id,
-        });
-      }
-      setModalAdicionarTipo(null);
-      setTermoBusca('');
-      fetchOS();
+
+      setListaProdutos((previous) => [...previous, novoProduto as CatalogItem]);
+      setNomeNovoItem('');
+      setMarcaNovoItem('');
+      setNcmNovoItem('');
+      setPrecoNovoItem('');
+      await handleAdicionarItem(novoProduto as CatalogItem, 'peca', false);
     } catch (error: any) {
-      alert('Erro ao adicionar item avulso: ' + error.message);
+      alert('Erro ao cadastrar a peça: ' + error.message);
+    } finally {
+      setAdicionandoItem(false);
+    }
+  };
+
+  const handleCadastrarEAdicionarServico = async () => {
+    const nome = nomeNovoItem.trim();
+    if (!nome || !os || !profile?.organization_id) {
+      if (!nome) alert('O nome do serviço é obrigatório.');
+      return;
+    }
+
+    setAdicionandoItem(true);
+    try {
+      const { data: existingService, error: duplicateLookupError } = await supabase
+        .from('services')
+        .select('id, nome, price')
+        .eq('organization_id', profile.organization_id)
+        .ilike('nome', nome)
+        .limit(1)
+        .maybeSingle();
+      if (duplicateLookupError) throw duplicateLookupError;
+
+      if (existingService) {
+        setTermoBusca(existingService.nome);
+        setNomeNovoItem(existingService.nome);
+        alert(`Este serviço já está cadastrado: ${existingService.nome}. Selecione-o na lista para usar na OS.`);
+        return;
+      }
+
+      const price = Math.max(0, Number(precoNovoItem.replace(',', '.')) || 0);
+      const { data: novoServico, error } = await supabase
+        .from('services')
+        .insert({
+          organization_id: profile.organization_id,
+          nome,
+          price,
+        })
+        .select('id, nome, price')
+        .single();
+      if (error) throw error;
+
+      setListaServicos((previous) => [...previous, novoServico as CatalogItem]);
+      setNomeNovoItem('');
+      setPrecoNovoItem('');
+      await handleAdicionarItem(novoServico as CatalogItem, 'servico');
+    } catch (error: any) {
+      alert('Erro ao cadastrar o serviço: ' + error.message);
     } finally {
       setAdicionandoItem(false);
     }
@@ -1384,6 +1484,7 @@ export default function DetalhesOS() {
         });
         // Pre-fill the search with the code
         setTermoBusca(barcode);
+        setNomeNovoItem(barcode);
         if (!modalAdicionarTipo) setModalAdicionarTipo('peca');
         return;
       }
@@ -1825,9 +1926,28 @@ export default function DetalhesOS() {
           </div>
 
           <div className="bg-white rounded-[32px] p-6 border-2 border-stone-300 shadow-sm mt-6">
-            <h3 className="font-bold text-[#1A1A1A] mb-2 text-sm flex items-center gap-2">
-              <MessageCircle size={16} /> {os!.vehicles ? "Relato / Descrição do Cliente" : "Observações"}
-            </h3>
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="font-bold text-[#1A1A1A] text-sm flex items-center gap-2">
+                <MessageCircle size={16} /> {os!.vehicles ? "Relato / Descrição do Cliente" : "Observações"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => isListeningRelato ? stopSpeech('relato') : startSpeech('relato')}
+                className={`p-2 rounded-full transition-all duration-200 ${isListeningRelato
+                  ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse'
+                  : 'bg-[#F8F7F2] text-stone-500 hover:bg-[#FACC15] hover:text-[#1A1A1A]'
+                  }`}
+                title={isListeningRelato ? 'Parar gravação' : 'Ditar relato'}
+              >
+                <Mic size={14} />
+              </button>
+            </div>
+            {isListeningRelato && (
+              <div className="flex items-center gap-2 mb-2 animate-pulse">
+                <span className="w-2 h-2 bg-red-500 rounded-full" />
+                <span className="text-xs font-bold text-red-500">Ouvindo... dite o relato do cliente</span>
+              </div>
+            )}
             <textarea
               value={descricaoLocal}
               onChange={(e) => setDescricaoLocal(e.target.value)}
@@ -2078,6 +2198,8 @@ export default function DetalhesOS() {
                   onClick={() => {
                     setModalAdicionarTipo('servico');
                     setTermoBusca('');
+                    setNomeNovoItem('');
+                    setPrecoNovoItem('');
                   }}
                   className="bg-white hover:bg-stone-100 text-[#1A1A1A] p-2 rounded-full shadow-sm transition"
                 >
@@ -2176,6 +2298,10 @@ export default function DetalhesOS() {
                   onClick={() => {
                     setModalAdicionarTipo('peca');
                     setTermoBusca('');
+                    setNomeNovoItem('');
+                    setMarcaNovoItem('');
+                    setNcmNovoItem('');
+                    setPrecoNovoItem('');
                   }}
                   className="bg-white hover:bg-stone-100 text-[#1A1A1A] p-2 rounded-full shadow-sm transition"
                 >
@@ -2619,10 +2745,17 @@ export default function DetalhesOS() {
       {
         modalAdicionarTipo && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl space-y-4 h-[500px] flex flex-col">
+            <div className="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl space-y-4 h-[570px] max-h-[calc(100dvh-2rem)] flex flex-col">
               <div className="flex justify-between items-center">
                 <h2 className="font-bold text-lg">Adicionar {modalAdicionarTipo === 'servico' ? 'Serviço' : 'Peça'}</h2>
-                <button onClick={() => setModalAdicionarTipo(null)} className="text-stone-400 hover:text-[#1A1A1A] transition">
+                <button onClick={() => {
+                  setModalAdicionarTipo(null);
+                  setTermoBusca('');
+                  setNomeNovoItem('');
+                  setMarcaNovoItem('');
+                  setNcmNovoItem('');
+                  setPrecoNovoItem('');
+                }} className="text-stone-400 hover:text-[#1A1A1A] transition">
                   <X />
                 </button>
               </div>
@@ -2633,7 +2766,23 @@ export default function DetalhesOS() {
                     autoFocus
                     placeholder={`Buscar ${modalAdicionarTipo === 'servico' ? 'serviço...' : 'peça por nome ou código de barras...'}`}
                     value={termoBusca}
-                    onChange={(e) => setTermoBusca(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setTermoBusca(value);
+                      setNomeNovoItem(value);
+                      if (modalAdicionarTipo === 'peca') {
+                        const termo = value.toLowerCase();
+                        const hasLocalResult = listaProdutos.some((product) =>
+                          product.nome.toLowerCase().includes(termo) ||
+                          (product.marca || '').toLowerCase().includes(termo) ||
+                          (product.codigo_ref || '').toLowerCase().includes(termo) ||
+                          (product.ean && product.ean.includes(value))
+                        );
+                        globalSearchRequestRef.current += 1;
+                        setProdutosGlobais([]);
+                        setConsultaGlobalPendente(value.trim().length >= 3 && !hasLocalResult);
+                      }
+                    }}
                     className="w-full bg-[#F8F7F2] p-4 pl-10 rounded-2xl border-2 border-stone-300 focus:border-[#FACC15] outline-none text-sm text-[#1A1A1A] placeholder:text-stone-400 font-medium transition"
                   />
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
@@ -2719,34 +2868,124 @@ export default function DetalhesOS() {
                       </button>
                     ))}
 
-                {!adicionandoItem && modalAdicionarTipo === 'peca' && termoBusca.trim().length >= 2 && listaProdutos.filter((p) => {
-                  const termo = termoBusca.toLowerCase();
-                  return p.nome.toLowerCase().includes(termo) || (p.marca || '').toLowerCase().includes(termo) || (p.codigo_ref || '').toLowerCase().includes(termo) || (p.ean && p.ean.includes(termoBusca));
-                }).length === 0 && produtosGlobais.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={handleAdicionarAvulso}
-                    className="w-full mb-3 rounded-xl border-2 border-dashed border-[#FACC15] bg-yellow-50 p-3 text-left hover:bg-yellow-100 transition"
-                  >
-                    <p className="font-bold text-[#1A1A1A]">Usar “{termoBusca.trim()}” nesta OS</p>
-                    <p className="text-xs text-stone-500">Item avulso, sem criar cadastro no estoque</p>
-                  </button>
+                {!adicionandoItem && modalAdicionarTipo === 'servico' && termoBusca.trim().length >= 2 && listaServicos.filter((service) =>
+                  service.nome.toLowerCase().includes(termoBusca.toLowerCase())
+                ).length === 0 && (
+                  <div className="mb-3 space-y-3 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+                    <div>
+                      <h3 className="font-bold text-[#1A1A1A]">Cadastrar novo serviço</h3>
+                      <p className="mt-1 text-xs text-stone-500">O serviço será salvo no catálogo desta loja e adicionado à OS.</p>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-stone-500">Nome do serviço <span className="text-red-500">*</span></label>
+                      <input
+                        value={nomeNovoItem}
+                        onChange={(e) => setNomeNovoItem(e.target.value)}
+                        placeholder="Ex.: Alinhamento 3D"
+                        className="w-full rounded-xl border-2 border-stone-300 bg-white p-3 text-sm font-bold text-[#1A1A1A] outline-none transition focus:border-[#FACC15]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-stone-500">Preço do serviço</label>
+                      <div className="flex overflow-hidden rounded-xl border-2 border-stone-300 bg-white focus-within:border-[#FACC15]">
+                        <span className="flex items-center border-r border-stone-200 px-3 text-sm font-bold text-stone-500">R$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          inputMode="decimal"
+                          value={precoNovoItem}
+                          onChange={(e) => setPrecoNovoItem(e.target.value)}
+                          placeholder="0,00"
+                          className="w-full bg-transparent p-3 text-sm font-medium text-[#1A1A1A] outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleCadastrarEAdicionarServico}
+                      disabled={!nomeNovoItem.trim()}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1A1A1A] py-3 text-sm font-bold text-[#FACC15] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Save size={17} /> Cadastrar e adicionar à OS
+                    </button>
+                  </div>
                 )}
 
-                {!adicionandoItem && (
-                  <div className="mt-4 border-t border-stone-200 pt-4 flex flex-col items-center [&>p:first-child]:hidden">
-                    <p className="text-xs text-stone-500 mb-2">Não encontrou o que procurava?</p>
-                    <button
-                      onClick={() => {
-                        setNomeNovoItem(termoBusca);
-                        setModalCadastroRapidoTipo(modalAdicionarTipo);
-                        setModalAdicionarTipo(null);
-                      }}
-                      className="hidden"
-                    >
-                      Cadastrar {modalAdicionarTipo === 'servico' ? 'Novo Serviço' : 'Nova Peça'} <Plus size={14} />
-                    </button>
+                {!adicionandoItem && !buscandoEAN && modalAdicionarTipo === 'peca' && termoBusca.trim().length >= 3 && listaProdutos.filter((p) => {
+                  const termo = termoBusca.toLowerCase();
+                  return p.nome.toLowerCase().includes(termo) || (p.marca || '').toLowerCase().includes(termo) || (p.codigo_ref || '').toLowerCase().includes(termo) || (p.ean && p.ean.includes(termoBusca));
+                }).length === 0 && !consultaGlobalPendente && !buscandoGlobal && produtosGlobais.length === 0 && (
+                  <div className="mb-3 space-y-3 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+                    <div>
+                      <h3 className="font-bold text-[#1A1A1A]">Cadastrar nova peça</h3>
+                      <p className="mt-1 text-xs text-stone-500">O produto será salvo no catálogo desta loja e adicionado à OS.</p>
+                    </div>
 
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-stone-500">Nome da peça <span className="text-red-500">*</span></label>
+                      <input
+                        value={nomeNovoItem}
+                        onChange={(e) => setNomeNovoItem(e.target.value)}
+                        placeholder="Ex.: Nano Tec"
+                        className="w-full rounded-xl border-2 border-stone-300 bg-white p-3 text-sm font-bold text-[#1A1A1A] outline-none transition focus:border-[#FACC15]"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-bold text-stone-500">Marca</label>
+                        <input
+                          value={marcaNovoItem}
+                          onChange={(e) => setMarcaNovoItem(e.target.value)}
+                          placeholder="Opcional"
+                          className="w-full rounded-xl border-2 border-stone-300 bg-white p-3 text-sm font-medium text-[#1A1A1A] outline-none transition focus:border-[#FACC15]"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-bold text-stone-500">NCM</label>
+                        <NcmAutocomplete
+                          value={ncmNovoItem}
+                          onChange={(value) => setNcmNovoItem(value.replace(/\D/g, '').slice(0, 8))}
+                          placeholder="Opcional"
+                          className="w-full rounded-xl border-2 border-stone-300 bg-white p-3 text-sm font-medium text-[#1A1A1A] outline-none transition focus:border-[#FACC15]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-stone-500">Preço de venda</label>
+                      <div className="flex overflow-hidden rounded-xl border-2 border-stone-300 bg-white focus-within:border-[#FACC15]">
+                        <span className="flex items-center border-r border-stone-200 px-3 text-sm font-bold text-stone-500">R$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          inputMode="decimal"
+                          value={precoNovoItem}
+                          onChange={(e) => setPrecoNovoItem(e.target.value)}
+                          placeholder="0,00"
+                          className="w-full bg-transparent p-3 text-sm font-medium text-[#1A1A1A] outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleCadastrarEAdicionarPeca}
+                      disabled={!nomeNovoItem.trim()}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1A1A1A] py-3 text-sm font-bold text-[#FACC15] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Save size={17} /> Cadastrar e adicionar à OS
+                    </button>
+                  </div>
+                )}
+
+                {!adicionandoItem && modalAdicionarTipo === 'peca' && termoBusca.length >= 3 && (buscandoGlobal || produtosGlobais.length > 0) && (
+                  <div className="mt-4 border-t border-stone-200 pt-4 flex flex-col items-center [&>p:first-child]:hidden">
                     {modalAdicionarTipo === 'peca' && termoBusca.length >= 3 && (
                       <div className="w-full mt-4 space-y-2">
                         {buscandoGlobal && (
