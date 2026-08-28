@@ -248,7 +248,9 @@ export async function registerCompanyInNuvemFiscal(data: CompanyData) {
             const nfsePayload = keepFilledOnly({
                 ambiente: ambienteFiscal,
                 ipm: {
-                    modo_teste: env === 'homologation'
+                    // Homologacao nacional nao e dry-run; o endpoint restrito
+                    // da SEFIN ja identifica o ambiente de testes.
+                    modo_teste: false
                 },
                 inscricao_municipal: data.inscricao_municipal,
                 municipio: {

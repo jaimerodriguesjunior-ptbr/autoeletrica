@@ -4211,7 +4211,22 @@ export async function emitirNFSe(payload: EmissionPayload) {
         const nfseFlow = isToledo ? "toledo_nuvem" : "nuvemfiscal_padrao";
         console.log(`[emitirNFSe] Fluxo selecionado: ${nfseFlow} (IBGE ${ibgeMunicipio})`);
         console.log("[emitirNFSe] Prestador IM enviada:", inscricaoMunicipal || "(vazia)");
-        if (!isToledo && !company.nfse_login) {
+        // NFS-e Nacional para MEI nao usa login/senha da prefeitura.
+        let isNfseNacional = false;
+        try {
+            const configNacionalRes = await fetch(
+                `${baseUrl}/empresas/${String(cnpj).replace(/\D/g, "")}/nfse?ambiente=${env === "production" ? "producao" : "homologacao"}`,
+                { headers: { "Authorization": `Bearer ${token}` } }
+            );
+            if (configNacionalRes.ok) {
+                const configNacional = await configNacionalRes.json();
+                isNfseNacional = configNacional?.provedor === "nfse-nacional";
+            }
+        } catch (configError) {
+            console.warn("[emitirNFSe] Nao foi possivel consultar o provedor NFS-e:", configError);
+        }
+
+        if (!isToledo && !isNfseNacional && !company.nfse_login) {
             throw new Error("Configurações de NFS-e não encontradas (Login/Senha da Prefeitura).");
         }
 
@@ -4971,7 +4986,8 @@ export async function consultarNFSe(invoiceId: string) {
         const endpoint = invoice.tipo_documento === "NFCe" ? "nfce"
             : invoice.tipo_documento === "NFe" ? "nfe"
             : "nfse";
-        const response = await fetch(`${baseUrl}/${endpoint}/${invoice.nuvemfiscal_uuid}`, {
+        const consultQuery = invoice.tipo_documento === "NFSe" ? "?consultar_nacional=1" : "";
+        const response = await fetch(`${baseUrl}/${endpoint}/${invoice.nuvemfiscal_uuid}${consultQuery}`, {
 
             method: "GET",
 
@@ -5012,6 +5028,7 @@ export async function consultarNFSe(invoiceId: string) {
 
 
         if (result.status === 'autorizado' || result.status === 'autorizada') novoStatus = 'authorized';
+        else if (result.status === 'processando' || result.status === 'processamento' || result.status === 'processing') novoStatus = 'processing';
 
         else if (result.status === 'erro' || result.status === 'rejeitado' || result.status === 'negado') {
 
