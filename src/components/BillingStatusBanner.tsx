@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Copy, QrCode, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import type { PointerEvent } from "react";
+import { AlertTriangle, CheckCircle2, Copy, Move, QrCode, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 import type { CobrancaStoreBillingStatus } from "@/src/lib/nuvemLocalCobranca";
@@ -75,6 +76,10 @@ export function BillingStatusBanner() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [dismissedNoticeKey, setDismissedNoticeKey] = useState<string | null>(null);
+  const [floatingButtonPosition, setFloatingButtonPosition] = useState<{ left: number; top: number } | null>(null);
+  const floatingButtonRef = useRef<HTMLButtonElement>(null);
+  const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -119,10 +124,40 @@ export function BillingStatusBanner() {
   const noticeKey = status
     ? `billing-notice:${status.store?.store_id ?? "unknown"}:${status.status}:${localDateKey()}`
     : null;
+  const floatingButtonStorageKey = `billing-payment-button-position:${status?.store?.store_id ?? "unknown"}`;
 
   useEffect(() => {
     setDismissedNoticeKey(noticeKey && window.localStorage.getItem(noticeKey) ? noticeKey : null);
   }, [noticeKey]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(floatingButtonStorageKey);
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as Partial<{ left: number; top: number }>;
+      if (typeof parsed.left === "number" && typeof parsed.top === "number") setFloatingButtonPosition({ left: parsed.left, top: parsed.top });
+    } catch {
+      // Uma posição inválida não deve impedir a exibição do botão de pagamento.
+    }
+  }, [floatingButtonStorageKey]);
+
+  useEffect(() => {
+    if (!floatingButtonPosition || !floatingButtonRef.current) return;
+    const margin = 12;
+    const button = floatingButtonRef.current;
+    const nextPosition = {
+      left: Math.min(Math.max(margin, floatingButtonPosition.left), Math.max(margin, window.innerWidth - button.offsetWidth - margin)),
+      top: Math.min(Math.max(margin, floatingButtonPosition.top), Math.max(margin, window.innerHeight - button.offsetHeight - margin)),
+    };
+    if (nextPosition.left !== floatingButtonPosition.left || nextPosition.top !== floatingButtonPosition.top) {
+      setFloatingButtonPosition(nextPosition);
+      window.localStorage.setItem(floatingButtonStorageKey, JSON.stringify(nextPosition));
+    }
+  }, [floatingButtonPosition, floatingButtonStorageKey]);
+
+  useEffect(() => {
+    if (floatingButtonPosition) window.localStorage.setItem(floatingButtonStorageKey, JSON.stringify(floatingButtonPosition));
+  }, [floatingButtonPosition, floatingButtonStorageKey]);
 
   if (loading || !status) return null;
 
@@ -197,6 +232,41 @@ export function BillingStatusBanner() {
     window.alert("Se você realizou o pagamento, logo que for dado baixa as janelas de cobrança sumirão sozinhas.");
   }
 
+  function handleFloatingButtonPointerDown(event: PointerEvent<HTMLButtonElement>) {
+    const button = event.currentTarget;
+    const rect = button.getBoundingClientRect();
+    dragRef.current = { pointerId: event.pointerId, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top, moved: false };
+    button.setPointerCapture(event.pointerId);
+  }
+
+  function handleFloatingButtonPointerMove(event: PointerEvent<HTMLButtonElement>) {
+    const drag = dragRef.current;
+    const button = event.currentTarget;
+    if (!drag || drag.pointerId !== event.pointerId || !button.hasPointerCapture(event.pointerId)) return;
+    if (Math.abs(event.movementX) + Math.abs(event.movementY) > 1) drag.moved = true;
+    const margin = 12;
+    const left = Math.min(Math.max(margin, event.clientX - drag.offsetX), Math.max(margin, window.innerWidth - button.offsetWidth - margin));
+    const top = Math.min(Math.max(margin, event.clientY - drag.offsetY), Math.max(margin, window.innerHeight - button.offsetHeight - margin));
+    setFloatingButtonPosition({ left, top });
+  }
+
+  function handleFloatingButtonPointerUp(event: PointerEvent<HTMLButtonElement>) {
+    const drag = dragRef.current;
+    const button = event.currentTarget;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (button.hasPointerCapture(event.pointerId)) button.releasePointerCapture(event.pointerId);
+    if (drag.moved) {
+      suppressClickRef.current = true;
+      if (floatingButtonPosition) window.localStorage.setItem(floatingButtonStorageKey, JSON.stringify(floatingButtonPosition));
+      window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+    }
+    dragRef.current = null;
+  }
+
+  function openPaymentFromFloatingButton() {
+    if (!suppressClickRef.current) setPaymentOpen(true);
+  }
+
   return (
     <>
       {shouldShowBanner && !bannerDismissed && (
@@ -240,13 +310,22 @@ export function BillingStatusBanner() {
 
       {shouldShowPaymentButton && (copyPaste || qrCode) && (!shouldShowBanner || bannerDismissed) && (
         <button
+          ref={floatingButtonRef}
           type="button"
-          onClick={() => setPaymentOpen(true)}
-          title="Clique para consultar as opções de pagamento."
-          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-[#1A1A1A] px-4 py-3 text-sm font-extrabold text-white shadow-xl shadow-black/20 transition hover:-translate-y-0.5 hover:bg-black"
+          onClick={openPaymentFromFloatingButton}
+          onPointerDown={handleFloatingButtonPointerDown}
+          onPointerMove={handleFloatingButtonPointerMove}
+          onPointerUp={handleFloatingButtonPointerUp}
+          onPointerCancel={handleFloatingButtonPointerUp}
+          style={floatingButtonPosition ? { left: floatingButtonPosition.left, top: floatingButtonPosition.top } : undefined}
+          title="Clique para pagar ou arraste para reposicionar"
+          className={`group fixed z-40 inline-flex touch-none cursor-grab items-center gap-2 rounded-full bg-[#1A1A1A] px-3 py-2.5 text-sm font-extrabold text-white shadow-xl shadow-black/20 transition hover:-translate-y-0.5 hover:bg-black active:cursor-grabbing ${floatingButtonPosition ? "" : "bottom-5 right-5"}`}
+          aria-label="Pagar mensalidade"
         >
           <QrCode size={18} />
           Pagar
+          <span className="ml-1 inline-flex rounded-full border border-white/15 bg-white/10 p-1 text-stone-300 transition group-hover:scale-110 group-hover:text-white" aria-hidden="true"><Move size={14} /></span>
+          <span className="sr-only">Arrastável</span>
         </button>
       )}
 
