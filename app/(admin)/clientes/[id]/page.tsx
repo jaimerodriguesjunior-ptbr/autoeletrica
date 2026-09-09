@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "../../../../src/lib/supabase";
 import { useAuth } from "../../../../src/contexts/AuthContext";
+import { PUBLIC_APP_ORIGIN } from "@/src/lib/publicAppUrl";
 import {
   ArrowLeft, MapPin,
   Car, Save, Phone, FileText, Trash2, Loader2, Edit, X, Plus,
@@ -234,7 +235,7 @@ export default function EditarCliente() {
 
   const getExtratoUrl = () => {
     if (!publicToken) return '';
-    return `${window.location.origin}/extrato?token=${publicToken}`;
+    return `${PUBLIC_APP_ORIGIN}/extrato?token=${publicToken}`;
   }
 
   const handleEnviarWhatsApp = () => {

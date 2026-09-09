@@ -10,6 +10,7 @@ import { useAuth } from "../../../src/contexts/AuthContext";
 import Link from "next/link";
 import MonthCalendarPopover from "./_components/MonthCalendarPopover";
 import { RescheduleModal } from "./_components/RescheduleModal";
+import { PUBLIC_APP_ORIGIN } from "@/src/lib/publicAppUrl";
 
 type Appointment = {
     id: string;
@@ -351,8 +352,7 @@ export default function AgendamentosPage() {
 
         const dataFormatada = new Date(a.start_time).toLocaleDateString("pt-BR");
         const horaFormatada = new Date(a.start_time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-        const baseUrl = window.location.origin;
-        const link = `${baseUrl}/acompanhar?token=${a.token}`;
+        const link = `${PUBLIC_APP_ORIGIN}/acompanhar?token=${a.token}`;
 
         const nome = a.clients?.nome || 'Cliente';
 

@@ -17,6 +17,7 @@ import { ScannerModal } from "@/components/ui/ScannerModal";
 import { NcmAutocomplete } from "@/components/ui/NcmAutocomplete";
 import { fetchProductFromCosmos, normalizeBarcode } from "@/src/services/cosmosService";
 import { reopenOS } from "@/src/actions/os";
+import { PUBLIC_APP_ORIGIN } from "@/src/lib/publicAppUrl";
 
 // Tipos
 type WorkOrderItem = {
@@ -1693,8 +1694,7 @@ export default function DetalhesOS() {
     if (os?.clients?.whatsapp) {
       const number = os!.clients.whatsapp.replace(/\D/g, '');
       const osId = String(os!.id);
-      const baseUrl = window.location.origin;
-      const trackingLink = `${baseUrl}/acompanhar?token=${os!.public_token}`;
+      const trackingLink = `${PUBLIC_APP_ORIGIN}/acompanhar?token=${os!.public_token}`;
 
       let message = `Olá ${os!.clients.nome}. Para aprovar e acompanhar o serviço clique no link abaixo ${trackingLink}`;
 
