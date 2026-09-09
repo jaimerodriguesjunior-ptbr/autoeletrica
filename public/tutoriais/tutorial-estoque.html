@@ -314,6 +314,15 @@
         <div class="field-name">EAN (Código de Barras)</div>
         <div class="field-desc">Código numérico da embalagem. Permite busca por câmera na OS.</div>
       </div>
+      <div class="field-row">
+        <div class="field-name">NCM</div>
+        <div class="field-desc">Classificação fiscal da mercadoria. Use o autocomplete do catálogo oficial ou a sugestão da IA e valide o código antes de salvar.</div>
+      </div>
+
+      <div class="callout info">
+        <span class="callout-icon">🔎</span>
+        <span>Ao digitar nome e marca, a tela pode sugerir itens já cadastrados na loja e no catálogo global. Confira os dados antes de aproveitar uma sugestão; o sistema evita duplicidade com o mesmo nome e marca.</span>
+      </div>
 
       <p style="margin-top:14px;"><strong>Estoque Inicial</strong></p>
       <div class="field-row">
@@ -355,6 +364,10 @@
         <span class="callout-icon">💡</span>
         <span>Se a empresa tiver <strong>markup automático</strong> configurado nas Configurações, ao digitar o Custo Real o Preço de Venda já é preenchido automaticamente.</span>
       </div>
+      <div class="callout warn">
+        <span class="callout-icon">⚠️</span>
+        <span>NCM é dado fiscal. A IA apenas sugere opções a partir da descrição; em caso de dúvida, confirme a classificação com o contador.</span>
+      </div>
 
       <p style="margin-top:12px;">Clique em <strong>Salvar Produto</strong> no botão flutuante na parte inferior.</p>
     </div>
@@ -375,7 +388,7 @@
     <div class="section">
       <div class="section-header"><span class="section-num">5</span><h2>Importar nota fiscal (XML)</h2></div>
       <p>Ao receber uma nota fiscal eletrônica do fornecedor, você pode importar o XML para atualizar o estoque e os custos automaticamente — sem digitar item por item.</p>
-      <p>Clique em <strong>Importar XML</strong> no canto superior da tela de Estoque.</p>
+      <p>Clique em <strong>Importar XML</strong> no canto superior da tela de Estoque. Além do arquivo enviado manualmente, a tela de importação pode mostrar uma fila de NF-e de entrada sincronizadas para consulta e importação.</p>
 
       <a href="/tutoriais/tutorial-importacao-xml.html" class="link-saiba-mais">
         <span class="lsm-icon">📄</span>

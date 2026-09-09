@@ -511,7 +511,11 @@
           </div>
         </div>
 
-        <p style="margin-top:12px;">Se o item não existir no cadastro, clique em <strong>Cadastrar Nova Peça/Serviço</strong>, informe o nome e salve. O item é criado com preço zero — edite o valor logo depois.</p>
+        <p style="margin-top:12px;">Se o item não existir no cadastro, clique em <strong>Cadastrar Nova Peça/Serviço</strong>. Para peças, informe nome e, quando disponível, marca, referência e NCM. O item é salvo no catálogo da loja e adicionado à OS.</p>
+        <div class="callout info">
+          <span class="callout-icon">🔎</span>
+          <span>O sistema pode mostrar sugestões do catálogo global. Confira nome, marca, referência, preço e NCM antes de aproveitar uma sugestão.</span>
+        </div>
 
         <div class="callout warn">
           <span class="callout-icon">⚠️</span>
@@ -634,10 +638,11 @@
           <li>Escolha a <strong>forma de pagamento</strong>:
             <ul>
               <li><strong>Pix / Dinheiro / Débito</strong> — pagamento registrado como quitado imediatamente.</li>
-              <li><strong>Cartão de Crédito</strong> — escolha o número de parcelas (1 a 12). As parcelas são lançadas com vencimentos mensais futuros.</li>
+              <li><strong>Cartão de Crédito</strong> — escolha uma das parcelas disponíveis. As parcelas são lançadas com vencimentos mensais futuros.</li>
               <li><strong>A prazo</strong> — informe a data do depósito/cheque.</li>
             </ul>
           </li>
+          <li><strong>Pagamento dividido:</strong> clique em <strong>Adicionar forma</strong> para repartir o valor entre Pix, dinheiro, débito, crédito e/ou a prazo. A soma das formas precisa ser igual ao valor final.</li>
           <li>Clique em <strong>Confirmar Pagamento</strong>. A OS fica com status <em>Entregue</em> e o valor entra no caixa.</li>
         </ol>
 
@@ -661,6 +666,8 @@
         </div>
         <p><strong>Cancelar</strong> — Muda o status para <em>Cancelado</em>, devolve as peças ao estoque e bloqueia edições. O registro ainda fica visível no histórico.</p>
         <p><strong>Excluir</strong> — Remove permanentemente a OS, os itens e devolve as peças ao estoque. Requer confirmação em duas etapas.</p>
+
+        <p style="margin-top:14px;"><strong>Reabrir OS fechada</strong> — Gerentes podem usar <strong>Reabrir Ordem de Serviço</strong> e informar o PIN de gerência. A ação estorna os recebimentos e as comissões pendentes do fechamento; a OS volta para <em>Pronto</em>. Corrija o que for necessário e faça um novo fechamento.</p>
 
         <div class="cond" id="os-delete-employee">
           <div class="callout warn">

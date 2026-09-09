@@ -167,8 +167,7 @@
     .status-name { font-weight: 700; min-width: 110px; }
 
     /* Tipo de nota cards */
-    .type-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
-    @media (max-width: 520px) { .type-cards { grid-template-columns: 1fr; } }
+    .type-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0; }
     .type-card {
       border-radius: 12px; padding: 16px;
       border: 1px solid var(--border);
@@ -211,13 +210,13 @@
 
   <div class="header">
     <h1>Notas Fiscais</h1>
-    <p>Como emitir NFC-e e NFS-e, entender a relação com a OS e usar o painel de notas.</p>
+    <p>Como emitir NFC-e, NFS-e e NF-e, entender a relação com a OS e usar o painel de notas.</p>
   </div>
 
   <!-- 1. TIPOS DE NOTA -->
   <div class="section">
-    <div class="section-header"><span class="section-num">1</span><h2>Os dois tipos de nota</h2></div>
-    <p>O sistema emite dois tipos de documento fiscal, cada um destinado a uma situação diferente:</p>
+    <div class="section-header"><span class="section-num">1</span><h2>Tipos de documento fiscal</h2></div>
+    <p>O sistema trabalha com documentos fiscais para situações diferentes:</p>
     <div class="type-cards">
       <div class="type-card nfce">
         <div class="type-card-title"><span>🧾</span>NFC-e</div>
@@ -233,8 +232,16 @@
         <ul>
           <li>Nota Fiscal de Serviços Eletrônica</li>
           <li>Usada para <strong>mão de obra e serviços</strong></li>
-          <li>Emitida pela prefeitura do município</li>
+          <li>Segue fluxo municipal ou nacional, conforme a cidade e a configuração da oficina</li>
           <li>Exigida por muitas prefeituras para prestadores de serviço</li>
+        </ul>
+      </div>
+      <div class="type-card">
+        <div class="type-card-title"><span>📦</span>NF-e</div>
+        <ul>
+          <li>Nota Fiscal Eletrônica de mercadorias</li>
+          <li>Usada em operações como entradas, devoluções e outras operações disponíveis no módulo fiscal</li>
+          <li>Exige atenção especial aos dados da operação de origem</li>
         </ul>
       </div>
     </div>
@@ -257,6 +264,10 @@
     <div class="callout danger">
       <span class="callout-icon">⚠️</span>
       <span>Verifique sempre em qual ambiente está antes de emitir. Notas em homologação <strong>não valem como documento fiscal</strong>.</span>
+    </div>
+    <div class="callout warn">
+      <span class="callout-icon">⚠️</span>
+      <span>A emissão é enviada pela <strong>Nuvem Local Fiscal</strong>. Antes de transmitir, confira empresa, ambiente, certificado/credenciais e dados do cliente. Para CFOP, NCM, impostos, alíquotas e códigos de serviço, confirme sempre com o contador.</span>
     </div>
   </div>
 
@@ -284,14 +295,15 @@
 
     <p><strong>Ações disponíveis para notas emitidas (saída):</strong></p>
     <ul>
-      <li><strong>Baixar PDF</strong> — o DANFE (NFC-e) ou o documento da NFS-e para enviar ao cliente ou guardar nos registros.</li>
+      <li><strong>Baixar PDF</strong> — o DANFE/PDF do documento para enviar ao cliente ou guardar nos registros.</li>
+      <li><strong>Baixar XML</strong> — disponível conforme o documento; as notas de entrada mantêm o XML original do fornecedor e documentos de saída autorizados podem disponibilizar seu XML.</li>
       <li><strong>Enviar por WhatsApp</strong> — encaminha o link do PDF diretamente para o cliente.</li>
-      <li><strong>Cancelar</strong> — disponível para notas autorizadas dentro do prazo legal (geralmente até 24h).</li>
+      <li><strong>Cancelar</strong> — disponível para notas autorizadas, respeitando as regras e o prazo aplicáveis. Informe a justificativa pedida pelo sistema; o cancelamento é irreversível.</li>
       <li><strong>Corrigir</strong> — em caso de rejeição, abre a tela para ajustar e reenviar.</li>
     </ul>
 
     <p><strong>Notas de entrada (NFe do fornecedor):</strong></p>
-    <p>Quando você importa um XML de compra na tela de Estoque, o sistema também registra essa nota aqui como "NFe Entrada". Para elas, o botão de download baixa o <strong>XML original</strong> do fornecedor — útil para guardar nos registros fiscais da empresa.</p>
+    <p>Quando você importa um XML de compra na tela de Estoque, o sistema também registra essa nota aqui como "NFe Entrada". A importação também pode partir da fila de NF-e sincronizadas, quando ela estiver configurada. Para essas notas, o botão de download baixa o <strong>XML original</strong> do fornecedor — útil para guardar nos registros fiscais da empresa.</p>
 
     <div class="callout good">
       <span class="callout-icon">📱</span>
@@ -366,11 +378,11 @@
         </div>
         <div class="field-row">
           <div class="field-name">NCM <span class="badge req">Obrigatório</span></div>
-          <div class="field-note">Código de classificação fiscal da mercadoria. Se não souber, use o botão <strong>✨ (IA)</strong> ao lado do campo — o sistema sugere o NCM com base na descrição e salva para futuras notas desse produto.</div>
+          <div class="field-note">Código de classificação fiscal da mercadoria. Use o autocomplete ou o botão <strong>✨ (IA)</strong> para receber sugestões pela descrição, mas valide o código antes de emitir.</div>
         </div>
         <div class="field-row">
           <div class="field-name">CFOP <span class="badge auto">Preenchido auto</span></div>
-          <div class="field-note">Código da operação fiscal (ex: 5102 para venda dentro do estado). Vem preenchido automaticamente; altere só se necessário.</div>
+          <div class="field-note">Código da operação fiscal. Vem preenchido automaticamente. Não altere sem confirmar a operação correta com o contador.</div>
         </div>
         <div class="field-row">
           <div class="field-name">Unidade <span class="badge auto">Preenchido auto</span></div>
@@ -440,6 +452,17 @@
     <div class="callout info">
       <span class="callout-icon">📋</span>
       <span>Notas avulsas ficam registradas no painel de notas fiscais como qualquer outra. Elas não aparecem vinculadas a nenhuma OS no histórico do cliente.</span>
+    </div>
+  </div>
+
+  <!-- 8. NF-E DE DEVOLUÇÃO E RETORNOS -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">8</span><h2>NF-e de devolução e retornos</h2></div>
+    <p>Para uma devolução, localize a <strong>NF-e de entrada</strong> no painel fiscal e use a ação de devolução disponível na nota. O sistema carrega a operação e os itens de origem para você conferir antes da emissão.</p>
+    <p>O módulo também pode disponibilizar operações de remessa e retorno, conforme a configuração da oficina. Revise destinatário, itens, quantidades, ambiente e a prévia antes de transmitir.</p>
+    <div class="callout danger">
+      <span class="callout-icon">🚨</span>
+      <span>Devoluções e retornos têm impacto fiscal e de estoque. Se houver dúvida sobre finalidade, CFOP, tributação ou quantidade, não emita: confirme primeiro com o contador.</span>
     </div>
   </div>
 

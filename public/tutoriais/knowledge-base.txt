@@ -1,6 +1,9 @@
 # BASE DE CONHECIMENTO — SISTEMA AUTOELÉTRICA
-# Versão 1.0 | Atualizado conforme novos tutoriais forem criados.
+# Versão 2.0 | Revisado em 09/09/2026 conforme as funcionalidades atuais do sistema.
 # Este arquivo é usado pela IA para responder perguntas de uso do sistema.
+# Regra para a IA: explique somente procedimentos de uso confirmados abaixo. Para CFOP, NCM,
+# impostos, códigos de serviço, alíquotas ou qualquer decisão tributária, oriente o usuário a
+# confirmar com o contador. O nome atual da integração fiscal é Nuvem Local Fiscal.
 
 =======================================================
 TUTORIAL 1: COMO ABRIR UMA OS OU VENDA
@@ -50,7 +53,8 @@ PASSO 4 — ADICIONAR PEÇAS E SERVIÇOS
 - Código de barras (só celular): toque no ícone de câmera no modal de peças, aponte para o código EAN.
   Se não encontrar no estoque, consulta base externa e cadastra automaticamente.
 - No computador: só busca por nome, sem câmera.
-- Se o item não existir: clique em "Cadastrar Nova Peça/Serviço", informe o nome (preço zero, edite depois).
+- Se o item não existir: clique em "Cadastrar Nova Peça/Serviço". Para peças, informe ao menos nome e, quando disponível, marca, código de referência e NCM. O item é salvo no catálogo da loja e adicionado à OS.
+- Ao cadastrar uma peça, o sistema também pode mostrar sugestões do catálogo global. Confira nome, marca, referência, preço e NCM antes de aproveitar uma sugestão.
 - Peça trazida pelo cliente: adicione normalmente e marque com o ícone de pessoa (👤✓). Fica com fundo amarelo e não entra no total.
 - Estoque: descontado ao adicionar, devolvido ao remover.
 - Comissões (se módulo ativo):
@@ -88,14 +92,20 @@ PASSO 7 — REGISTRAR PAGAMENTO
 - Ajuste o valor final se necessário (descontos).
 - Formas de pagamento:
   - Pix / Dinheiro / Débito: quitado imediatamente.
-  - Cartão de Crédito: escolha parcelas (1 a 12), vencimentos mensais.
-  - A prazo: informe a data do depósito/cheque.
+  - Cartão de Crédito: escolha as parcelas disponíveis; o sistema cria os recebimentos parcelados.
+  - A prazo: informe a data de depósito/cheque; o recebimento fica pendente até a baixa.
+- Pagamento dividido: use "Adicionar forma" para repartir o total entre Pix, dinheiro, débito, crédito e/ou a prazo. A soma das formas deve ser exatamente igual ao valor final.
 - Adiantamento: use "Lançar Adiantamento" antes do fechamento. Abate do valor final.
 - Gerente: se módulo fiscal ativo, emita NFC-e em Notas Fiscais após o fechamento.
 
 PASSO 8 — CANCELAR OU EXCLUIR
 - Cancelar: muda para "Cancelado", devolve peças ao estoque, mantém no histórico.
 - Excluir: remove permanentemente, devolve peças. Só Gerentes podem excluir. Irreversível — prefira cancelar.
+
+REABRIR OS FECHADA
+- Gerente: use "Reabrir Ordem de Serviço" na tela da OS e informe o PIN de gerência.
+- A reabertura estorna os recebimentos e as comissões pendentes gerados no fechamento; a OS volta ao status "Pronto".
+- Use somente para correção real do fechamento. Depois de corrigir, faça um novo fechamento para gerar os registros financeiros corretos.
 
 --- VENDA DE PEÇAS (VENDA DIRETA) ---
 
@@ -160,7 +170,7 @@ TELA INICIAL (Estoque > aba Produtos / Peças)
 - Clique na seta → para abrir a ficha de edição.
 
 CADASTRAR NOVO PRODUTO (botão "+ Novo Produto"):
-Identificação: Nome (obrigatório), Marca, Código de Referência, EAN (código de barras).
+Identificação: Nome (obrigatório), Marca, Código de Referência, EAN (código de barras) e NCM quando aplicável.
 Estoque Inicial: Qtd Atual, Mínimo (padrão 5), Local (ex: A-12).
 Formação de Preço:
 - Custo Real de Compra: o que você pagou. Ao preencher, espelha no Custo de Reposição.
@@ -169,6 +179,12 @@ Formação de Preço:
 - Preço Sugerido: calculado automaticamente. Clique para aplicar ao preço de venda.
 - Preço de Venda Final: valor cobrado do cliente (editável livremente).
 - Se markup automático ativo nas configurações, preenche o preço de venda automaticamente ao digitar o custo.
+
+CATÁLOGOS E NCM:
+- A tela pode sugerir produtos já cadastrados na loja e itens do catálogo global. Aproveitar uma sugestão não dispensa conferir os dados antes de salvar.
+- Não é permitido cadastrar duplicidade com o mesmo nome e a mesma marca.
+- O campo NCM possui autocomplete com catálogo oficial. O botão de IA pode sugerir opções a partir da descrição da peça; escolha e valide a opção adequada antes de salvar.
+- NCM é informação fiscal: em caso de dúvida, confirme com o contador.
 
 EDITAR PRODUTO: mesmo formulário com campos preenchidos. Campo extra: Data da Última Compra.
 EXCLUIR PRODUTO: botão Excluir na ficha. Não é possível excluir produtos usados em OS.
@@ -366,13 +382,18 @@ FIM DO TUTORIAL 3
 =======================================================
 
 =======================================================
-TUTORIAL 8: NOTAS FISCAIS (NFC-e e NFS-e)
+TUTORIAL 8: NOTAS FISCAIS (NFC-e, NFS-e e NF-e)
 =======================================================
 
 TIPOS DE NOTA:
 - NFC-e (Nota Fiscal de Consumidor Eletrônica): para venda de peças e produtos. Emitida pela SEFAZ (Receita Estadual).
-- NFS-e (Nota Fiscal de Serviços Eletrônica): para mão de obra e serviços. Emitida pela prefeitura do município.
+- NFS-e (Nota Fiscal de Serviços Eletrônica): para mão de obra e serviços. Pode seguir fluxo municipal ou nacional, conforme a cidade e a configuração da oficina.
+- NF-e: usada nas operações de mercadorias que exigem NF-e, como entradas, devoluções e outras operações disponíveis no módulo fiscal.
 - Uma OS com peças e serviços pode gerar duas notas: uma NFC-e pelas peças e uma NFS-e pelos serviços.
+
+IMPORTANTE SOBRE FISCAL:
+- A emissão é encaminhada pelo sistema para a Nuvem Local Fiscal. Verifique se a empresa, ambiente, certificado/credenciais e dados do destinatário estão corretos antes de transmitir.
+- Não use homologação para uma operação real. Não altere CFOP, NCM, CST/CSOSN, alíquotas, códigos de serviço ou dados tributários sem confirmação do contador.
 
 AMBIENTE DE HOMOLOGAÇÃO:
 - Na tela de Notas Fiscais, é possível alternar entre Produção e Homologação.
@@ -397,7 +418,7 @@ Passo 2 — Preencher e emitir:
 
 CAMPOS OBRIGATÓRIOS — NFC-e (Peças):
 - Descrição do produto: obrigatório.
-- NCM: código fiscal da mercadoria. Obrigatório. Use o botão IA (✨) para sugerir automaticamente pela descrição — o sistema salva o NCM para futuras notas desse produto.
+- NCM: código fiscal da mercadoria. Use o autocomplete ou o botão IA (✨) para obter sugestão pela descrição; valide o código antes de emitir.
 - CFOP: código da operação fiscal (ex: 5102). Preenchido automaticamente; altere só se necessário.
 - Unidade (UN, PC, KG etc): preenchida automaticamente do cadastro.
 - Quantidade e valor unitário: obrigatórios.
@@ -424,9 +445,9 @@ STATUS DAS NOTAS:
 
 AÇÕES DISPONÍVEIS NO PAINEL:
 - Baixar PDF (DANFE para NFC-e, PDF para NFS-e) — disponível para notas emitidas (saída).
-- Baixar XML — disponível para notas de entrada (NFe do fornecedor importada no estoque). O XML emitido NÃO tem download separado no painel.
+- Baixar XML — disponível conforme o documento; notas de entrada mantêm o XML original do fornecedor e documentos de saída autorizados podem disponibilizar seu XML.
 - Enviar por WhatsApp (link do PDF para o cliente) — apenas para notas de saída autorizadas.
-- Cancelar (disponível para notas autorizadas dentro do prazo legal, geralmente até 24h).
+- Cancelar (para notas autorizadas, respeitando o prazo e as regras do documento). Informe a justificativa solicitada pelo sistema; o cancelamento é irreversível.
 - Corrigir (para notas rejeitadas — abre o formulário para ajuste e reenvio).
 
 PORTAL DO CLIENTE E NOTAS FISCAIS:
@@ -436,9 +457,15 @@ PORTAL DO CLIENTE E NOTAS FISCAIS:
 - O cliente não precisa pedir — a nota fica disponível assim que autorizada.
 
 NOTAS DE ENTRADA NO PAINEL:
-- Quando um XML de compra é importado na tela de Estoque, o sistema também registra essa nota no painel fiscal como "NFe Entrada".
+- A importação pode começar pelo XML de compra na tela de Estoque ou pela fila de NF-e de entrada, quando configurada. A fila permite sincronizar, consultar por chave de acesso, abrir o XML e arquivar itens que não serão importados agora.
+- Quando um XML de compra é importado, o sistema também registra essa nota no painel fiscal como "NFe Entrada".
 - Para essas notas, o download disponível é o XML original do fornecedor (útil para arquivo fiscal da empresa).
 - Notas de entrada NÃO aparecem no portal do cliente.
+
+NF-e DE DEVOLUÇÃO E RETORNOS:
+- No painel fiscal, abra a NF-e de entrada de origem e use a ação de devolução quando ela estiver disponível. O sistema carrega a operação a partir da nota de origem para conferência.
+- O módulo também pode oferecer operações de remessa e retorno, conforme a configuração da oficina. Revise a prévia e os dados da operação antes de emitir.
+- Essas operações têm impacto fiscal e de estoque. Se houver qualquer dúvida sobre finalidade, CFOP, tributação ou quantidade devolvida, pare e confirme com o contador.
 
 =======================================================
 FIM DO TUTORIAL 8
