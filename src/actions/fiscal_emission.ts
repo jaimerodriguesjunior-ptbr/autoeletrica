@@ -92,6 +92,9 @@ type EmissionPayload = {
 
     valor_total: number;
 
+    // Texto complementar unico da NFS-e, incorporado a descricao fiscal do servico.
+    observacao_nfse?: string;
+
     valor_frete?: number;
 
     valor_seguro?: number;
@@ -4400,6 +4403,27 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
         const { dhEmi, dCompet } = getSaoPauloDatePartsWithSafety();
 
+        const descricaoServicos = sanitizeFiscalText(payload.itens.map(i => {
+            const itemTotal = toMoneyNumber(i.valor_total, 0);
+            // Remove valor duplicado se ja existir na descricao e limpa espacos extras
+            const cleanDesc = i.descricao.replace(/(\s*\(R\$\s*[\d.,]+\))+\s*$/, "").trimEnd();
+            return `${cleanDesc} (R$ ${itemTotal.toFixed(2)})`;
+        }).join("; ")) || "";
+        const observacaoNfse = sanitizeFiscalText(payload.observacao_nfse) || "";
+        if (observacaoNfse.length > 1000) {
+            throw new Error("A observacao da NFS-e pode ter no maximo 1000 caracteres.");
+        }
+        // O emissor Nacional recebe somente xDescServ; o separador faz a observacao
+        // permanecer identificavel para uma eventual tela de correcao/reemissao.
+        const descricaoNfse = sanitizeFiscalText(
+            observacaoNfse
+                ? `${descricaoServicos} | Observacao: ${observacaoNfse}`
+                : descricaoServicos
+        ) || "";
+        if (descricaoNfse.length > 2000) {
+            throw new Error("A descricao final da NFS-e, incluindo a observacao, pode ter no maximo 2000 caracteres.");
+        }
+
         const dpsPayload = {
 
             ambiente: env === 'production' ? 'producao' : 'homologacao',
@@ -4484,12 +4508,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
                         cSitTrib: "0",
 
-                        xDescServ: payload.itens.map(i => {
-                            const itemTotal = toMoneyNumber(i.valor_total, 0);
-                            // Remove valor duplicado se já existir na descrição e limpa espaços extras
-                            const cleanDesc = i.descricao.replace(/(\s*\(R\$\s*[\d.,]+\))+\s*$/, "").trimEnd();
-                            return `${cleanDesc} (R$ ${itemTotal.toFixed(2)})`;
-                        }).join("; ")
+                        xDescServ: descricaoNfse
 
                     },
 

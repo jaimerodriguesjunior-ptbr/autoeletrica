@@ -8,6 +8,23 @@ import Link from "next/link";
 import { createClient } from "@/src/utils/supabase/client";
 import { emitirNFCe, emitirNFSe } from "@/src/actions/fiscal_emission";
 
+function splitNfseDescription(value: unknown) {
+    const text = String(value || "").trim();
+    const markers = [" | Observacao: ", "\nObservacao: "];
+    const marker = markers
+        .map((candidate) => ({ candidate, index: text.lastIndexOf(candidate) }))
+        .filter(({ index }) => index >= 0)
+        .sort((left, right) => right.index - left.index)[0];
+    const descricaoComValor = marker ? text.slice(0, marker.index) : text;
+    const observacao = marker ? text.slice(marker.index + marker.candidate.length).trim() : "";
+
+    return {
+        // A emissao acrescenta o valor ao fim da descricao; removemos somente esse sufixo.
+        descricao: descricaoComValor.replace(/\s*\(R\$\s*[\d.,]+\)\s*$/, "").trim(),
+        observacao
+    };
+}
+
 export default function CorrigirNotaPage({ params }: { params: { id: string } }) {
     const { profile } = useAuth();
     const router = useRouter();
@@ -22,6 +39,7 @@ export default function CorrigirNotaPage({ params }: { params: { id: string } })
     const [clienteDoc, setClienteDoc] = useState("");
     const [clienteEndereco, setClienteEndereco] = useState<any>({});
     const [itens, setItens] = useState<any[]>([]);
+    const [observacaoNfse, setObservacaoNfse] = useState("");
 
     useEffect(() => {
         if (profile?.organization_id && params.id) {
@@ -84,9 +102,12 @@ export default function CorrigirNotaPage({ params }: { params: { id: string } })
                 const serv = payload.infDPS.serv;
                 const valores = payload.infDPS.valores;
 
+                const descricaoNfse = splitNfseDescription(serv.cServ.xDescServ);
+                setObservacaoNfse(descricaoNfse.observacao);
+
                 // NFS-e usually has one service item in simple implementations
                 setItens([{
-                    descricao: serv.cServ.xDescServ,
+                    descricao: descricaoNfse.descricao,
                     codigo_servico: serv.cServ.cTribMun || serv.cServ.cTribNac,
                     valor_total: valores.vServPrest.vServ,
                     aliquota_iss: valores.trib.tribMun.pAliq
@@ -146,6 +167,7 @@ export default function CorrigirNotaPage({ params }: { params: { id: string } })
                         aliquota_iss: i.aliquota_iss
                     })),
                     valor_total: itens.reduce((acc, i) => acc + i.valor_total, 0),
+                    observacao_nfse: observacaoNfse,
                     meio_pagamento: '01',
                     environment
                 });
@@ -268,6 +290,23 @@ export default function CorrigirNotaPage({ params }: { params: { id: string } })
                 </div>
 
                 <div className="border-t border-stone-100 my-6"></div>
+
+                {invoice.tipo_documento === 'NFSe' && (
+                    <div>
+                        <div className="mb-1 flex items-center justify-between gap-3">
+                            <label htmlFor="observacao-nfse" className="block text-xs font-bold text-stone-500">Observação da NFS-e</label>
+                            <span className="text-[10px] text-stone-400">{observacaoNfse.length}/1000</span>
+                        </div>
+                        <textarea
+                            id="observacao-nfse"
+                            value={observacaoNfse}
+                            onChange={e => setObservacaoNfse(e.target.value)}
+                            maxLength={1000}
+                            rows={3}
+                            className="w-full resize-y bg-stone-50 rounded-lg p-2 border border-stone-200"
+                        />
+                    </div>
+                )}
 
                 {/* ITENS */}
                 <div>

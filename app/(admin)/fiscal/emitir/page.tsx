@@ -6,7 +6,7 @@ import { useAuth } from "@/src/contexts/AuthContext";
 import { emitirNFCe, emitirNFSe } from "@/src/actions/fiscal_emission";
 import {
     ArrowLeft, FileText, Loader2, CheckCircle,
-    ShoppingCart, Wrench, User, Trash2, Plus, MapPin, Search, X, Sparkles
+    ShoppingCart, Wrench, User, Trash2, Plus, MapPin, Search, X, Sparkles, MessageSquareText
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -134,6 +134,8 @@ export default function EmitirNotaPage() {
 
     const [itens, setItens] = useState<InvoiceItem[]>([]);
     const [itensServico, setItensServico] = useState<any[]>([]);
+    const [observacaoNfse, setObservacaoNfse] = useState("");
+    const [observacaoNfseAberta, setObservacaoNfseAberta] = useState(false);
     const [produtoDocumento, setProdutoDocumento] = useState<"NFCe" | "NFe">("NFCe");
     const [emitenteUF, setEmitenteUF] = useState("");
     const [emitenteCnpj, setEmitenteCnpj] = useState("");
@@ -385,6 +387,9 @@ export default function EmitirNotaPage() {
     const handleSelectOS = async (os: PendingOS) => {
 
         setSelectedOS(os);
+        // A observacao pertence a nota em emissao; nunca deve acompanhar outra OS por acidente.
+        setObservacaoNfse("");
+        setObservacaoNfseAberta(false);
 
         setClienteNome(os.clients?.nome || "");
 
@@ -608,6 +613,8 @@ export default function EmitirNotaPage() {
     const handleAvulsa = () => {
 
         setSelectedOS(null);
+        setObservacaoNfse("");
+        setObservacaoNfseAberta(false);
 
         // Mantém os dados preenchidos para teste
 
@@ -823,6 +830,8 @@ export default function EmitirNotaPage() {
                         itens: servicosPayload,
 
                         valor_total: totalServicos,
+
+                        observacao_nfse: observacaoNfse,
 
                         meio_pagamento: '01',
 
@@ -1554,9 +1563,50 @@ export default function EmitirNotaPage() {
 
                                 <h3 className="font-bold text-sm text-blue-700 flex items-center gap-2"><Wrench size={14} /> Serviços (NFS-e)</h3>
 
-                                <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-2 py-0.5 rounded">AUTOMTICO</span>
+                                <div className="flex items-center gap-2">
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setObservacaoNfseAberta((aberta) => !aberta)}
+                                        aria-expanded={observacaoNfseAberta}
+                                        className="text-[10px] font-bold bg-white text-blue-700 border border-blue-200 px-2 py-0.5 rounded hover:bg-blue-100 transition flex items-center gap-1"
+                                    >
+                                        <MessageSquareText size={12} /> Observação
+                                    </button>
+
+                                    <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-2 py-0.5 rounded">AUTOMÁTICO</span>
+
+                                </div>
 
                             </div>
+
+                            {observacaoNfseAberta && (
+
+                                <div className="mb-3 rounded-xl border border-blue-200 bg-white p-3">
+
+                                    <div className="mb-1 flex items-center justify-between gap-3">
+
+                                        <label htmlFor="observacao-nfse" className="text-xs font-bold text-blue-700">Observação da NFS-e</label>
+
+                                        <span className="text-[10px] text-stone-400">{observacaoNfse.length}/1000</span>
+
+                                    </div>
+
+                                    <textarea
+                                        id="observacao-nfse"
+                                        value={observacaoNfse}
+                                        onChange={(event) => setObservacaoNfse(event.target.value)}
+                                        maxLength={1000}
+                                        rows={3}
+                                        className="w-full resize-y rounded-lg border border-blue-100 bg-blue-50 p-2 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-200"
+                                        placeholder="Texto complementar que será registrado nesta NFS-e."
+                                    />
+
+                                    <p className="mt-1 text-[10px] text-stone-400">A observação vale para toda a nota e será enviada junto da descrição dos serviços.</p>
+
+                                </div>
+
+                            )}
 
                             <div className="space-y-2">
 
