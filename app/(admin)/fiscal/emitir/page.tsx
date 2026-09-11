@@ -470,9 +470,15 @@ export default function EmitirNotaPage() {
 
             .select('tipo_documento, status')
 
+            .eq('organization_id', profile?.organization_id)
+
             .eq('work_order_id', os.id)
 
-            .eq('status', 'authorized');
+            .eq('direction', 'output')
+
+            .eq('status', 'authorized')
+
+            .eq('environment', environment);
 
         const hasExistingProductInvoice = (existingInvoices || []).some((invoice: any) => invoice.tipo_documento === 'NFCe' || invoice.tipo_documento === 'NFe');
 
