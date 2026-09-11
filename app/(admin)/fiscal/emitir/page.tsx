@@ -323,7 +323,7 @@ export default function EmitirNotaPage() {
 
         }
 
-    }, [profile]);
+    }, [profile, environment]);
 
     useEffect(() => {
         const loadCompanyUf = async () => {
@@ -364,7 +364,7 @@ export default function EmitirNotaPage() {
 
             if (profile?.organization_id) {
 
-                const data = await getPendingWorkOrders(profile.organization_id);
+                const data = await getPendingWorkOrders(profile.organization_id, environment);
 
                 setPendingOS(data as unknown as PendingOS[]);
 

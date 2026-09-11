@@ -4,7 +4,10 @@ import { createClient } from "@/src/utils/supabase/server";
 import { extractItemsFromInfNFe } from "@/src/lib/nfe_xml";
 import type { ParsedNFeItem } from "@/src/types/nfe";
 
-export async function getPendingWorkOrders(organizationId: string) {
+export async function getPendingWorkOrders(
+    organizationId: string,
+    environment: "production" | "homologation"
+) {
     const supabase = createClient();
 
     const { data: workOrders, error } = await supabase
@@ -40,6 +43,8 @@ export async function getPendingWorkOrders(organizationId: string) {
             .not("work_order_id", "is", null)
             .eq("direction", "output")
             .eq("status", "authorized")
+            // Uma autorizacao em homologacao nao pode baixar a pendencia de producao, e vice-versa.
+            .eq("environment", environment)
     ]);
 
     if (itemsError) {
