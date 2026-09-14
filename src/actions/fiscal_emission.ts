@@ -5710,7 +5710,11 @@ export async function cancelarNota(
 
                 codigo: ["1", "2", "9"].includes(codigoMotivo) ? codigoMotivo : "9",
 
-                motivo: justificativa
+                // A SEFIN Nacional exige que a justificativa do cancelamento
+                // seja enviada no campo `observacao`. Mantemos `motivo` para
+                // compatibilidade com provedores municipais legados.
+                motivo: justificativa,
+                observacao: justificativa
 
             };
 
