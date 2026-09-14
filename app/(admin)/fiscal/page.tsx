@@ -301,7 +301,16 @@ export default function FiscalDashboard() {
                 alert("Sucesso: " + res.message);
                 fetchInvoices();
             } else {
-                alert("Erro: " + res.error);
+                // O cancelamento pode ter sido registrado pelo orgao fiscal
+                // mesmo quando a resposta inicial ficou sem confirmacao. Faz
+                // uma consulta antes de manter o status antigo na tela.
+                const consultation = await consultarNFSe(invoiceId);
+                if (consultation.success && consultation.status === "cancelled") {
+                    alert("Sucesso: o cancelamento foi confirmado pela consulta fiscal.");
+                } else {
+                    alert("Erro: " + res.error);
+                }
+                fetchInvoices();
             }
         } catch (e: any) {
             alert("Erro ao cancelar: " + e.message);
