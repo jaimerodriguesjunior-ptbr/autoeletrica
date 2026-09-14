@@ -1,4 +1,7 @@
--- Função para consolidar dados de fechamento mensal para o contador
+-- Corrige a competência fiscal do fechamento mensal.
+-- A data de importação (created_at) só pode ser usada quando a NF-e não tiver
+-- data de emissão; usá-la junto com data_emissao mistura documentos de meses
+-- anteriores no período em que foram importados.
 CREATE OR REPLACE FUNCTION get_monthly_closing_data(
     p_organization_id UUID,
     p_month INT,
@@ -13,13 +16,11 @@ DECLARE
     v_end_date DATE;
     v_result JSONB;
 BEGIN
-    -- Define o intervalo do mês
     v_start_date := (p_year || '-' || p_month || '-01')::DATE;
     v_end_date := (v_start_date + interval '1 month')::DATE;
 
     WITH
     pecas_servicos AS (
-        -- Soma Peças e Serviços de OS finalizadas que tiveram movimentação financeira no mês
         SELECT
             COALESCE(SUM(CASE WHEN i.tipo = 'peca' AND NOT COALESCE(i.peca_cliente, false) THEN i.total_price ELSE 0 END), 0) as total_pecas,
             COALESCE(SUM(CASE WHEN i.tipo = 'servico' THEN i.total_price ELSE 0 END), 0) as total_servicos
@@ -37,7 +38,6 @@ BEGIN
         )
     ),
     faturamento_por_cfop AS (
-        -- Agrupa faturamento por CFOP (ou 5933 para serviços)
         SELECT
             COALESCE(p.cfop, CASE WHEN i.tipo = 'servico' THEN '5933' ELSE 'Outros' END) as cfop,
             SUM(i.total_price) as total
@@ -58,7 +58,6 @@ BEGIN
         GROUP BY 1
     ),
     meios_pagamento AS (
-        -- Agrupa recebimentos (entradas) por forma de pagamento
         SELECT
             COALESCE(payment_method,
                 CASE
@@ -81,7 +80,6 @@ BEGIN
         GROUP BY 1
     ),
     fiscal_resumo AS (
-        -- Resumo de documentos fiscais (NFC-e, NFS-e, NFe entrada e NFe saída/devolução)
         SELECT
             COUNT(*) FILTER (WHERE direction = 'output' AND tipo_documento = 'NFSe' AND status = 'authorized') as autorizadas_nfse,
             COUNT(*) FILTER (WHERE direction = 'output' AND tipo_documento = 'NFSe' AND status = 'cancelled') as canceladas_nfse,
@@ -96,11 +94,7 @@ BEGIN
         AND COALESCE(environment, 'production') != 'homologation'
         AND (
             (data_emissao >= v_start_date AND data_emissao < v_end_date)
-            OR
-            -- A data de importação é apenas contingência para documentos sem
-            -- data fiscal. Não pode levar uma NF-e antiga ao mês em que o XML
-            -- foi importado.
-            (data_emissao IS NULL AND created_at >= v_start_date AND created_at < v_end_date)
+            OR (data_emissao IS NULL AND created_at >= v_start_date AND created_at < v_end_date)
         )
     )
     SELECT jsonb_build_object(

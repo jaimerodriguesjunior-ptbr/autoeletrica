@@ -23,6 +23,8 @@ export async function buildFiscalReportData(
     const [
         { data: datedInvoices, error: datedError },
         { data: fallbackInvoices, error: fallbackError },
+        { data: datedEntries, error: datedEntriesError },
+        { data: fallbackEntries, error: fallbackEntriesError },
     ] = await Promise.all([
         supabase
             .from("fiscal_invoices")
@@ -43,16 +45,38 @@ export async function buildFiscalReportData(
             .is("data_emissao", null)
             .gte("created_at", startDate)
             .lt("created_at", endDate),
+        supabase
+            .from("fiscal_invoices")
+            .select("id, valor_total")
+            .eq("organization_id", organizationId)
+            .eq("direction", "entry")
+            .neq("status", "cancelled")
+            .neq("environment", "homologation")
+            .gte("data_emissao", startDate)
+            .lt("data_emissao", endDate),
+        supabase
+            .from("fiscal_invoices")
+            .select("id, valor_total")
+            .eq("organization_id", organizationId)
+            .eq("direction", "entry")
+            .neq("status", "cancelled")
+            .neq("environment", "homologation")
+            .is("data_emissao", null)
+            .gte("created_at", startDate)
+            .lt("created_at", endDate),
     ]);
 
-    if (datedError || fallbackError) {
+    if (datedError || fallbackError || datedEntriesError || fallbackEntriesError) {
         throw new Error(
-            `Erro ao apurar valores fiscais do fechamento: ${datedError?.message || fallbackError?.message}`
+            `Erro ao apurar valores fiscais do fechamento: ${datedError?.message || fallbackError?.message || datedEntriesError?.message || fallbackEntriesError?.message}`
         );
     }
 
     const invoices = [...(datedInvoices || []), ...(fallbackInvoices || [])]
         .filter((invoice, index, list) => list.findIndex((item) => item.id === invoice.id) === index);
+    const entries = [...(datedEntries || []), ...(fallbackEntries || [])]
+        .filter((invoice, index, list) => list.findIndex((item) => item.id === invoice.id) === index);
+    const entriesTotal = entries.reduce((total, invoice) => total + Number(invoice.valor_total || 0), 0);
 
     const cfopTotals = new Map<string, number>();
     let productSales = 0;
@@ -106,6 +130,8 @@ export async function buildFiscalReportData(
         },
         fiscal: {
             ...closingData.fiscal,
+            entradas_qtd: entries.length,
+            entradas_valor: entriesTotal,
             nfe_vendas_qtd: nfeSalesCount,
             nfe_vendas_valor: nfeSales,
             devolucoes_qtd: nfeReturnsCount,
