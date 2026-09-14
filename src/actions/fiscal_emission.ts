@@ -5770,10 +5770,12 @@ export async function cancelarNota(
         const isAlreadyCancelled =
             result.codigo_status === "117" ||
             result.cancelamento?.codigo_status === "117" ||
-            result.status === "cancelado" ||
-            result.status === "cancelada" ||
-            /cancelad/i.test(apiErrorMessage) ||
-            /117/.test(apiErrorMessage);
+            result.codigo_status === "573" ||
+            result.cancelamento?.codigo_status === "573" ||
+            /(?:ja|já)\s+(?:constava|estava|se encontrava).*cancelad/i.test(apiErrorMessage) ||
+            /cancelad[ao].*(?:anteriormente|previamente)/i.test(apiErrorMessage) ||
+            /(?:duplicidade de evento|evento registrado anteriormente)/i.test(apiErrorMessage) ||
+            /(?:^|\D)(?:117|573)(?:\D|$)/.test(apiErrorMessage);
         const isProcessing =
             result.status === "processamento" ||
             result.status === "processing";
@@ -5781,7 +5783,7 @@ export async function cancelarNota(
         const isConfirmedNfseCancellation =
             result.status === "cancelado" || result.status === "cancelada";
 
-        if (!response.ok && !isAlreadyCancelled) {
+        if (!response.ok && !isAlreadyCancelled && !isConfirmedNfseCancellation) {
             return { success: false, error: apiErrorMessage || "Erro ao cancelar nota." };
         }
 
