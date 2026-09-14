@@ -127,7 +127,11 @@ export async function buildNfseAccountingExport(
     const issuerDocument = digits(company?.cnpj || company?.cpf_cnpj);
     const issuerType = issuerDocument.length === 14 ? "J" : "F";
     const lines: string[] = [];
-    let cityCode = "7571";
+    // Guaíra/IPM uses the fixed municipality code 7571. Do not derive this
+    // from chave_acesso: older IPM responses may store only the municipal
+    // NFS-e number there (e.g. 238), while national documents use another
+    // key format entirely.
+    const cityCode = "7571";
 
     for (const invoice of invoices as any[]) {
         const infDps = invoice.payload_json?.infDPS || {};
@@ -139,7 +143,6 @@ export async function buildNfseAccountingExport(
         const payloadAddress = recipient.end || {};
         const payloadNationalAddress = payloadAddress.endNac || {};
         const accessKey = digits(invoice.chave_acesso);
-        cityCode = accessKey.slice(0, 4) || cityCode;
 
         const recipientDocument = digits(
             recipient.CNPJ || recipient.CPF || invoice.destinatario_cnpj || client.cpf_cnpj
