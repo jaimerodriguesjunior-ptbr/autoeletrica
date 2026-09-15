@@ -131,6 +131,8 @@ export default function EmitirNotaPage() {
     const [clienteEndereco, setClienteEndereco] = useState<any>(
         isHomologation ? defaultTomadorHomologacao.endereco : defaultTomadorProducao.endereco
     );
+    const [clienteEmail, setClienteEmail] = useState("");
+    const [clienteTelefone, setClienteTelefone] = useState("");
 
     const [itens, setItens] = useState<InvoiceItem[]>([]);
     const [itensServico, setItensServico] = useState<any[]>([]);
@@ -342,6 +344,8 @@ export default function EmitirNotaPage() {
         setClienteNome(defaultTomadorHomologacao.nome);
         setClienteDoc(defaultTomadorHomologacao.cpf_cnpj);
         setClienteEndereco(defaultTomadorHomologacao.endereco);
+        setClienteEmail("");
+        setClienteTelefone("");
     }, [isHomologation, clienteNome, clienteDoc]);
 
     useEffect(() => {
@@ -351,6 +355,8 @@ export default function EmitirNotaPage() {
         setClienteNome(defaultTomadorProducao.nome);
         setClienteDoc(defaultTomadorProducao.cpf_cnpj);
         setClienteEndereco(defaultTomadorProducao.endereco);
+        setClienteEmail("");
+        setClienteTelefone("");
     }, [isHomologation, clienteNome, clienteDoc]);
 
 
@@ -408,6 +414,8 @@ export default function EmitirNotaPage() {
             uf: "",
             codigo_municipio: ""
         });
+        setClienteEmail("");
+        setClienteTelefone("");
 
 
 
@@ -423,13 +431,14 @@ export default function EmitirNotaPage() {
 
                 .from('clients')
 
-                .select('endereco')
+                .select('endereco, email, whatsapp')
 
                 .eq('id', os.client_id)
 
                 .single();
 
-
+            setClienteEmail(clientData?.email || "");
+            setClienteTelefone(clientData?.whatsapp || "");
 
             if (clientData?.endereco) {
                 const endereco = clientData.endereco;
@@ -741,6 +750,8 @@ export default function EmitirNotaPage() {
                     cliente: {
                         nome: clienteNome,
                         cpf_cnpj: clienteDoc,
+                        email: clienteEmail,
+                        telefone: clienteTelefone,
                         endereco: clienteEndereco,
                     },
 
@@ -816,6 +827,10 @@ export default function EmitirNotaPage() {
                             nome: clienteNome,
 
                             cpf_cnpj: clienteDoc,
+
+                            email: clienteEmail,
+
+                            telefone: clienteTelefone,
 
                             endereco: clienteEndereco.logradouro ? clienteEndereco : {
 
@@ -1245,6 +1260,28 @@ export default function EmitirNotaPage() {
 
                                 </div>
 
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                                <div className="md:col-span-2">
+                                    <label className="text-[10px] font-bold text-stone-400 ml-1">E-MAIL</label>
+                                    <input
+                                        type="email"
+                                        value={clienteEmail}
+                                        onChange={e => setClienteEmail(e.target.value)}
+                                        className="w-full bg-white border border-stone-300 p-2 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all"
+                                        placeholder="email@cliente.com"
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="text-[10px] font-bold text-stone-400 ml-1">TELEFONE</label>
+                                    <input
+                                        value={clienteTelefone}
+                                        onChange={e => setClienteTelefone(e.target.value)}
+                                        className="w-full bg-white border border-stone-300 p-2 rounded-lg text-sm font-medium outline-none focus:border-[#FACC15] focus:ring-2 focus:ring-[#FACC15]/20 shadow-sm transition-all"
+                                        placeholder="(00) 00000-0000"
+                                    />
+                                </div>
                             </div>
 
 

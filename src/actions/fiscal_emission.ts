@@ -4044,6 +4044,102 @@ export async function emitirNFeRetornoGarantiaAction(payload: EmissionPayload & 
 
 
 
+function firstFilled(...values: Array<string | number | null | undefined>) {
+    for (const value of values) {
+        const text = value == null ? "" : String(value).trim();
+        if (text) return text;
+    }
+    return "";
+}
+
+function documentLookupVariants(value?: string | null) {
+    const digits = normalizeDocument(value) || "";
+    const variants = new Set<string>();
+    if (!digits) return [];
+    variants.add(digits);
+    if (digits.length === 11) {
+        variants.add(digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"));
+    }
+    if (digits.length === 14) {
+        variants.add(digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5"));
+    }
+    return [...variants];
+}
+
+function mergeNfseTomadorAddress(primary: any, fallback: any) {
+    const current = primary || {};
+    const cadastro = fallback || {};
+    const cidade = firstFilled(current.cidade, cadastro.cidade);
+    const uf = firstFilled(current.uf, cadastro.uf).toUpperCase();
+    return {
+        ...cadastro,
+        ...current,
+        logradouro: firstFilled(current.logradouro, current.rua, cadastro.logradouro, cadastro.rua),
+        rua: firstFilled(current.rua, current.logradouro, cadastro.rua, cadastro.logradouro),
+        numero: firstFilled(current.numero, cadastro.numero),
+        complemento: firstFilled(current.complemento, cadastro.complemento),
+        bairro: firstFilled(current.bairro, cadastro.bairro),
+        cidade,
+        uf,
+        codigo_municipio: firstFilled(
+            current.codigo_municipio,
+            current.codigo_municipio_ibge,
+            cadastro.codigo_municipio,
+            cadastro.codigo_municipio_ibge
+        ),
+        cep: firstFilled(current.cep, cadastro.cep)
+    };
+}
+
+function unwrapRelation(value: any) {
+    if (Array.isArray(value)) return value[0] || null;
+    return value || null;
+}
+
+async function resolveNfseTomadorFromCadastro(supabase: any, payload: EmissionPayload) {
+    let email = firstFilled(payload.cliente?.email);
+    let telefone = firstFilled(payload.cliente?.telefone).replace(/\D/g, "");
+    let endereco = mergeNfseTomadorAddress(payload.cliente?.endereco, {});
+
+    const needsCadastro = !email || !telefone || !endereco.cidade || !endereco.uf || !endereco.codigo_municipio;
+    if (!needsCadastro) {
+        return { email, telefone, endereco };
+    }
+
+    let cadastro: any = null;
+
+    if (payload.work_order_id) {
+        const { data: workOrder } = await supabase
+            .from("work_orders")
+            .select("client_id, clients (email, whatsapp, endereco, cpf_cnpj)")
+            .eq("id", payload.work_order_id)
+            .eq("organization_id", payload.organization_id)
+            .maybeSingle();
+        cadastro = unwrapRelation(workOrder?.clients);
+    }
+
+    if (!cadastro) {
+        const variants = documentLookupVariants(payload.cliente?.cpf_cnpj);
+        if (variants.length) {
+            const { data: clients } = await supabase
+                .from("clients")
+                .select("email, whatsapp, endereco, cpf_cnpj")
+                .eq("organization_id", payload.organization_id)
+                .in("cpf_cnpj", variants)
+                .limit(1);
+            cadastro = clients?.[0] || null;
+        }
+    }
+
+    if (cadastro) {
+        email = firstFilled(email, cadastro.email);
+        telefone = firstFilled(telefone, cadastro.whatsapp).replace(/\D/g, "");
+        endereco = mergeNfseTomadorAddress(endereco, cadastro.endereco);
+    }
+
+    return { email, telefone, endereco };
+}
+
 export async function emitirNFSe(payload: EmissionPayload) {
 
     const supabase = createClient();
@@ -4424,6 +4520,8 @@ export async function emitirNFSe(payload: EmissionPayload) {
             throw new Error("A descricao final da NFS-e, incluindo a observacao, pode ter no maximo 2000 caracteres.");
         }
 
+        const tomadorCadastro = await resolveNfseTomadorFromCadastro(supabase, payload);
+
         const dpsPayload = {
 
             ambiente: env === 'production' ? 'producao' : 'homologacao',
@@ -4442,41 +4540,56 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
                 toma: (() => {
                     const cleanDoc = clienteDoc;
-                    const clientPhone = payload.cliente.telefone?.replace(/\D/g, "") || "";
+                    const clientPhone = tomadorCadastro.telefone.replace(/\D/g, "");
                     const companyPhone = company?.telefone?.replace(/\D/g, "") || "";
                     const phoneToSend = clientPhone || companyPhone;
-                    const clientEmail = payload.cliente.email?.trim();
+                    const clientEmail = tomadorCadastro.email.trim().slice(0, 80);
+                    const emailToSend = clientEmail.includes("@") ? clientEmail : undefined;
 
-                    const addressRaw = payload.cliente.endereco || {};
+                    const addressRaw = tomadorCadastro.endereco || {};
                     const logradouro = addressRaw.logradouro || addressRaw.rua || "";
                     const bairro = addressRaw.bairro || "";
                     const numero = addressRaw.numero || "";
                     const cepRaw = addressRaw.cep || "";
-                    
-                    let cleanCep = cepRaw.replace(/\D/g, "");
+                    const complemento = firstFilled(addressRaw.complemento);
+
+                    let cleanCep = String(cepRaw).replace(/\D/g, "");
                     if (cleanCep.length !== 8) {
                         cleanCep = company?.cep?.replace(/\D/g, "") || "85980000"; // Fallback
                     }
 
                     const finalLogradouro = logradouro.trim() || "Nao Informado";
                     const finalBairro = bairro.trim() || "Centro";
-                    const finalNumero = numero.trim() || "SN";
+                    const finalNumero = String(numero).trim() || "SN";
+                    const codigoMunicipioTomador = firstFilled(
+                        addressRaw.codigo_municipio,
+                        addressRaw.codigo_municipio_ibge
+                    );
 
                     const blockEnd = {
                         xLgr: finalLogradouro,
                         nro: finalNumero,
+                        xCpl: complemento || undefined,
                         xBairro: finalBairro,
                         endNac: {
-                            cMun: normalizeMunicipio(addressRaw.codigo_municipio),
+                            cMun: normalizeMunicipio(codigoMunicipioTomador),
                             CEP: cleanCep
                         }
                     };
+
+                    console.log("[emitirNFSe] Tomador DPS", {
+                        temEmail: Boolean(emailToSend),
+                        temFone: Boolean(phoneToSend),
+                        cMun: blockEnd.endNac.cMun,
+                        cidadeCadastro: addressRaw.cidade || "",
+                        ufCadastro: addressRaw.uf || ""
+                    });
 
                     return {
                         CNPJ: cleanDoc.length > 11 ? cleanDoc : undefined,
                         CPF: cleanDoc.length <= 11 ? cleanDoc : undefined,
                         xNome: sanitizeFiscalText(payload.cliente.nome, 60),
-                        email: clientEmail || undefined,
+                        email: emailToSend,
                         fone: phoneToSend || undefined,
                         end: blockEnd
                     };

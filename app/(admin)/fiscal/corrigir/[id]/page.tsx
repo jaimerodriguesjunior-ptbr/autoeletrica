@@ -37,6 +37,8 @@ export default function CorrigirNotaPage({ params }: { params: { id: string } })
     // Form States
     const [clienteNome, setClienteNome] = useState("");
     const [clienteDoc, setClienteDoc] = useState("");
+    const [clienteEmail, setClienteEmail] = useState("");
+    const [clienteTelefone, setClienteTelefone] = useState("");
     const [clienteEndereco, setClienteEndereco] = useState<any>({});
     const [itens, setItens] = useState<any[]>([]);
     const [observacaoNfse, setObservacaoNfse] = useState("");
@@ -88,6 +90,8 @@ export default function CorrigirNotaPage({ params }: { params: { id: string } })
                 const toma = payload.infDPS.toma;
                 setClienteNome(toma.xNome);
                 setClienteDoc(toma.CNPJ || toma.CPF || "");
+                setClienteEmail(toma.email || "");
+                setClienteTelefone(toma.fone || "");
 
                 if (toma.end) {
                     setClienteEndereco({
@@ -152,6 +156,8 @@ export default function CorrigirNotaPage({ params }: { params: { id: string } })
                     cliente: {
                         nome: clienteNome,
                         cpf_cnpj: clienteDoc,
+                        email: clienteEmail,
+                        telefone: clienteTelefone,
                         endereco: clienteEndereco
                     },
                     itens: itens.map(i => ({
