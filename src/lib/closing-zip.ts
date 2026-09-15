@@ -231,13 +231,14 @@ export async function buildClosingZip(
         const inFolder = root.folder("XMLs_Entrada_Compras");
         const cancelFolder = root.folder("XMLs_Cancelados");
         for (const f of fiscalFiles) {
+            if (f.status === "error" || f.status === "rejected" || f.status === "processing") continue;
             let xmlContent = f.xml_content;
             if (!xmlContent) xmlContent = await fetchXmlContent(f.id, f.xml_url);
             if (xmlContent) {
                 const name = `${f.numero || f.chave_acesso || "doc"}.xml`;
                 if (f.status === "cancelled" && cancelFolder) cancelFolder.file(`Cancelado_${name}`, xmlContent);
-                else if (f.direction === "output" && outFolder) outFolder.file(name, xmlContent);
-                else if (f.direction === "entry" && inFolder) inFolder.file(name, xmlContent);
+                else if (f.status === "authorized" && f.direction === "output" && outFolder) outFolder.file(name, xmlContent);
+                else if (f.status === "authorized" && f.direction === "entry" && inFolder) inFolder.file(name, xmlContent);
             }
         }
     }

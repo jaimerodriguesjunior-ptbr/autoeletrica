@@ -47,6 +47,33 @@ function digits(value: unknown) {
     return String(value || "").replace(/\D/g, "");
 }
 
+function xmlTag(xml: unknown, tag: string) {
+    const raw = String(xml || "");
+    const match = raw.match(new RegExp(`<${tag}[^>]*>\\s*([^<]+)\\s*</${tag}>`, "i"));
+    return match?.[1]?.trim() || "";
+}
+
+function isNationalNfse(invoice: any) {
+    const xml = String(invoice?.xml_content || "");
+    const key = digits(invoice?.chave_acesso);
+    return xml.includes("sped.fazenda.gov") || (key.length === 50 && key.startsWith("4108"));
+}
+
+function ipmAccessKey(invoice: any) {
+    const fromDb = digits(invoice?.chave_acesso);
+    if (fromDb.length >= 40 && fromDb.startsWith("7571")) return fromDb;
+
+    const fromXml = digits(xmlTag(invoice?.xml_content, "cod_verificador_autenticidade"));
+    if (fromXml.length >= 40) return fromXml;
+
+    const fromLink = digits(
+        String(invoice?.xml_content || "").match(/identificador\/(\d{40})/i)?.[1] || ""
+    );
+    if (fromLink.length >= 40) return fromLink;
+
+    return fromDb;
+}
+
 function fixed(value: unknown, length: number) {
     return String(value || "").replace(/[\r\n;]/g, " ").slice(0, length).padEnd(length, " ");
 }
@@ -104,7 +131,7 @@ export async function buildNfseAccountingExport(
             .from("fiscal_invoices")
             .select(`
                 id, numero, serie, chave_acesso, valor_total, data_emissao, created_at,
-                destinatario_nome, destinatario_cnpj, payload_json,
+                destinatario_nome, destinatario_cnpj, payload_json, xml_content,
                 work_orders(client_id, clients(nome, cpf_cnpj, whatsapp, endereco))
             `)
             .eq("organization_id", organizationId)
@@ -122,7 +149,8 @@ export async function buildNfseAccountingExport(
         );
     }
 
-    if (!invoices?.length) return null;
+    const ipmInvoices = ((invoices || []) as any[]).filter((invoice) => !isNationalNfse(invoice));
+    if (!ipmInvoices.length) return null;
 
     const issuerDocument = digits(company?.cnpj || company?.cpf_cnpj);
     const issuerType = issuerDocument.length === 14 ? "J" : "F";
@@ -133,7 +161,7 @@ export async function buildNfseAccountingExport(
     // key format entirely.
     const cityCode = "7571";
 
-    for (const invoice of invoices as any[]) {
+    for (const invoice of ipmInvoices) {
         const infDps = invoice.payload_json?.infDPS || {};
         const recipient = infDps.toma || {};
         const service = infDps.serv?.cServ || {};
@@ -142,7 +170,7 @@ export async function buildNfseAccountingExport(
         const clientAddress = client.endereco || {};
         const payloadAddress = recipient.end || {};
         const payloadNationalAddress = payloadAddress.endNac || {};
-        const accessKey = digits(invoice.chave_acesso);
+        const accessKey = ipmAccessKey(invoice);
 
         const recipientDocument = digits(
             recipient.CNPJ || recipient.CPF || invoice.destinatario_cnpj || client.cpf_cnpj
@@ -235,6 +263,6 @@ export async function buildNfseAccountingExport(
     return {
         fileName,
         content: encodeWindows1252(`${lines.join("\r\n")}\r\n`),
-        invoiceCount: invoices.length,
+        invoiceCount: ipmInvoices.length,
     };
 }
