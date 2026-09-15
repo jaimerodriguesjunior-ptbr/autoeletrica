@@ -1,7 +1,7 @@
 "use server";
 
 import { XMLParser } from "fast-xml-parser";
-import { getNuvemFiscalToken } from "@/src/lib/nuvemfiscal";
+import { getNuvemFiscalToken, getNuvemLocalFiscalBaseUrl } from "@/src/lib/nuvemfiscal";
 import { createClient } from "@/src/utils/supabase/server";
 import { createAdminClient } from "@/src/utils/supabase/admin";
 
@@ -51,11 +51,27 @@ function onlyDigits(value?: string | null) {
 }
 
 function nfeBaseUrl() {
-    return process.env.NUVEMFISCAL_PROD_URL || "https://api.nuvemfiscal.com.br";
+    return getNuvemLocalFiscalBaseUrl("production");
 }
 
 function sleep(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function parseJsonResponse(responseText: string, status: number, context: string) {
+    const trimmed = String(responseText || "").trim();
+    if (!trimmed) return {};
+    try {
+        return JSON.parse(trimmed);
+    } catch {
+        const snippet = trimmed.replace(/\s+/g, " ").slice(0, 180);
+        if (trimmed.startsWith("<") || /<html/i.test(trimmed)) {
+            throw new Error(
+                `${context} (HTTP ${status}): a Nuvem Local Fiscal devolveu HTML em vez de JSON. A consulta pode ter chegado na SEFAZ. Espere 1 hora antes de clicar de novo em Verificar novas emissoes.`
+            );
+        }
+        throw new Error(`${context} (HTTP ${status}): resposta invalida. ${snippet}`);
+    }
 }
 
 async function requestNfeDistribution(
@@ -70,7 +86,7 @@ async function requestNfeDistribution(
         cache: "no-store",
     });
     const responseText = await response.text();
-    const initialResult = responseText ? JSON.parse(responseText) : {};
+    const initialResult = parseJsonResponse(responseText, response.status, "Consulta de distribuicao NF-e");
 
     if (!response.ok) {
         throw new Error(initialResult?.error?.message || initialResult?.message || responseText || "Falha ao consultar distribuicao NF-e.");
@@ -96,7 +112,7 @@ async function requestNfeDistribution(
             cache: "no-store",
         });
         const pollText = await pollResponse.text();
-        const pollResult = pollText ? JSON.parse(pollText) : {};
+        const pollResult = parseJsonResponse(pollText, pollResponse.status, "Acompanhamento da distribuicao NF-e");
 
         if (!pollResponse.ok) {
             throw new Error(pollResult?.error?.message || pollResult?.message || pollText || "Falha ao acompanhar a consulta de distribuicao NF-e.");
