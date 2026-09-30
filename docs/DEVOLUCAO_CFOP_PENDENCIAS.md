@@ -1,28 +1,26 @@
-# Devolução de NF-e: CFOP por produto
+# Devolucao de NF-e: CFOP por produto
 
-## Estado atual
+## Fluxo atual
 
-Temporariamente, a emissão de devolução da Autoelétrica usa o CFOP padrão:
+Na devolucao completa, o aplicativo monta o CFOP por item com base na NF-e de
+origem: usa `5411`/`6411` para itens identificados com ICMS-ST e `5202`/`6202`
+para os demais, conforme a UF. A Nuvem Local Fiscal continua sendo o ponto
+central de resolucao e validacao do payload.
 
-- `5202` em operação interna;
-- `6202` em operação interestadual.
+A tela de devolucao completa permite informar CFOP manual por item. Para usar
+`5411` manualmente, o payload inclui o opt-in versionado
+`metadados.devolucao.manualCfopOverrideV1` e os dados do item. Sem esse
+marcador, a Nuvem Local Fiscal segue as regras e o fallback existentes para
+clientes atuais.
 
-Foi removido o mapeamento pontual que convertia automaticamente CFOPs de
-combustível/lubrificante (`5655/6655` para `5661/6661`) e outros CFOPs de ST.
+## Ajustes opcionais da devolucao completa
 
-## Por que não aplicar a regra diretamente aqui
+O caminho completo tambem pode enviar `vOutro`, zerar as bases e valores de
+ICMS/ICMS-ST nos grupos correspondentes e incluir informacoes complementares
+em `infCpl`. A configuracao e explicita na emissao completa; a devolucao rapida
+e os payloads sem esses campos mantem seu comportamento anterior.
 
-Uma NF-e de entrada pode conter produtos com CFOPs diferentes. O CFOP da
-devolução precisa ser resolvido por item, considerando produto, operação,
-UF, finalidade e tributação. A Nuvem Local também precisa validar e gerar o
-XML compatível com cada perfil.
-
-O suporte ao grupo XML de combustível permanece disponível, mas ele só deve
-ser usado junto com uma regra de CFOP por produto validada.
-
-## Próxima etapa
-
-Centralizar na Nuvem Local um catálogo/regra de devolução que receba o CFOP da
-origem por item e devolva o CFOP, o grupo de combustível e o tratamento
-tributário aplicáveis. Depois disso, a Autoelétrica deve consumir essa regra
-sem manter mapeamentos fiscais pontuais no próprio aplicativo.
+No preset solicitado para a NF de origem `519243`, os valores `120,15`,
+`14,42`, `172,89` e `19,29` aparecem no texto complementar. O valor `19,29`
+tambem e enviado em outras despesas (`vOutro`). Isso reproduz a instrucao
+recebida sem recalcular ou trocar os numeros indicados.

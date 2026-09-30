@@ -39,8 +39,10 @@ type ClosingData = {
     }[];
     fiscal: {
         autorizadas_nfse: number;
+        autorizadas_nfse_valor?: number;
         canceladas_nfse: number;
         autorizadas_nfce: number;
+        autorizadas_nfce_valor?: number;
         canceladas_nfce: number;
         entradas_qtd: number;
         entradas_valor: number;
@@ -587,11 +589,25 @@ export default function FechamentoMensal() {
                                     <tbody className="divide-y divide-stone-100">
                                         <tr className="hover:bg-stone-50">
                                             <td className="px-5 py-3 text-stone-600 font-medium">NFS-e Emitidas (Serviços)</td>
-                                            <td className="px-5 py-3 text-right font-bold text-stone-900">{data?.fiscal.autorizadas_nfse || 0} doc(s)</td>
+                                            <td className="px-5 py-3 text-right font-bold text-stone-900">
+                                                <div>{data?.fiscal.autorizadas_nfse || 0} doc(s)</div>
+                                                {data?.fiscal.autorizadas_nfse_valor != null && (
+                                                    <div className="mt-0.5 text-[11px] font-medium text-stone-400">
+                                                        R$ {data.fiscal.autorizadas_nfse_valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                    </div>
+                                                )}
+                                            </td>
                                         </tr>
                                         <tr className="hover:bg-stone-50">
                                             <td className="px-5 py-3 text-stone-600 font-medium">NFC-e Emitidas (Peças/Produtos)</td>
-                                            <td className="px-5 py-3 text-right font-bold text-stone-900">{data?.fiscal.autorizadas_nfce || 0} doc(s)</td>
+                                            <td className="px-5 py-3 text-right font-bold text-stone-900">
+                                                <div>{data?.fiscal.autorizadas_nfce || 0} doc(s)</div>
+                                                {data?.fiscal.autorizadas_nfce_valor != null && (
+                                                    <div className="mt-0.5 text-[11px] font-medium text-stone-400">
+                                                        R$ {data.fiscal.autorizadas_nfce_valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                    </div>
+                                                )}
+                                            </td>
                                         </tr>
                                         <tr className="hover:bg-stone-50 text-xs">
                                             <td className="px-5 py-2 text-stone-400 font-medium">Total Canceladas</td>

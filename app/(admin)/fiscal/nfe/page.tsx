@@ -125,6 +125,7 @@ type CloneInvoiceSummary = EntryInvoiceSummary & {
 type ReturnItemState = ParsedNFeItem & {
     selected: boolean;
     qtd_devolver: number;
+    cfop_manual?: boolean;
 };
 
 const STEPS: { id: StepId; label: string }[] = [
@@ -624,6 +625,8 @@ export default function NFeCompletaPage() {
     const [loadingEntryInvoices, setLoadingEntryInvoices] = useState(false);
     const [selectedEntryInvoice, setSelectedEntryInvoice] = useState<EntryInvoiceSummary | null>(null);
     const [returnItems, setReturnItems] = useState<ReturnItemState[]>([]);
+    const [returnZeroIcms, setReturnZeroIcms] = useState(false);
+    const [returnOtherExpenses, setReturnOtherExpenses] = useState(0);
     const [loadingEntryItems, setLoadingEntryItems] = useState(false);
     const [items, setItems] = useState<DraftItem[]>([makeItem()]);
     const [advancedExtraItems, setAdvancedExtraItems] = useState<DraftItem[]>([]);
@@ -692,7 +695,10 @@ export default function NFeCompletaPage() {
     const selectedReturnItems = returnItems.filter((item) => item.selected && item.qtd_devolver > 0);
     const usesAdvancedOriginItems = operation === "advanced" && returnItems.length > 0;
     const returnTotal = selectedReturnItems.reduce((sum, item) => sum + item.qtd_devolver * item.valor_unitario, 0);
-    const displayTotal = usesOriginItems ? returnTotal : usesAdvancedOriginItems ? totalItems + advancedExtraTotal : totalItems;
+    const returnDisplayTotal = Number((returnTotal + Number(returnOtherExpenses || 0)).toFixed(2));
+    const displayTotal = operation === "return"
+        ? returnDisplayTotal
+        : usesOriginItems ? returnTotal : usesAdvancedOriginItems ? totalItems + advancedExtraTotal : totalItems;
     const isReferenceSelectionPending = requiresReference && !selectedEntryInvoice;
     const shouldShowOriginSelector = (requiresReference && !isReturnPurposeUnavailable) || allowsAdvancedOriginReference;
     const participantCnpjBase = cnpjBase(participant.cpf_cnpj);
@@ -1312,6 +1318,8 @@ export default function NFeCompletaPage() {
         setSelectedEntryInvoice(invoice);
         setReferencedKey(invoice.chave_acesso || "");
         setOriginSelectorExpanded(false);
+        setReturnZeroIcms(false);
+        setReturnOtherExpenses(0);
 
         setLoadingEntryItems(true);
 
@@ -1357,6 +1365,7 @@ export default function NFeCompletaPage() {
                     selected: true,
                     qtd_devolver: item.quantidade,
                     cfop: initialCfop,
+                    cfop_manual: false,
                 };
             }));
         } catch (error: any) {
@@ -1377,6 +1386,8 @@ export default function NFeCompletaPage() {
         setLoadingOriginByKey(true);
         setOriginLookupMessage(null);
         setLoadingEntryItems(true);
+        setReturnZeroIcms(false);
+        setReturnOtherExpenses(0);
         try {
             const result = await resolveEntryInvoiceByAccessKeyWithItemsAction(cleanKey);
             if (!result.success) {
@@ -1399,6 +1410,7 @@ export default function NFeCompletaPage() {
                     selected: true,
                     qtd_devolver: item.quantidade,
                     cfop: initialCfop,
+                    cfop_manual: false,
                 };
             }));
 
@@ -1440,8 +1452,26 @@ export default function NFeCompletaPage() {
 
     const updateReturnCfop = (index: number, cfop: string) => {
         setReturnItems((current) => current.map((item, itemIndex) => (
-            itemIndex === index ? { ...item, cfop } : item
+            itemIndex === index ? { ...item, cfop, cfop_manual: true } : item
         )));
+    };
+
+    const applySupplierReturnInstructions = () => {
+        const sourceInvoiceNumber = String(selectedEntryInvoice?.numero || "519243").trim();
+        setReturnItems((current) => current.map((item) => ({
+            ...item,
+            cfop: "5411",
+            cfop_manual: true,
+        })));
+        setReturnZeroIcms(true);
+        setReturnOtherExpenses(19.29);
+        setInfCpl([
+            "BASE ICMS 120,15",
+            "VALOR ICMS 14,42",
+            "BASE ICMS ST 172,89",
+            "VALOR ST 19,29",
+            `DEVOLUÇÃO SOBRE NF ${sourceInvoiceNumber}`,
+        ].join(" | "));
     };
 
     const updateAdvancedExtraItem = (id: string, patch: Partial<DraftItem>) => {
@@ -1836,7 +1866,11 @@ export default function NFeCompletaPage() {
             `Emitir NF-e de Devolução em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?\n\n` +
             `Fornecedor: ${selectedEntryInvoice.emitente_nome || "-"}\n` +
             `Itens: ${selectedReturnItems.length}\n` +
-            `Total: ${money(returnTotal)}`;
+            `Produtos: ${money(returnTotal)}\n` +
+            `Outras despesas / IPI: ${money(returnOtherExpenses)}\n` +
+            `Total da NF-e: ${money(returnDisplayTotal)}\n` +
+            (returnZeroIcms ? "Bases e valores de ICMS e ICMS-ST nos totais: zerados\n" : "") +
+            `CFOPs: ${selectedReturnItems.map((item) => item.cfop || "automático").join(", ")}`;
 
         if (!confirm(confirmMessage)) return;
 
@@ -1851,11 +1885,16 @@ export default function NFeCompletaPage() {
                     descricao: item.descricao,
                     ncm: item.ncm,
                     unidade: item.unidade,
+                    cfop: item.cfop,
+                    cfop_manual: item.cfop_manual === true,
                     quantidade: item.qtd_devolver,
                     valor_unitario: item.valor_unitario,
                     valor_total: Number((item.qtd_devolver * item.valor_unitario).toFixed(2)),
                 })),
                 valor_total: Number(returnTotal.toFixed(2)),
+                zerar_icms: returnZeroIcms,
+                valor_outras_despesas: Number(returnOtherExpenses.toFixed(2)),
+                observacao: infCpl,
                 environment,
             });
 
@@ -2384,6 +2423,10 @@ export default function NFeCompletaPage() {
     const participantLabelClass = "ml-1 text-[10px] font-black uppercase text-stone-600";
     const itemFieldClass = "w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-900 outline-none transition placeholder:text-stone-500 focus:border-[#1A1A1A] focus:ring-2 focus:ring-[#1A1A1A]/15";
     const itemLabelClass = "ml-1 text-[10px] font-black uppercase text-stone-600";
+    const returnCfopForPreview = (item: ReturnItemState) => item.cfop_manual ? item.cfop || "" : suggestedCfop;
+    const returnCfopSummary = Array.from(new Set(
+        selectedReturnItems.map(returnCfopForPreview).filter(Boolean),
+    ));
     const previewItems: DraftItem[] = usesOriginItems
         ? selectedReturnItems.map((item, index) => ({
             id: `${item.codigo}-${index}`,
@@ -2394,7 +2437,7 @@ export default function NFeCompletaPage() {
             quantidade: item.qtd_devolver,
             valor_unitario: item.valor_unitario,
             origem: "0",
-            cfop: suggestedCfop,
+            cfop: returnCfopForPreview(item),
             csosn: "espelho",
         }))
         : usesAdvancedOriginItems
@@ -3051,9 +3094,55 @@ export default function NFeCompletaPage() {
                                         loading={loadingEntryItems}
                                         toggleItem={toggleReturnItem}
                                         updateQty={updateReturnQty}
-                                        updateCfop={usesAdvancedOriginItems ? updateReturnCfop : undefined}
+                                        updateCfop={operation === "return" || usesAdvancedOriginItems ? updateReturnCfop : undefined}
                                         mode={(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? "retorno" : "devolucao"}
                                     />
+                                    {operation === "return" && (
+                                        <div className="mt-3 space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                                <div>
+                                                    <p className="text-sm font-black text-[#1A1A1A]">Ajustes da devolução completa</p>
+                                                    <p className="mt-1 text-xs font-medium text-stone-600">
+                                                        Estes valores são opcionais e só afetam esta emissão completa.
+                                                    </p>
+                                                </div>
+                                                {digits(selectedEntryInvoice?.numero || "") === "519243" && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={applySupplierReturnInstructions}
+                                                        className="rounded-xl bg-[#1A1A1A] px-4 py-2 text-xs font-black text-[#FACC15] transition hover:bg-black"
+                                                    >
+                                                        Aplicar instrução do fornecedor
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                                <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-white p-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={returnZeroIcms}
+                                                        onChange={(event) => setReturnZeroIcms(event.target.checked)}
+                                                        className="mt-1 h-4 w-4 accent-[#1A1A1A]"
+                                                    />
+                                                    <span>
+                                                        <span className="block text-xs font-black text-[#1A1A1A]">Zerar bases e valores de ICMS e ICMS-ST</span>
+                                                        <span className="mt-1 block text-[11px] font-medium text-stone-500">Os valores informativos do rodapé permanecem como texto complementar.</span>
+                                                    </span>
+                                                </label>
+                                                <div className="rounded-xl border border-amber-200 bg-white p-3">
+                                                    <label className={labelClass}>Outras despesas / IPI (vOutro)</label>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        value={returnOtherExpenses}
+                                                        onChange={(event) => setReturnOtherExpenses(Number(event.target.value || 0))}
+                                                        className={fieldClass}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                     {usesAdvancedOriginItems && (
                                         <div className="mt-2 space-y-3">
                                             <div className="flex items-center justify-between">
@@ -3586,6 +3675,40 @@ export default function NFeCompletaPage() {
                                 />
                             )}
 
+                            {operation === "return" && (
+                                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                                    <p className="font-black text-blue-900">Conferência dos ajustes da devolução</p>
+                                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                        <div className="rounded-xl bg-white p-3">
+                                            <p className="text-[10px] font-black uppercase text-stone-400">CFOP nos itens</p>
+                                            <p className="mt-1 text-sm font-black text-[#1A1A1A]">{returnCfopSummary.join(", ") || "Pendente"}</p>
+                                        </div>
+                                        {returnZeroIcms ? (
+                                            <>
+                                                <div className="rounded-xl bg-white p-3"><p className="text-[10px] font-black uppercase text-stone-400">Base ICMS</p><p className="mt-1 text-sm font-black text-[#1A1A1A]">R$ 0,00</p></div>
+                                                <div className="rounded-xl bg-white p-3"><p className="text-[10px] font-black uppercase text-stone-400">Valor ICMS</p><p className="mt-1 text-sm font-black text-[#1A1A1A]">R$ 0,00</p></div>
+                                                <div className="rounded-xl bg-white p-3"><p className="text-[10px] font-black uppercase text-stone-400">Base ICMS ST</p><p className="mt-1 text-sm font-black text-[#1A1A1A]">R$ 0,00</p></div>
+                                                <div className="rounded-xl bg-white p-3"><p className="text-[10px] font-black uppercase text-stone-400">Valor ICMS ST</p><p className="mt-1 text-sm font-black text-[#1A1A1A]">R$ 0,00</p></div>
+                                            </>
+                                        ) : (
+                                            <div className="rounded-xl bg-white p-3">
+                                                <p className="text-[10px] font-black uppercase text-stone-400">ICMS e ICMS ST</p>
+                                                <p className="mt-1 text-sm font-black text-[#1A1A1A]">Conforme NF-e de origem</p>
+                                            </div>
+                                        )}
+                                        <div className="rounded-xl bg-white p-3">
+                                            <p className="text-[10px] font-black uppercase text-stone-400">Outras despesas (vOutro)</p>
+                                            <p className="mt-1 text-sm font-black text-[#1A1A1A]">{money(returnOtherExpenses)}</p>
+                                        </div>
+                                    </div>
+                                    {returnZeroIcms && (
+                                        <p className="mt-3 text-xs font-medium text-blue-800">
+                                            Os valores fiscais acima ficam zerados; os valores informados pelo fornecedor aparecem em Informações complementares.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
                             {operation === "shipment" && !isRetornoConsertoMvp && !isRetornoGarantiaMvp && (
                                 <ShipmentTechnicalPreview
                                     purpose={purpose}
@@ -3711,7 +3834,11 @@ export default function NFeCompletaPage() {
                             <p>UF emitente: <strong>{companyUf || "N\u00e3o carregada"}</strong></p>
                             <p>UF participante: <strong>{participantUf || "Pendente"}</strong></p>
                             <p>{"Classifica\u00e7\u00e3o"}: <strong>{destinationLabel}</strong></p>
-                            <p>CFOP sugerido: <strong>{suggestedCfop || "Modo avan\u00e7ado"}</strong></p>
+                            {operation === "return" ? (
+                                <p>CFOP nos itens: <strong>{returnCfopSummary.join(", ") || suggestedCfop || "Pendente"}</strong></p>
+                            ) : (
+                                <p>CFOP sugerido: <strong>{suggestedCfop || "Modo avan\u00e7ado"}</strong></p>
+                            )}
                         </div>
                     </div>
 

@@ -5979,11 +5979,16 @@ type DevolucaoPayload = {
         descricao: string;
         ncm: string;
         unidade: string;
+        cfop?: string;
+        cfop_manual?: boolean;
         quantidade: number;
         valor_unitario: number;
         valor_total: number;
     }[];
     valor_total: number;
+    zerar_icms?: boolean;
+    valor_outras_despesas?: number;
+    observacao?: string;
     environment?: "production" | "homologation";
 };
 
@@ -5992,6 +5997,16 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
     let invoiceId: string | null = null;
 
     try {
+        const applyFullReturnInstructions = payload.modo === "completa";
+        const manualReturnCfops = new Set(["5202", "6202", "5411"]);
+        if (applyFullReturnInstructions && payload.itens.some((item) => (
+            item.cfop_manual === true && !manualReturnCfops.has(String(item.cfop || "").replace(/\D/g, ""))
+        ))) {
+            return { success: false, error: "CFOP manual inválido. Para esta devolução, informe 5202, 6202 ou 5411." };
+        }
+        if (applyFullReturnInstructions && Number(payload.valor_outras_despesas || 0) < 0) {
+            return { success: false, error: "O valor de outras despesas nao pode ser negativo." };
+        }
         await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || "production";
 
@@ -6216,6 +6231,13 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             cfop: cfopDevolucao,
             sameState: mesmoEstado,
         };
+        const zeroIcmsForThisReturn = applyFullReturnInstructions && payload.zerar_icms === true;
+        const returnOtherExpenses = applyFullReturnInstructions
+            ? toMoneyNumber(payload.valor_outras_despesas || 0)
+            : 0;
+        const returnAdjustmentPayload = applyFullReturnInstructions
+            ? payload
+            : { ...payload, valor_outras_despesas: 0 };
 
         // 5. Próximo número de NF-e de devolução (série 1) — filtrado por ambiente
         const nfeSerie = getCompanyNFeSerie(company);
@@ -6243,8 +6265,8 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 : originalTax?.vBC && originalTax.vBC > 0
                     ? originalTax.vICMS / originalTax.vBC
                     : 0;
-            const vBC_item = isQuickReturn ? quickBaseItem : originalBaseItem;
-            const vICMS_item = isQuickReturn
+            let vBC_item = isQuickReturn ? quickBaseItem : originalBaseItem;
+            let vICMS_item = isQuickReturn
                 ? toMoneyNumber(quickBaseItem * quickRate)
                 : originalIcmsItem;
             const stTax = {
@@ -6259,6 +6281,12 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 vICMSSubstituto: toMoneyNumber((originalTax?.vICMSSubstituto || 0) * quantityFactor),
                 vICMSSTRet: toMoneyNumber((originalTax?.vICMSSTRet || 0) * quantityFactor),
             };
+            if (zeroIcmsForThisReturn) {
+                vBC_item = 0;
+                vICMS_item = 0;
+                stTax.vBCST = 0;
+                stTax.vICMSST = 0;
+            }
             const hasSt = stTax.vBCST > 0 || stTax.vICMSST > 0;
             const icmsImposto = {
                 ICMSSN900: {
@@ -6280,7 +6308,10 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         : {}),
                 },
             };
-            const cfopItem = resolveDevolucaoCfop(originalTax);
+            const manualCfop = String(item.cfop || "").replace(/\D/g, "");
+            const cfopItem = applyFullReturnInstructions && item.cfop_manual === true
+                ? manualCfop
+                : resolveDevolucaoCfop(originalTax);
             const combustivel = originalTax?.combustivel;
 
             return {
@@ -6296,7 +6327,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         qCom: item.quantidade,
                         vUnCom: toMoneyNumber(item.valor_unitario),
                         vProd: itemVProd,
-                        ...buildNFeItemTotalAdjustments(payload as any, idx, toMoneyNumber(payload.valor_total)),
+                        ...buildNFeItemTotalAdjustments(returnAdjustmentPayload as any, idx, toMoneyNumber(payload.valor_total)),
                         cEANTrib: "SEM GTIN",
                         uTrib: item.unidade,
                         qTrib: item.quantidade,
@@ -6321,12 +6352,17 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         const returnCfopMetadata = {
             devolucao: {
                 finalidadeCompra: "revenda",
+                manualCfopOverrideV1: applyFullReturnInstructions && payload.itens.some((item) => item.cfop_manual === true),
                 itens: payload.itens.map((item, idx) => {
                     const originalTax = itemTaxProfileMap.get(item.codigo || "");
                     return {
                         nItem: idx + 1,
                         cProd: item.codigo || String(idx + 1),
                         cfopOrigem: originalTax?.cfop || undefined,
+                        cfopManual: applyFullReturnInstructions && item.cfop_manual === true,
+                        cfopDestino: applyFullReturnInstructions && item.cfop_manual === true
+                            ? String(item.cfop || "").replace(/\D/g, "")
+                            : undefined,
                         st: originalTax?.st ?? false,
                         cest: originalTax?.cest,
                         combustivel: Boolean(originalTax?.combustivel),
@@ -6345,8 +6381,8 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         // Na operação original com cobrança de ICMS-ST, o imposto integra o
         // valor total da NF-e. A devolução deve reproduzir essa composição
         // proporcionalmente, sem tratar o ST como IPI ou despesa acessória.
-        const totalNotaDevolucao = toMoneyNumber(totalProdutosDevolucao + totalVICMSST);
-        const stInfo = detItemsComputed
+        const totalNotaDevolucao = toMoneyNumber(totalProdutosDevolucao + totalVICMSST + returnOtherExpenses);
+        const stInfo = zeroIcmsForThisReturn ? "" : detItemsComputed
             .map((item, index) => {
                 const st = item.stTax;
                 if (st.vBCST > 0 || st.vICMSST > 0) {
@@ -6360,6 +6396,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         const infCplDevolucao = [
             `DEVOLUCAO REFERENTE A NF-e ${entryInvoice.numero || ""}, CHAVE ${chaveAcesso}.`,
             stInfo,
+            applyFullReturnInstructions ? String(payload.observacao || "").trim() : "",
         ].filter(Boolean).join(" ");
 
         // 7. Montar payload NF-e
@@ -6425,7 +6462,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         vProd: totalProdutosDevolucao,
                         vFrete: 0, vSeg: 0, vDesc: 0, vII: 0,
                         vIPI: 0, vIPIDevol: 0, vPIS: 0, vCOFINS: 0,
-                        vOutro: 0, vNF: totalNotaDevolucao,
+                        vOutro: returnOtherExpenses, vNF: totalNotaDevolucao,
                     },
                     ...buildRtcHomologationTotal(env, rtcNFeDevolucaoContext, toMoneyNumber(payload.valor_total)),
                 },
@@ -6485,11 +6522,28 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         }
 
         if (!response.ok) {
+            const issues = Array.isArray(result.issues)
+                ? result.issues
+                : Array.isArray(result.error?.issues)
+                    ? result.error.issues
+                    : [];
+            const issueDetails = issues
+                .map((issue: any) => {
+                    const path = typeof issue?.path === "string" ? issue.path : "";
+                    const message = typeof issue?.message === "string" ? issue.message : "";
+                    return [path, message].filter(Boolean).join(": ");
+                })
+                .filter(Boolean)
+                .slice(0, 5);
+            const emissionError = [
+                result.error?.message || "Erro na emissão",
+                ...(issueDetails.length ? [`Detalhes: ${issueDetails.join(" | ")}`] : []),
+            ].join(" ");
             await supabase
                 .from("fiscal_invoices")
-                .update({ status: "error", error_message: result.error?.message || JSON.stringify(result) })
+                .update({ status: "error", error_message: emissionError })
                 .eq("id", invoice.id);
-            return { success: false, error: result.error?.message || "Erro na emissão" };
+            return { success: false, error: emissionError };
         }
 
         const realStatus = result.status;
