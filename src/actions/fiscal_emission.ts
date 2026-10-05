@@ -9,6 +9,7 @@ import { cookies } from "next/headers";
 import { BillingBlockedError, assertOrganizationCanCreateNewOperations } from "@/src/lib/billing-guard";
 
 import { getNuvemFiscalToken, getNuvemLocalFiscalBaseUrl } from "@/src/lib/nuvemfiscal";
+import { buildNfseIss, type NfseProviderConfig } from "@/src/lib/nfse-iss";
 
 
 
@@ -304,6 +305,34 @@ function toMoneyNumber(value: unknown, fallback = 0) {
 
 function toFiscalNumberText(value: unknown, decimals = 2, fallback = 0) {
     return toMoneyNumber(value, fallback).toFixed(decimals);
+}
+
+function trimFiscalPayloadStrings(value: unknown) {
+    if (Array.isArray(value)) {
+        for (let index = 0; index < value.length; index += 1) {
+            const item = value[index];
+            if (typeof item === "string") value[index] = item.trim();
+            else trimFiscalPayloadStrings(item);
+        }
+        return;
+    }
+
+    if (!value || typeof value !== "object") return;
+
+    const record = value as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+        const item = record[key];
+        if (typeof item === "string") {
+            record[key] = key === "NCM" ? item.replace(/\s+/g, "") : item.trim();
+        } else {
+            trimFiscalPayloadStrings(item);
+        }
+    }
+}
+
+function fiscalPayloadForSend<T>(payload: T): T {
+    trimFiscalPayloadStrings(payload);
+    return payload;
 }
 
 function sanitizeFiscalText(value: unknown, maxLength?: number) {
@@ -1640,7 +1669,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                 environment: env,
 
-                payload_json: nfePayload
+                payload_json: fiscalPayloadForSend(nfePayload)
 
             })
 
@@ -2016,7 +2045,7 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                 tipo_documento: "NFe",
                 status: "processing",
                 environment: env,
-                payload_json: nfePayload,
+                payload_json: fiscalPayloadForSend(nfePayload),
             })
             .select()
             .single();
@@ -2306,7 +2335,7 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
                 tipo_documento: "NFe",
                 status: "processing",
                 environment: env,
-                payload_json: nfePayload,
+                payload_json: fiscalPayloadForSend(nfePayload),
             })
             .select()
             .single();
@@ -2575,7 +2604,7 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
                 tipo_documento: "NFe",
                 status: "processing",
                 environment: env,
-                payload_json: nfePayload,
+                payload_json: fiscalPayloadForSend(nfePayload),
             })
             .select()
             .single();
@@ -2847,7 +2876,7 @@ export async function emitirNFeTransferencia(payload: EmissionPayload & { observ
                 tipo_documento: "NFe",
                 status: "processing",
                 environment: env,
-                payload_json: nfePayload,
+                payload_json: fiscalPayloadForSend(nfePayload),
             })
             .select()
             .single();
@@ -3111,7 +3140,7 @@ export async function emitirNFeBonificacaoDoacao(payload: EmissionPayload & { ob
                 tipo_documento: "NFe",
                 status: "processing",
                 environment: env,
-                payload_json: nfePayload,
+                payload_json: fiscalPayloadForSend(nfePayload),
             })
             .select()
             .single();
@@ -3347,7 +3376,7 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
                 tipo_documento: "NFe",
                 status: "processing",
                 environment: env,
-                payload_json: nfePayload,
+                payload_json: fiscalPayloadForSend(nfePayload),
             })
             .select()
             .single();
@@ -3646,7 +3675,7 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
                 tipo_documento: "NFe",
                 status: "processing",
                 environment: env,
-                payload_json: nfePayload,
+                payload_json: fiscalPayloadForSend(nfePayload),
             })
             .select()
             .single();
@@ -3922,7 +3951,7 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
                 tipo_documento: "NFe",
                 status: "processing",
                 environment: env,
-                payload_json: nfePayload,
+                payload_json: fiscalPayloadForSend(nfePayload),
             })
             .select()
             .single();
@@ -4310,30 +4339,36 @@ export async function emitirNFSe(payload: EmissionPayload) {
         const nfseFlow = isToledo ? "toledo_nuvem" : "nuvemfiscal_padrao";
         console.log(`[emitirNFSe] Fluxo selecionado: ${nfseFlow} (IBGE ${ibgeMunicipio})`);
         console.log("[emitirNFSe] Prestador IM enviada:", inscricaoMunicipal || "(vazia)");
-        // NFS-e Nacional para MEI nao usa login/senha da prefeitura.
-        let isNfseNacional = false;
-        try {
-            const configNacionalRes = await fetch(
-                `${baseUrl}/empresas/${String(cnpj).replace(/\D/g, "")}/nfse?ambiente=${env === "production" ? "producao" : "homologacao"}`,
-                { headers: { "Authorization": `Bearer ${token}` } }
-            );
-            if (configNacionalRes.ok) {
-                const configNacional = await configNacionalRes.json();
-                isNfseNacional = configNacional?.provedor === "nfse-nacional";
-            }
-        } catch (configError) {
-            console.warn("[emitirNFSe] Nao foi possivel consultar o provedor NFS-e:", configError);
+        // O provedor efetivo é definido por empresa/ambiente, não só pelo município.
+        const configNacionalRes = await fetch(
+            `${baseUrl}/empresas/${String(cnpj).replace(/\D/g, "")}/nfse?ambiente=${env === "production" ? "producao" : "homologacao"}`,
+            { headers: { "Authorization": `Bearer ${token}` }, cache: "no-store" }
+        );
+        if (!configNacionalRes.ok) {
+            throw new Error("Não foi possível confirmar a configuração NFS-e na Nuvem Local Fiscal. Nenhuma nota foi enviada; tente novamente após conferir o cadastro.");
         }
+        const configNacional = await configNacionalRes.json() as NfseProviderConfig;
+        if (!configNacional.provedor) {
+            throw new Error("Provedor NFS-e não configurado na Nuvem Local Fiscal. Confira o cadastro antes de emitir.");
+        }
+        const isNfseNacional = configNacional.provedor === "nfse-nacional";
+        const issPayload = buildNfseIss(configNacional, {
+            tribISSQN: 1,
+            tpRetISSQN: 1,
+            pAliq: servicoPrincipal.aliquota_iss || (isToledo ? 3.0 : 2.01),
+            vISSQN: isToledo ? undefined : 0,
+            cLocIncid: ibgeMunicipio,
+        }, servicoPrincipal.aliquota_iss);
 
         if (!isToledo && !isNfseNacional && !company.nfse_login) {
             throw new Error("Configurações de NFS-e não encontradas (Login/Senha da Prefeitura).");
         }
 
-        if (isToledo && env === 'production' && !inscricaoMunicipal) {
+        if (isToledo && !isNfseNacional && env === 'production' && !inscricaoMunicipal) {
             throw new Error("Toledo/Produção: inscrição municipal do prestador não encontrada no cadastro da empresa.");
         }
 
-        if (isToledo && env === 'production' && !String(company.nfse_password || "").trim()) {
+        if (isToledo && !isNfseNacional && env === 'production' && !String(company.nfse_password || "").trim()) {
             console.log("[emitirNFSe] Toledo/Produção sem senha NFS-e: continuando com login/IM apenas.");
         }
 
@@ -4641,13 +4676,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
                     trib: {
 
-                        tribMun: {
-                            tribISSQN: 1, // 1 - Tributável
-                            tpRetISSQN: 1, // 1 - Não Retido
-                            pAliq: servicoPrincipal.aliquota_iss || (isToledo ? 3.0 : 2.01),
-                            vISSQN: isToledo ? undefined : 0, // Em Toledo deixamos a Nuvem calcular automaticamente
-                            cLocIncid: ibgeMunicipio // ONDE o imposto é devido (Guaíra)
-                        }
+                        tribMun: issPayload
 
                     }
 
@@ -4679,7 +4708,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
 
                 environment: env,
 
-                payload_json: dpsPayload
+                payload_json: fiscalPayloadForSend(dpsPayload)
 
             })
 
@@ -4808,7 +4837,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                             xml_url: consulted.xml_url || null,
                             pdf_url: consulted.pdf_url || null,
                             error_message: null,
-                            payload_json: dpsPayload
+                            payload_json: fiscalPayloadForSend(dpsPayload)
                         };
                         if (xmlContent) authorizedUpdate.xml_content = xmlContent;
                         await supabase.from("fiscal_invoices").update(authorizedUpdate).eq("id", invoice.id);
@@ -4829,7 +4858,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                         numero: String(consulted.numero || result.numero || "") || null,
                         serie: String(consulted.serie || result.serie || "") || null,
                         error_message: "DPS ja recebida pela SEFIN Nacional; aguardando a consulta da autorizacao.",
-                        payload_json: dpsPayload
+                        payload_json: fiscalPayloadForSend(dpsPayload)
                     }).eq("id", invoice.id);
 
                     return {
@@ -4847,7 +4876,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                         numero: String(result.numero || "") || null,
                         serie: String(result.serie || "") || null,
                         error_message: `DPS ja recebida pela SEFIN Nacional; falha ao consultar automaticamente: ${recoveryError?.message || "erro desconhecido"}.`,
-                        payload_json: dpsPayload
+                        payload_json: fiscalPayloadForSend(dpsPayload)
                     }).eq("id", invoice.id);
 
                     return {
@@ -5024,7 +5053,7 @@ export async function emitirNFSe(payload: EmissionPayload) {
                 numero: result.numero,
                 serie: result.serie,
                 // Atualiza o payload no banco para refletir o que funcionou (sem endereço se foi retry)
-                payload_json: dpsPayload
+                payload_json: fiscalPayloadForSend(dpsPayload)
             })
             .eq("id", invoice.id);
 
@@ -5244,7 +5273,7 @@ export async function consultarNFSe(invoiceId: string) {
                                 "Authorization": `Bearer ${token}`,
                                 "Content-Type": "application/json"
                             },
-                            body: JSON.stringify(originalPayload)
+                            body: JSON.stringify(fiscalPayloadForSend(originalPayload))
                         });
 
                         const retryResult = await retryResponse.json();
@@ -6488,7 +6517,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 tipo_documento: "NFe",
                 status: "processing",
                 environment: env,
-                payload_json: { ...nfePayload, _entry_invoice_id: payload.entry_invoice_id },
+                payload_json: { ...fiscalPayloadForSend(nfePayload), _entry_invoice_id: payload.entry_invoice_id },
             })
             .select()
             .single();

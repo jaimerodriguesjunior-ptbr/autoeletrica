@@ -70,6 +70,20 @@ Ao criar código novo:
 - Nunca registrar senhas, tokens ou certificados em commits, documentação,
   logs ou mensagens de erro.
 
+## ISS no fluxo Nacional (diagnóstico de 02/10/2026)
+
+- `vISSQN` é um resultado da NFS-e autorizada; o adaptador Nacional não
+  transmite o `vISSQN` do JSON municipal legado na DPS.
+- Para ME/EPP com `opSimpNac=3`, `regApTribSN=1` e sem retenção, a regra
+  E0625/E0631 proíbe `pAliq`. Para MEI, aplica-se E0600.
+- Ausência de base, alíquota aplicada e ISS no XML não comprova, isoladamente,
+  defeito de emissão para empresas que apuram ISS pelo Simples.
+- Confirmar o enquadramento com o contador antes de mudar retenção, regime de
+  apuração ou tentar destacar imposto para satisfazer o portal municipal.
+- Os clientes devem consultar o provedor efetivo por empresa/ambiente e
+  respeitar a tributação e retenção configuradas na Nuvem Local Fiscal.
+- Referência: [Anexo I de Produção, regras DPS/NFS-e](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual/anexo_i-sefin_adn-dps_nfse-snnfse-v1-01-20260209.xlsx).
+
 ## Documentos relacionados
 
 - `CONTEXTO_NFSE_GUAIRA.md` — histórico técnico específico de Guaíra/IPM.
