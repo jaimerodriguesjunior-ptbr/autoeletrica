@@ -677,7 +677,7 @@ export default function EmitirNotaPage() {
         const key = `${profile.organization_id}:${environment}:${requestedOS}:${requestedDocument}`;
         if (importedShortcutRef.current === key) return;
         importedShortcutRef.current = key;
-        if (!/^\d+$/.test(requestedOS) || !['NFCe', 'NFe', 'NFSe'].includes(requestedDocument || '')) {
+        if (!/^\d+$/.test(requestedOS) || (requestedDocument !== null && !['NFCe', 'NFe', 'NFSe'].includes(requestedDocument))) {
             setImportError("Atalho de emissão inválido. Selecione uma OS na lista abaixo.");
             return;
         }
@@ -686,7 +686,7 @@ export default function EmitirNotaPage() {
             setImportError(`A OS #${requestedOS} não está disponível para emissão. Confira se está pronta ou entregue e se já possui notas vinculadas.`);
             return;
         }
-        void handleSelectOS(target, requestedDocument as 'NFCe' | 'NFe' | 'NFSe');
+        void handleSelectOS(target, (requestedDocument || undefined) as 'NFCe' | 'NFe' | 'NFSe' | undefined);
     }, [requestedOS, requestedDocument, profile?.organization_id, environment, loadingOS, pendingLoadError, importingOS, companyLoaded, pendingOS]);
 
 
@@ -1082,7 +1082,7 @@ export default function EmitirNotaPage() {
             {importNotice && !importError && <div role="status" className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><p>{importNotice}</p>{contextOSId && <Link href={`/fiscal?os=${encodeURIComponent(contextOSId)}`} className="mt-2 inline-block font-bold underline">Acompanhar notas vinculadas</Link>}</div>}
             {step === 2 && selectedOS && requestedOS === String(selectedOS.id) && (
                 <p className="mb-4 rounded-xl border border-stone-200 bg-white p-3 text-sm text-stone-600">
-                    Revisão da OS <strong>#{selectedOS.id}</strong> · {requestedDocument === 'NFSe' ? 'Serviços — NFS-e' : produtoDocumento === 'NFe' ? 'Produtos — NF-e' : 'Produtos — NFC-e'}
+                    Revisão da OS <strong>#{selectedOS.id}</strong> · {requestedDocument ? requestedDocument === 'NFSe' ? 'Serviços — NFS-e' : produtoDocumento === 'NFe' ? 'Produtos — NF-e' : 'Produtos — NFC-e' : 'Produtos e serviços disponíveis para emissão'}
                 </p>
             )}
 

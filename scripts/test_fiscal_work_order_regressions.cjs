@@ -168,6 +168,44 @@ test('cartao apresenta todas as notas, sem ocultar processamento ou erro por uma
     assert.doesNotMatch(html, /documento=NFCe/);
 });
 
+test('OS com produtos e servicos oferece um unico Emitir nota, sem tipo no link', () => {
+    const React = require('react');
+    const { renderToStaticMarkup } = require('react-dom/server');
+    let index = 0;
+    const states = [[], false, false, 0];
+    const { WorkOrderFiscalCard } = load(read('components/os/WorkOrderFiscalCard.tsx'), {
+        react: { ...React, useState: () => [states[index++], () => {}], useCallback: (fn) => fn, useEffect: () => {} },
+        'next/link': ({ children, ...props }) => React.createElement('a', props, children),
+        '@/src/lib/supabase': {}, '@/src/lib/work-order-fiscal': fiscal,
+    });
+    const html = renderToStaticMarkup(WorkOrderFiscalCard({ organizationId: 'org', workOrderId: 1343, status: 'entregue', items: [item(1343), item(1343, 'servico')] }));
+    assert.equal((html.match(/Emitir nota/g) || []).length, 1);
+    assert.match(html, /\/fiscal\/emitir\?env=production&amp;os=1343/);
+    assert.doesNotMatch(html, /documento=/);
+});
+
+test('atalho apenas com OS importa todos os itens disponiveis', () => {
+    const file = 'app/(admin)/fiscal/emitir/page.tsx', source = read(file);
+    const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let effect;
+    function visit(node) {
+        if (ts.isCallExpression(node) && node.expression.getText(ast) === 'useEffect' && node.arguments[0]?.getText(ast).includes('importedShortcutRef.current')) effect = node.arguments[0].getText(ast);
+        ts.forEachChild(node, visit);
+    }
+    visit(ast);
+    const calls = [], errors = [], order = { id: 1343 };
+    const scope = {
+        requestedOS: '1343', requestedDocument: null, profile: { organization_id: 'org' },
+        loadingOS: false, pendingLoadError: null, importingOS: false, companyLoaded: true,
+        environment: 'production', pendingOS: [order], importedShortcutRef: { current: null },
+        setContextOSId: () => {}, setImportError: (error) => errors.push(error),
+        handleSelectOS: (...args) => calls.push(args),
+    };
+    expression(effect, scope)();
+    assert.deepEqual(errors, []);
+    assert.deepEqual(calls, [[order, undefined]]);
+});
+
 function filterEffect() {
     const file = 'app/(admin)/fiscal/page.tsx', source = read(file);
     const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

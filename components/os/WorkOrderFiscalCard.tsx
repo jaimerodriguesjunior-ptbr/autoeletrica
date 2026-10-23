@@ -13,7 +13,6 @@ type Props = {
     items: WorkOrderFiscalItem[];
 };
 
-const currency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const documentLabel = (type: string) => type === "NFSe" ? "NFS-e" : type === "NFe" ? "NF-e" : "NFC-e";
 
 export function WorkOrderFiscalCard({ organizationId, workOrderId, status, items }: Props) {
@@ -59,6 +58,7 @@ export function WorkOrderFiscalCard({ organizationId, workOrderId, status, items
 
     const categories = getWorkOrderFiscalCategories(items, invoices);
     const canIssue = ["pronto", "entregue"].includes(status);
+    const hasAvailableItems = categories.some((category) => category.hasItems && category.amount > 0 && !category.authorized && !category.processing);
     const fiscalLink = `/fiscal?os=${encodeURIComponent(workOrderId)}`;
     const actionClass = "flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500 focus-visible:ring-offset-2";
 
@@ -80,15 +80,11 @@ export function WorkOrderFiscalCard({ organizationId, workOrderId, status, items
             ) : (
                 <div className="space-y-3">
                     {categories.length === 0 && <p className="text-xs text-stone-500">Adicione produtos ou serviços para preparar uma nota.</p>}
-                    {categories.map((category) => {
-                        const latest = category.type === "NFCe" ? category.invoices.find(isProductSaleInvoice) : category.invoices[0];
-                        const document = latest?.tipo_documento === "NFe" ? "NFe" : category.type;
-                        const issueLink = `/fiscal/emitir?env=production&os=${encodeURIComponent(workOrderId)}&documento=${document}`;
-                        const canPrepare = !category.authorized && !category.processing;
+                    {categories.filter((category) => category.invoices.length > 0).map((category) => {
                         return (
                             <div key={category.type} className="rounded-xl border border-stone-200 bg-white p-3">
-                                <div className="mb-3 flex justify-between gap-3 text-xs font-bold text-stone-800">
-                                    <span>{category.label}</span><span className="shrink-0">{currency(category.amount)}</span>
+                                <div className="mb-3 text-xs font-bold text-stone-800">
+                                    {category.label}
                                 </div>
                                 <div className="space-y-3">
                                     {category.invoices.map((invoice) => {
@@ -113,13 +109,11 @@ export function WorkOrderFiscalCard({ organizationId, workOrderId, status, items
                                         );
                                     })}
                                 </div>
-                                {canPrepare && (canIssue && category.hasItems && category.amount > 0 ? (
-                                    <Link href={issueLink} className={`${actionClass} mt-3 ${category.type === "NFCe" ? "bg-[#1A1A1A] text-[#FACC15] hover:bg-black" : "border border-stone-300 text-stone-800 hover:bg-stone-50"}`}><FileText size={14} /> {latest && ["error", "rejected"].includes(latest.status) ? "Revisar tentativa" : `Emitir ${documentLabel(document)}`}</Link>
-                                ) : <p className="mt-2 text-xs text-stone-500">{!canIssue ? "Disponível quando a OS estiver pronta ou entregue." : "Inclua itens com valor maior que zero para emitir."}</p>)}
                             </div>
                         );
                     })}
-                    {categories.length > 0 && <p className="text-[10px] leading-relaxed text-stone-500">Valores dos itens desta OS. A emissão passa por uma tela de revisão antes da confirmação.</p>}
+                    {canIssue && hasAvailableItems && <Link href={`/fiscal/emitir?env=production&os=${encodeURIComponent(workOrderId)}`} className={`${actionClass} bg-[#1A1A1A] text-[#FACC15] hover:bg-black`}><FileText size={14} /> Emitir nota</Link>}
+                    {!canIssue && hasAvailableItems && <p className="text-xs text-stone-500">Emissão disponível quando a OS estiver pronta ou entregue.</p>}
                 </div>
             )}
         </section>
