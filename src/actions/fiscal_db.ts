@@ -3,6 +3,41 @@
 import { createClient } from "@/src/utils/supabase/server";
 import { extractItemsFromInfNFe } from "@/src/lib/nfe_xml";
 import type { ParsedNFeItem } from "@/src/types/nfe";
+import { ACTIVE_FISCAL_STATUSES, getWorkOrderFiscalCategories } from "@/src/lib/work-order-fiscal";
+
+// O limite de linhas da API tambem vale para os itens e notas consultados por IN.
+// Sem paginacao, uma OS recente pode parecer sem itens e sumir da lista fiscal.
+async function fetchAllPendingWorkOrderRows<T>(
+    fetchPage: (from: number, to: number) => PromiseLike<{
+        data: T[] | null;
+        error: { message: string } | null;
+    }>
+) {
+    const pageSize = 500;
+    const rows: T[] = [];
+
+    for (let from = 0; ; from += pageSize) {
+        const { data, error } = await fetchPage(from, from + pageSize - 1);
+        if (error) return { data: null, error };
+
+        rows.push(...(data || []));
+        if (!data || data.length < pageSize) return { data: rows, error: null };
+    }
+}
+
+async function fetchRowsByWorkOrderIds<T>(
+    ids: number[],
+    fetchPage: (batch: number[], from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+) {
+    const rows: T[] = [];
+    for (let offset = 0; offset < ids.length; offset += 200) {
+        const batch = ids.slice(offset, offset + 200);
+        const result = await fetchAllPendingWorkOrderRows((from, to) => fetchPage(batch, from, to));
+        if (result.error) return result;
+        rows.push(...(result.data || []));
+    }
+    return { data: rows, error: null };
+}
 
 export async function getPendingWorkOrders(
     organizationId: string,
@@ -10,7 +45,7 @@ export async function getPendingWorkOrders(
 ) {
     const supabase = createClient();
 
-    const { data: workOrders, error } = await supabase
+    const { data: workOrders, error } = await fetchAllPendingWorkOrderRows((from, to) => supabase
         .from("work_orders")
         .select(`
             id, created_at, total, status, client_id,
@@ -19,11 +54,13 @@ export async function getPendingWorkOrders(
         `)
         .eq("organization_id", organizationId)
         .in("status", ["pronto", "entregue"])
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to));
 
     if (error) {
         console.error("Erro ao buscar OS pendentes:", error);
-        return [];
+        throw new Error("Não foi possível carregar as OS disponíveis. Tente novamente.");
     }
 
     if (!workOrders || workOrders.length === 0) return [];
@@ -31,86 +68,60 @@ export async function getPendingWorkOrders(
     const workOrderIds = workOrders.map((os) => os.id);
 
     const [{ data: osItems, error: itemsError }, { data: invoices, error: invoicesError }] = await Promise.all([
-        supabase
+        fetchRowsByWorkOrderIds(workOrderIds, (batch, from, to) => supabase
             .from("work_order_items")
-            .select("work_order_id, tipo, peca_cliente")
-            .in("work_order_id", workOrderIds),
-        supabase
+            .select("work_order_id, tipo, peca_cliente, total_price")
+            .in("work_order_id", batch)
+            .order("id", { ascending: true })
+            .range(from, to)),
+        fetchRowsByWorkOrderIds(workOrderIds, (batch, from, to) => supabase
             .from("fiscal_invoices")
-            .select("work_order_id, tipo_documento, status")
+            .select("id, work_order_id, tipo_documento, status, numero, error_message, payload_json")
             .eq("organization_id", organizationId)
-            .in("work_order_id", workOrderIds)
+            .in("work_order_id", batch)
             .not("work_order_id", "is", null)
             .eq("direction", "output")
-            .eq("status", "authorized")
+            .in("status", ACTIVE_FISCAL_STATUSES)
             // Uma autorizacao em homologacao nao pode baixar a pendencia de producao, e vice-versa.
             .eq("environment", environment)
+            .order("id", { ascending: true })
+            .range(from, to))
     ]);
 
     if (itemsError) {
         console.error("Erro ao buscar itens das OS:", itemsError);
-        return [];
+        throw new Error("Não foi possível conferir os itens das OS. Tente novamente.");
     }
 
     if (invoicesError) {
         console.error("Erro ao buscar notas fiscais das OS:", invoicesError);
-        return [];
+        throw new Error("Não foi possível conferir as notas das OS. Tente novamente.");
     }
 
-    const itemsByWorkOrder = new Map<number, { hasPecas: boolean; hasServicos: boolean }>();
-
+    const itemsByWorkOrder = new Map<number, NonNullable<typeof osItems>>();
     for (const item of osItems || []) {
-        const current = itemsByWorkOrder.get(item.work_order_id) || { hasPecas: false, hasServicos: false };
-
-        if (item.tipo === "peca" && !item.peca_cliente) {
-            current.hasPecas = true;
-        }
-
-        if (item.tipo === "servico") {
-            current.hasServicos = true;
-        }
-
-        itemsByWorkOrder.set(item.work_order_id, current);
+        const rows = itemsByWorkOrder.get(item.work_order_id) || [];
+        rows.push(item);
+        itemsByWorkOrder.set(item.work_order_id, rows);
     }
-
-    const invoicesByWorkOrder = new Map<number, { hasProductInvoice: boolean; hasNFSe: boolean }>();
-
+    const invoicesByWorkOrder = new Map<number, NonNullable<typeof invoices>>();
     for (const invoice of invoices || []) {
-        const current = invoicesByWorkOrder.get(invoice.work_order_id) || { hasProductInvoice: false, hasNFSe: false };
-
-        if (invoice.tipo_documento === "NFCe" || invoice.tipo_documento === "NFe") current.hasProductInvoice = true;
-        if (invoice.tipo_documento === "NFSe") current.hasNFSe = true;
-
-        invoicesByWorkOrder.set(invoice.work_order_id, current);
+        const rows = invoicesByWorkOrder.get(invoice.work_order_id) || [];
+        rows.push(invoice);
+        invoicesByWorkOrder.set(invoice.work_order_id, rows);
     }
+    return workOrders.map((os) => {
+        const categories = getWorkOrderFiscalCategories(itemsByWorkOrder.get(os.id) || [], invoicesByWorkOrder.get(os.id) || []);
+        const label = (type: string) => type === "NFSe" ? "NFSe" : "NFCe/NFe";
+        const pending_documentos = categories.filter((c) => c.hasItems && !c.authorized && !c.processing).map((c) => label(c.type));
+        const documentos_emitidos = categories.filter((c) => c.authorized).map((c) => label(c.type));
+        const documentos_em_andamento = categories.filter((c) => c.processing).map((c) => label(c.type));
+        return {
+            ...os, pending_documentos, documentos_emitidos, documentos_em_andamento,
+            emissao_parcial: documentos_emitidos.length > 0 && (pending_documentos.length > 0 || documentos_em_andamento.length > 0),
+        };
+    }).filter((os) => os.pending_documentos.length > 0 || os.documentos_em_andamento.length > 0);
 
-    return workOrders
-        .map((os) => {
-            const itemSummary = itemsByWorkOrder.get(os.id) || { hasPecas: false, hasServicos: false };
-            const invoiceSummary = invoicesByWorkOrder.get(os.id) || { hasProductInvoice: false, hasNFSe: false };
-
-            const pending_documentos = [
-                itemSummary.hasPecas && !invoiceSummary.hasProductInvoice ? "NFCe/NFe" : null,
-                itemSummary.hasServicos && !invoiceSummary.hasNFSe ? "NFSe" : null,
-            ].filter(Boolean);
-
-            const documentos_emitidos = [
-                invoiceSummary.hasProductInvoice ? "NFCe/NFe" : null,
-                invoiceSummary.hasNFSe ? "NFSe" : null,
-            ].filter(Boolean);
-
-            // A OS continua vinculada a uma nota autorizada, mas ainda tem outra
-            // categoria fiscal para emitir (inclusive se a tentativa anterior dela falhou).
-            const emissao_parcial = documentos_emitidos.length > 0 && pending_documentos.length > 0;
-
-            return {
-                ...os,
-                pending_documentos,
-                documentos_emitidos,
-                emissao_parcial,
-            };
-        })
-        .filter((os: any) => os.pending_documentos.length > 0);
 }
 
 export async function searchProducts(query: string) {
@@ -173,21 +184,21 @@ export async function getServiceFiscalData(serviceId: string) {
     return data;
 }
 
-export async function getFiscalInvoices(organizationId: string) {
+export async function getFiscalInvoices(
+    organizationId: string,
+    filters?: { workOrderId?: number; environment?: "production" | "homologation" }
+) {
     const supabase = createClient();
-
-    const { data, error } = await supabase
-        .from("fiscal_invoices")
-        .select("*, work_orders(clients(nome, whatsapp))")
-        .eq("organization_id", organizationId)
-        .order("created_at", { ascending: false });
-
-    if (error) {
-        console.error("Erro ao buscar notas fiscais:", error);
-        return [];
-    }
-
-    return data;
+    const { data, error } = await fetchAllPendingWorkOrderRows((from, to) => {
+        let query = supabase.from("fiscal_invoices")
+            .select("*, work_orders(clients(nome, whatsapp))")
+            .eq("organization_id", organizationId);
+        if (filters?.workOrderId !== undefined) query = query.eq("work_order_id", filters.workOrderId).eq("direction", "output");
+        if (filters?.environment) query = query.eq("environment", filters.environment);
+        return query.order("created_at", { ascending: false }).order("id", { ascending: false }).range(from, to);
+    });
+    if (error) throw new Error("Não foi possível carregar as notas fiscais. Tente novamente.");
+    return data || [];
 }
 
 export type { ParsedNFeItem };

@@ -18,6 +18,7 @@ import { NcmAutocomplete } from "@/components/ui/NcmAutocomplete";
 import { fetchProductFromCosmos, normalizeBarcode } from "@/src/services/cosmosService";
 import { reopenOS } from "@/src/actions/os";
 import { PUBLIC_APP_ORIGIN } from "@/src/lib/publicAppUrl";
+import { WorkOrderFiscalCard } from "@/components/os/WorkOrderFiscalCard";
 
 // Tipos
 type WorkOrderItem = {
@@ -2389,6 +2390,10 @@ export default function DetalhesOS() {
                 <span className="font-bold text-[#1A1A1A]">Total Geral</span>
                 <span className="font-bold text-[#1A1A1A]">{formatCurrency(totalOSBruto)}</span>
               </div>
+
+              {profile?.organization_id && profile.cargo === 'owner' && profile.usa_fiscal !== false && (
+                <WorkOrderFiscalCard organizationId={profile.organization_id} workOrderId={os!.id} status={os!.status} items={os!.work_order_items} />
+              )}
 
               {/* VALORES JÁ RECEBIDOS */}
               {totalRecebidoAnterior > 0 && (

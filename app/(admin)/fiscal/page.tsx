@@ -9,6 +9,7 @@ import {
     CheckCircle, XCircle, Clock, Download, RefreshCw, Edit, Ban, Printer, MessageCircle, Undo2, Database
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useBillingEmissionBlock } from "@/src/lib/useBillingEmissionBlock";
 
 type Invoice = {
@@ -36,25 +37,65 @@ type Invoice = {
     } | null;
 };
 
+function defaultFiscalDates() {
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    return { startDate: `${month}-01`, endDate: `${month}-${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()}` };
+}
+
 export default function FiscalDashboard() {
+    const searchParams = useSearchParams();
+    const linkedWorkOrder = searchParams.get("os") || "";
     const { profile, isAdmin } = useAuth();
     const { isLoading: billingLoading, isBlocked: billingBlocked, message: billingMessage } = useBillingEmissionBlock();
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const invoiceRequestRef = useRef(0);
     const [syncingNcm, setSyncingNcm] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [environment, setEnvironment] = useState<"production" | "homologation">("production");
+    const invoiceScopeRef = useRef("");
+    invoiceScopeRef.current = `${profile?.organization_id}:${linkedWorkOrder}:${environment}`;
 
     const [statusFilter, setStatusFilter] = useState("all");
     const [cancellingInvoiceId, setCancellingInvoiceId] = useState<string | null>(null);
     const [startDate, setStartDate] = useState(() => {
-        const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+        if (linkedWorkOrder) return "";
+        return defaultFiscalDates().startDate;
     });
     const [endDate, setEndDate] = useState(() => {
-        const now = new Date();
-        return new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
+        if (linkedWorkOrder) return "";
+        return defaultFiscalDates().endDate;
     });
+    const currentFiltersRef = useRef({ startDate, endDate, searchTerm, statusFilter, environment });
+    currentFiltersRef.current = { startDate, endDate, searchTerm, statusFilter, environment };
+    const filtersBeforeOSRef = useRef<typeof currentFiltersRef.current | null>(null);
+    const previousLinkedOSRef = useRef<string | undefined>(undefined);
+
+    useEffect(() => {
+        if (linkedWorkOrder) {
+            if (!previousLinkedOSRef.current) {
+                filtersBeforeOSRef.current = previousLinkedOSRef.current === undefined
+                    ? { ...currentFiltersRef.current, ...defaultFiscalDates() }
+                    : { ...currentFiltersRef.current };
+            }
+            setStartDate("");
+            setEndDate("");
+            setSearchTerm("");
+            setStatusFilter("all");
+            setEnvironment("production");
+        } else if (previousLinkedOSRef.current) {
+            const saved = filtersBeforeOSRef.current || { ...currentFiltersRef.current, ...defaultFiscalDates() };
+            setStartDate(saved.startDate);
+            setEndDate(saved.endDate);
+            setSearchTerm(saved.searchTerm);
+            setStatusFilter(saved.statusFilter);
+            setEnvironment(saved.environment);
+            filtersBeforeOSRef.current = null;
+        }
+        previousLinkedOSRef.current = linkedWorkOrder;
+    }, [linkedWorkOrder]);
 
     const invoicesRef = useRef<Invoice[]>([]);
     const cancellationLocksRef = useRef(new Set<string>());
@@ -83,7 +124,7 @@ export default function FiscalDashboard() {
                 matchesDate = invoiceDate <= new Date(endDate + "T23:59:59");
             }
             const matchesEnvironment = !inv.environment || inv.environment === environment;
-            return matchesDate && matchesEnvironment;
+            return matchesDate && matchesEnvironment && (!linkedWorkOrder || String(inv.work_order_id) === linkedWorkOrder);
         });
 
         return dateFiltered.filter((inv) => {
@@ -158,28 +199,38 @@ export default function FiscalDashboard() {
         const intervalId = setInterval(checkForUpdates, intervalMs);
 
         return () => clearInterval(intervalId);
-    }, [invoices, environment, startDate, endDate, searchTerm, statusFilter]);
+    }, [invoices, environment, startDate, endDate, searchTerm, statusFilter, linkedWorkOrder]);
 
     useEffect(() => {
         if (profile?.organization_id) {
             fetchInvoices();
         }
-    }, [profile]);
+    }, [profile?.organization_id, linkedWorkOrder, environment]);
 
     const fetchInvoices = async () => {
         if (!profile?.organization_id) return;
+        const scope = `${profile.organization_id}:${linkedWorkOrder}:${environment}`;
+        if (invoiceScopeRef.current !== scope) return;
+        const requestId = ++invoiceRequestRef.current;
         setLoading(true);
+        setLoadError(null);
         try {
-            const data = await getFiscalInvoices(profile.organization_id);
+            if (linkedWorkOrder && (!/^\d+$/.test(linkedWorkOrder) || !Number.isSafeInteger(Number(linkedWorkOrder)))) throw new Error("Número de OS inválido.");
+            const data = await getFiscalInvoices(profile.organization_id, linkedWorkOrder ? { workOrderId: Number(linkedWorkOrder), environment } : undefined);
+            if (requestId !== invoiceRequestRef.current || invoiceScopeRef.current !== scope) return;
             setInvoices(data as Invoice[]);
             // Corrige chave_acesso vazia em segundo plano, sem bloquear a UI
-            backfillEntryInvoicesChave(profile.organization_id).then(({ fixed }) => {
+            if (!linkedWorkOrder) backfillEntryInvoicesChave(profile.organization_id).then(({ fixed }) => {
                 console.log(`[Fiscal] Backfill chaves: ${fixed} corrigida(s).`);
             }).catch((e) => console.warn("[Fiscal] Backfill erro:", e));
         } catch (error) {
             console.error(error);
+            if (requestId === invoiceRequestRef.current && invoiceScopeRef.current === scope) {
+                setInvoices([]);
+                setLoadError(error instanceof Error ? error.message : "Não foi possível carregar as notas fiscais.");
+            }
         } finally {
-            setLoading(false);
+            if (requestId === invoiceRequestRef.current && invoiceScopeRef.current === scope) setLoading(false);
         }
     };
 
@@ -346,7 +397,7 @@ export default function FiscalDashboard() {
             matchesDate = invoiceDate <= new Date(endDate + "T23:59:59");
         }
         const matchesEnvironment = !inv.environment || inv.environment === environment;
-        return matchesDate && matchesEnvironment;
+        return matchesDate && matchesEnvironment && (!linkedWorkOrder || String(inv.work_order_id) === linkedWorkOrder);
     });
 
     const filteredInvoices = dateFilteredInvoices.filter((inv) => {
@@ -366,6 +417,12 @@ export default function FiscalDashboard() {
 
     return (
         <div className="space-y-6 pb-32">
+            {linkedWorkOrder && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+                    <Link href={`/os/detalhes/${encodeURIComponent(linkedWorkOrder)}`} className="font-bold text-stone-800 hover:underline">Notas da OS #{linkedWorkOrder}</Link>
+                    <Link href="/fiscal" className="font-bold text-stone-500 hover:underline">Mostrar todas as notas</Link>
+                </div>
+            )}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-[#1A1A1A]">Fiscal</h1>
@@ -528,6 +585,8 @@ export default function FiscalDashboard() {
                         <tbody className="text-sm">
                             {loading ? (
                                 <tr><td colSpan={5} className="text-center py-10"><Loader2 className="animate-spin mx-auto text-[#FACC15]" /></td></tr>
+                            ) : loadError ? (
+                                <tr><td colSpan={5} className="p-6 text-center text-red-700" role="alert">{loadError}<button type="button" onClick={fetchInvoices} className="ml-3 font-bold underline">Tentar novamente</button></td></tr>
                             ) : filteredInvoices.length === 0 ? (
                                 <tr><td colSpan={5} className="text-center py-10 text-stone-400">Nenhuma nota encontrada.</td></tr>
                             ) : (

@@ -14,6 +14,8 @@ import { getPendingWorkOrders, searchProducts, searchServices, getProductFiscalD
 import { getCompanySettings } from "@/src/actions/fiscal";
 import { useBillingEmissionBlock } from "@/src/lib/useBillingEmissionBlock";
 import { NcmAutocomplete } from "@/components/ui/NcmAutocomplete";
+import { ACTIVE_FISCAL_STATUSES, isProductSaleInvoice } from "@/src/lib/work-order-fiscal";
+import { getFiscalInvoices } from "@/src/actions/fiscal_db";
 
 type PendingOS = {
     id: number;
@@ -28,6 +30,7 @@ type PendingOS = {
     pending_documentos?: string[];
 
     documentos_emitidos?: string[];
+    documentos_em_andamento?: string[];
 
     emissao_parcial?: boolean;
 
@@ -70,6 +73,15 @@ export default function EmitirNotaPage() {
 
     const environment = (searchParams.get('env') as 'production' | 'homologation') || 'production';
     const isHomologation = environment === 'homologation';
+    const requestedOS = searchParams.get('os');
+    const requestedDocument = searchParams.get('documento');
+    const importedShortcutRef = useRef<string | null>(null);
+    const [importingOS, setImportingOS] = useState(false);
+    const [importError, setImportError] = useState<string | null>(null);
+    const [companyLoaded, setCompanyLoaded] = useState(false);
+    const [pendingLoadError, setPendingLoadError] = useState<string | null>(null);
+    const [importNotice, setImportNotice] = useState<string | null>(null);
+    const [contextOSId, setContextOSId] = useState<string | null>(requestedOS);
 
     const defaultTomadorHomologacao = {
         nome: "",
@@ -332,9 +344,10 @@ export default function EmitirNotaPage() {
             const settings = await getCompanySettings();
             setEmitenteUF(String(settings?.uf || "").trim().toUpperCase());
             setEmitenteCnpj(String(settings?.cnpj || settings?.cpf_cnpj || "").replace(/\D/g, ""));
+            setCompanyLoaded(true);
         };
 
-        loadCompanyUf();
+        loadCompanyUf().catch(() => setImportError("Não foi possível carregar o cadastro da empresa. Atualize a página para tentar novamente."));
     }, []);
 
     useEffect(() => {
@@ -365,6 +378,7 @@ export default function EmitirNotaPage() {
     const loadPendingOS = async () => {
 
         setLoadingOS(true);
+        setPendingLoadError(null);
 
         try {
 
@@ -379,6 +393,8 @@ export default function EmitirNotaPage() {
         } catch (e) {
 
             console.error(e);
+            setPendingOS([]);
+            setPendingLoadError(e instanceof Error ? e.message : "Não foi possível carregar as OS. Tente novamente.");
 
         } finally {
 
@@ -390,9 +406,9 @@ export default function EmitirNotaPage() {
 
 
 
-    const handleSelectOS = async (os: PendingOS) => {
+    const loadWorkOrderForReview = async (os: PendingOS, document?: 'NFCe' | 'NFe' | 'NFSe') => {
+        if (document === 'NFCe' || document === 'NFe') setProdutoDocumento(document);
 
-        setSelectedOS(os);
         // A observacao pertence a nota em emissao; nunca deve acompanhar outra OS por acidente.
         setObservacaoNfse("");
         setObservacaoNfseAberta(false);
@@ -473,11 +489,11 @@ export default function EmitirNotaPage() {
 
         const supabase = createClient();
 
-        const { data: existingInvoices } = await supabase
+        const { data: existingInvoices, error: invoicesError } = await supabase
 
             .from('fiscal_invoices')
 
-            .select('tipo_documento, status')
+            .select('tipo_documento, status, payload_json')
 
             .eq('organization_id', profile?.organization_id)
 
@@ -485,21 +501,28 @@ export default function EmitirNotaPage() {
 
             .eq('direction', 'output')
 
-            .eq('status', 'authorized')
+            .in('status', ACTIVE_FISCAL_STATUSES)
 
             .eq('environment', environment);
 
-        const hasExistingProductInvoice = (existingInvoices || []).some((invoice: any) => invoice.tipo_documento === 'NFCe' || invoice.tipo_documento === 'NFe');
+        if (invoicesError) throw new Error("Não foi possível conferir as notas já vinculadas à OS. Tente novamente.");
+
+        const hasExistingProductInvoice = (existingInvoices || []).some(isProductSaleInvoice);
 
         const hasExistingNFSe = (existingInvoices || []).some((invoice: any) => invoice.tipo_documento === 'NFSe');
+        const blocked = [hasExistingProductInvoice ? 'Produtos (NFC-e/NF-e)' : null, hasExistingNFSe ? 'Serviços (NFS-e)' : null].filter(Boolean);
+        if (blocked.length) setImportNotice(`${blocked.join(' e ')} já possuem nota autorizada ou em andamento. Esses itens não serão incluídos nesta revisão.`);
 
-        const { data: osItems } = await supabase
+        const { data: osItems, error: itemsError } = await supabase
 
             .from('work_order_items')
 
             .select('*')
 
             .eq('work_order_id', os.id);
+
+        if (itemsError) throw new Error("Não foi possível carregar os itens da OS. Tente novamente.");
+        if (!osItems?.length) throw new Error("Esta OS não possui itens disponíveis para emissão.");
 
 
 
@@ -517,7 +540,7 @@ export default function EmitirNotaPage() {
 
                 if (item.tipo === 'peca') {
 
-                    if (item.peca_cliente || hasExistingProductInvoice) return;
+                    if (document === 'NFSe' || item.peca_cliente || hasExistingProductInvoice) return;
 
                     let fiscalData = { ncm: '00000000', cfop: '5102', unidade: 'UN' };
 
@@ -567,17 +590,18 @@ export default function EmitirNotaPage() {
 
                     });
 
-                } else {
+                } else if (item.tipo === 'servico') {
 
-                    if (hasExistingNFSe) return;
+                    if ((document && document !== 'NFSe') || hasExistingNFSe) return;
 
                     // Para serviços, buscar código e alíquota
 
                     let fiscalData = { codigo_servico: '140101', aliquota_iss: 2.01 };
 
-                    if (item.product_id) { // product_id aqui é o ID do serviço na tabela services
+                    const serviceId = item.service_id || item.product_id;
+                    if (serviceId) {
 
-                        const dbData = await getServiceFiscalData(item.product_id);
+                        const dbData = await getServiceFiscalData(serviceId);
 
                         if (dbData) {
 
@@ -611,6 +635,10 @@ export default function EmitirNotaPage() {
 
 
 
+            if (pecas.length === 0 && servicos.length === 0) {
+                throw new Error("Não há itens disponíveis para esta emissão. Confira se já existe uma nota autorizada ou em andamento para esta OS.");
+            }
+
             setItens(pecas);
 
             setItensServico(servicos);
@@ -619,9 +647,47 @@ export default function EmitirNotaPage() {
 
 
 
+        setSelectedOS(os);
         setStep(2);
 
     };
+
+    const handleSelectOS = async (os: PendingOS, document?: 'NFCe' | 'NFe' | 'NFSe') => {
+        setImportingOS(true);
+        setImportError(null);
+        setImportNotice(null);
+        setContextOSId(String(os.id));
+        setStep(1);
+        setSelectedOS(null);
+        setItens([]);
+        setItensServico([]);
+        try {
+            await loadWorkOrderForReview(os, document);
+        } catch (error) {
+            setImportError(error instanceof Error ? error.message : "Não foi possível importar a OS. Tente novamente.");
+        } finally {
+            setImportingOS(false);
+        }
+
+    };
+
+    useEffect(() => {
+        if (!requestedOS || !profile?.organization_id || loadingOS || pendingLoadError || importingOS || !companyLoaded) return;
+        setContextOSId(requestedOS);
+        const key = `${profile.organization_id}:${environment}:${requestedOS}:${requestedDocument}`;
+        if (importedShortcutRef.current === key) return;
+        importedShortcutRef.current = key;
+        if (!/^\d+$/.test(requestedOS) || !['NFCe', 'NFe', 'NFSe'].includes(requestedDocument || '')) {
+            setImportError("Atalho de emissão inválido. Selecione uma OS na lista abaixo.");
+            return;
+        }
+        const target = pendingOS.find((order) => String(order.id) === requestedOS);
+        if (!target) {
+            setImportError(`A OS #${requestedOS} não está disponível para emissão. Confira se está pronta ou entregue e se já possui notas vinculadas.`);
+            return;
+        }
+        void handleSelectOS(target, requestedDocument as 'NFCe' | 'NFe' | 'NFSe');
+    }, [requestedOS, requestedDocument, profile?.organization_id, environment, loadingOS, pendingLoadError, importingOS, companyLoaded, pendingOS]);
 
 
 
@@ -732,6 +798,14 @@ export default function EmitirNotaPage() {
         try {
 
             const results = [];
+            // Revalidar na confirmacao cobre revisoes antigas e sucessos parciais.
+            // O backend e o trigger do banco continuam sendo a protecao concorrente.
+            if (selectedOS) {
+                const invoices = await getFiscalInvoices(profile.organization_id, { workOrderId: selectedOS.id, environment });
+                const active = invoices.filter((invoice) => ACTIVE_FISCAL_STATUSES.includes(invoice.status));
+                if (itens.length && active.some(isProductSaleInvoice)) throw new Error("Os produtos desta OS já possuem nota de venda autorizada ou em andamento. Reabra a revisão para carregar apenas os itens disponíveis.");
+                if (itensServico.length && active.some((invoice) => invoice.tipo_documento === 'NFSe')) throw new Error("Os serviços desta OS já possuem NFS-e autorizada ou em andamento. Consulte as notas vinculadas.");
+            }
 
 
 
@@ -771,6 +845,7 @@ export default function EmitirNotaPage() {
                 });
 
                 results.push({ type: produtoDocumento === "NFe" ? 'NF-e' : 'NFC-e', ...resProdutos });
+                if (resProdutos.success) setItens([]);
 
             }
 
@@ -792,7 +867,7 @@ export default function EmitirNotaPage() {
 
                     const servicosPayload = itensServico.map(s => ({
 
-                        codigo: s.product_id || 'SERV',
+                        codigo: s.service_id || s.product_id || 'SERV',
 
                         descricao: s.name,
 
@@ -863,6 +938,7 @@ export default function EmitirNotaPage() {
                     });
 
                     results.push({ type: 'NFS-e', ...resNFSe });
+                    if (resNFSe.success) setItensServico([]);
                 }
 
             }
@@ -888,7 +964,8 @@ export default function EmitirNotaPage() {
 
         } catch (e: any) {
 
-            alert("Erro: " + e.message);
+            setEmissionError("Erro na emissão: " + e.message);
+            setEmissionErrorCopied(false);
 
         } finally {
 
@@ -917,6 +994,7 @@ export default function EmitirNotaPage() {
                             </button>
                         </div>
                         <textarea readOnly value={emissionError} className="min-h-48 w-full resize-y rounded-xl border border-slate-300 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800" aria-label="Detalhes do erro de emissão" />
+                        {contextOSId && <Link href={`/fiscal?os=${encodeURIComponent(contextOSId)}`} className="mt-3 inline-block text-sm font-bold text-blue-700 underline">Ver notas desta OS</Link>}
                         <div className="mt-5 flex justify-end gap-3">
                             <button
                                 type="button"
@@ -995,6 +1073,19 @@ export default function EmitirNotaPage() {
 
 
 
+            {importError && (
+                <div role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    <p>{importError}</p>
+                    {contextOSId && <Link href={`/fiscal?os=${encodeURIComponent(contextOSId)}`} className="mt-2 inline-block font-bold underline">Ver notas desta OS</Link>}
+                </div>
+            )}
+            {importNotice && !importError && <div role="status" className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><p>{importNotice}</p>{contextOSId && <Link href={`/fiscal?os=${encodeURIComponent(contextOSId)}`} className="mt-2 inline-block font-bold underline">Acompanhar notas vinculadas</Link>}</div>}
+            {step === 2 && selectedOS && requestedOS === String(selectedOS.id) && (
+                <p className="mb-4 rounded-xl border border-stone-200 bg-white p-3 text-sm text-stone-600">
+                    Revisão da OS <strong>#{selectedOS.id}</strong> · {requestedDocument === 'NFSe' ? 'Serviços — NFS-e' : produtoDocumento === 'NFe' ? 'Produtos — NF-e' : 'Produtos — NFC-e'}
+                </p>
+            )}
+
             {/* STEP 1: SELEÇÃO */}
 
             {step === 1 && (
@@ -1005,7 +1096,7 @@ export default function EmitirNotaPage() {
 
                         <h3 className="font-bold text-sm text-[#1A1A1A] flex items-center gap-2"><FileText size={16} /> Importar Ordem de Serviço</h3>
 
-                        <button onClick={handleAvulsa} className="text-xs font-bold text-[#FACC15] bg-[#1A1A1A] px-3 py-1.5 rounded-full hover:scale-105 transition">
+                        <button onClick={handleAvulsa} disabled={importingOS} className="text-xs font-bold text-[#FACC15] bg-[#1A1A1A] px-3 py-1.5 rounded-full hover:scale-105 transition disabled:opacity-50">
 
                             Criar Nota Avulsa
 
@@ -1109,16 +1200,18 @@ export default function EmitirNotaPage() {
 
                         </span>
 
-                        <span>A lista remove apenas OS com nota autorizada nos status pronto ou entregue.</span>
+                        <span>OS prontas ou entregues com itens disponíveis ou notas em andamento.</span>
 
                     </div>
 
 
 
-                    {loadingOS ? (
+                    {loadingOS || importingOS ? (
 
                         <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-[#FACC15]" size={20} /></div>
 
+                    ) : pendingLoadError ? (
+                        <div role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700"><p>{pendingLoadError}</p><button type="button" onClick={loadPendingOS} className="mt-2 font-bold underline">Tentar novamente</button></div>
                     ) : filteredPendingOS.length === 0 ? (
 
                         <div className="text-center py-8 text-stone-400 text-sm">
@@ -1136,7 +1229,7 @@ export default function EmitirNotaPage() {
 
                             {visiblePendingOS.map(os => (
 
-                                <div key={os.id} className="border border-stone-100 p-3 rounded-xl flex justify-between items-center hover:bg-[#F9F8F4] transition cursor-pointer" onClick={() => handleSelectOS(os)}>
+                                <div key={os.id} className="border border-stone-100 p-3 rounded-xl flex justify-between items-center hover:bg-[#F9F8F4] transition cursor-pointer" onClick={() => os.pending_documentos?.length ? handleSelectOS(os) : router.push(`/fiscal?os=${os.id}`)}>
 
                                     <div className="flex items-center gap-3">
 
@@ -1148,9 +1241,10 @@ export default function EmitirNotaPage() {
 
                                             <p className="text-[10px] text-stone-500">{os.clients?.nome}</p>
 
-                                            <p className="text-[10px] text-blue-600 font-bold mt-0.5">
+                                            {!!os.pending_documentos?.length && <p className="text-[10px] text-blue-600 font-bold mt-0.5">
                                                 Falta: {(os.pending_documentos || []).join(' + ')}
-                                            </p>
+                                            </p>}
+                                            {!!os.documentos_em_andamento?.length && <div className="mt-1 text-[10px] font-bold text-amber-700"><p>Em andamento: {os.documentos_em_andamento.join(' + ')}</p><Link href={`/fiscal?os=${os.id}`} onClick={(event) => event.stopPropagation()} className="underline">Consultar notas</Link></div>}
 
                                             {os.emissao_parcial && (
                                                 <p className="inline-flex items-center mt-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-amber-800">

@@ -1,0 +1,134 @@
+{
+  "inspected_at": "2026-10-23T16:20:33.958Z",
+  "mode": "read-only catalog; no fiscal rows read or changed",
+  "comparisons": [
+    {
+      "name": "fiscal_is_product_sale",
+      "found": true,
+      "body_matches_local": true
+    },
+    {
+      "name": "prevent_duplicate_active_fiscal_invoice_per_os",
+      "found": true,
+      "body_matches_local": true
+    }
+  ],
+  "catalog": {
+    "roles": [
+      {
+        "name": "authenticated",
+        "superuser": false,
+        "bypass_rls": false
+      },
+      {
+        "name": "anon",
+        "superuser": false,
+        "bypass_rls": false
+      },
+      {
+        "name": "service_role",
+        "superuser": false,
+        "bypass_rls": true
+      },
+      {
+        "name": "authenticator",
+        "superuser": false,
+        "bypass_rls": false
+      }
+    ],
+    "indexes": [
+      {
+        "name": "idx_fiscal_active_product_sale_os",
+        "definition": "CREATE INDEX idx_fiscal_active_product_sale_os ON public.fiscal_invoices USING btree (organization_id, work_order_id, environment) WHERE ((direction = 'output'::text) AND (work_order_id IS NOT NULL) AND (status = ANY (ARRAY['draft'::text, 'pending'::text, 'processing'::text, 'authorized'::text])))"
+      }
+    ],
+    "policies": [
+      {
+        "name": "tenant_delete_fiscal_invoices",
+        "check": null,
+        "roles": [
+          "public"
+        ],
+        "using": "(organization_id = get_my_organization_id())",
+        "command": "DELETE"
+      },
+      {
+        "name": "tenant_insert_fiscal_invoices",
+        "check": "(organization_id = get_my_organization_id())",
+        "roles": [
+          "public"
+        ],
+        "using": null,
+        "command": "INSERT"
+      },
+      {
+        "name": "tenant_select_fiscal_invoices",
+        "check": null,
+        "roles": [
+          "public"
+        ],
+        "using": "(organization_id = get_my_organization_id())",
+        "command": "SELECT"
+      },
+      {
+        "name": "tenant_update_fiscal_invoices",
+        "check": null,
+        "roles": [
+          "public"
+        ],
+        "using": "(organization_id = get_my_organization_id())",
+        "command": "UPDATE"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "trg_prevent_duplicate_active_fiscal_invoice_per_os",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER trg_prevent_duplicate_active_fiscal_invoice_per_os BEFORE INSERT OR UPDATE OF organization_id, work_order_id, tipo_documento, environment, direction, status, payload_json ON public.fiscal_invoices FOR EACH ROW EXECUTE FUNCTION prevent_duplicate_active_fiscal_invoice_per_os()"
+      }
+    ],
+    "functions": [
+      {
+        "body": "\r\nBEGIN\r\n    IF jsonb_typeof(fiscal_payload) = 'string' THEN\r\n        BEGIN\r\n            fiscal_payload := (fiscal_payload #>> '{}')::jsonb;\r\n        EXCEPTION WHEN invalid_text_representation THEN\r\n            fiscal_payload := NULL;\r\n        END;\r\n    END IF;\r\n    RETURN CASE\r\n        WHEN document_type = 'NFCe' THEN true\r\n        WHEN document_type IS DISTINCT FROM 'NFe' THEN false\r\n        ELSE COALESCE(fiscal_payload #>> '{infNFe,ide,finNFe}', '1') = '1'\r\n         AND COALESCE(fiscal_payload #>> '{infNFe,ide,tpNF}', '1') = '1'\r\n         AND (COALESCE(btrim(fiscal_payload #>> '{infNFe,ide,natOp}'), '') = ''\r\n              OR upper(btrim(fiscal_payload #>> '{infNFe,ide,natOp}')) ~ '^VENDA([[:space:]]|$)')\r\n    END;\r\nEND;\r\n",
+        "name": "fiscal_is_product_sale",
+        "volatility": "i",
+        "security_definer": false
+      },
+      {
+        "body": "\r\n  SELECT organization_id FROM profiles WHERE id = auth.uid()\r\n",
+        "name": "get_my_organization_id",
+        "volatility": "s",
+        "security_definer": true
+      },
+      {
+        "body": "\r\nDECLARE\r\n    document_group text;\r\nBEGIN\r\n    IF NEW.work_order_id IS NULL\r\n       OR COALESCE(NEW.direction, 'output') <> 'output'\r\n       OR COALESCE(NEW.status, 'draft') NOT IN ('draft', 'pending', 'processing', 'authorized') THEN\r\n        RETURN NEW;\r\n    END IF;\r\n\r\n    IF NEW.tipo_documento = 'NFSe' THEN\r\n        document_group := 'NFSe';\r\n    ELSIF fiscal_is_product_sale(NEW.tipo_documento, NEW.payload_json) THEN\r\n        document_group := 'product-sale';\r\n    ELSE\r\n        -- Preserva remessas, retornos, devolucoes e outras naturezas especiais.\r\n        RETURN NEW;\r\n    END IF;\r\n\r\n    -- Permite sincronizar documentos legados ja ativos, inclusive quando ha\r\n    -- duplicidades historicas. A entrada de uma nova nota ativa continua protegida.\r\n    IF TG_OP = 'UPDATE' THEN\r\n      IF OLD.organization_id IS NOT DISTINCT FROM NEW.organization_id\r\n       AND OLD.work_order_id IS NOT DISTINCT FROM NEW.work_order_id\r\n       AND COALESCE(OLD.environment, 'production') = COALESCE(NEW.environment, 'production')\r\n       AND COALESCE(OLD.direction, 'output') = 'output'\r\n       AND COALESCE(OLD.status, 'draft') IN ('draft', 'pending', 'processing', 'authorized')\r\n       AND ((document_group = 'NFSe' AND OLD.tipo_documento = 'NFSe')\r\n            OR (document_group = 'product-sale' AND fiscal_is_product_sale(OLD.tipo_documento, OLD.payload_json))) THEN\r\n        RETURN NEW;\r\n      END IF;\r\n    END IF;\r\n\r\n    -- A mesma chave para NFC-e e NF-e serializa insercoes concorrentes de venda.\r\n    PERFORM pg_advisory_xact_lock(hashtextextended(\r\n        concat_ws(':', NEW.organization_id::text, NEW.work_order_id::text,\r\n                  document_group, COALESCE(NEW.environment, 'production')), 0));\r\n\r\n    IF EXISTS (\r\n        SELECT 1 FROM fiscal_invoices fi\r\n        WHERE fi.organization_id = NEW.organization_id\r\n          AND fi.work_order_id = NEW.work_order_id\r\n          AND COALESCE(fi.environment, 'production') = COALESCE(NEW.environment, 'production')\r\n          AND COALESCE(fi.direction, 'output') = 'output'\r\n          AND COALESCE(fi.status, 'draft') IN ('draft', 'pending', 'processing', 'authorized')\r\n          AND fi.id IS DISTINCT FROM NEW.id\r\n          AND ((document_group = 'NFSe' AND fi.tipo_documento = 'NFSe')\r\n               OR (document_group = 'product-sale' AND fiscal_is_product_sale(fi.tipo_documento, fi.payload_json)))\r\n    ) THEN\r\n        RAISE EXCEPTION 'Ja existe nota % ativa para esta OS neste ambiente.', document_group\r\n            USING ERRCODE = '23505';\r\n    END IF;\r\n    RETURN NEW;\r\nEND;\r\n",
+        "name": "prevent_duplicate_active_fiscal_invoice_per_os",
+        "volatility": "v",
+        "security_definer": false
+      }
+    ],
+    "role_settings": null,
+    "server_version": "17.6",
+    "table_security": {
+      "rls": true,
+      "force_rls": false
+    },
+    "inspection_role": "supabase_read_only_user",
+    "inspection_read_only": "on",
+    "transaction_defaults": [
+      {
+        "name": "default_transaction_isolation",
+        "source": "default",
+        "setting": "read committed",
+        "reset_value": "read committed"
+      },
+      {
+        "name": "row_security",
+        "source": "configuration file",
+        "setting": "on",
+        "reset_value": "on"
+      }
+    ],
+    "inspection_default_isolation": "read committed"
+  }
+}

@@ -10,6 +10,7 @@ import { BillingBlockedError, assertOrganizationCanCreateNewOperations } from "@
 
 import { getNuvemFiscalToken, getNuvemLocalFiscalBaseUrl } from "@/src/lib/nuvemfiscal";
 import { buildNfseIss, type NfseProviderConfig } from "@/src/lib/nfse-iss";
+import { ACTIVE_FISCAL_STATUSES, isProductSaleInvoice } from "@/src/lib/work-order-fiscal";
 
 
 
@@ -416,33 +417,36 @@ async function ensureNoActiveInvoiceForWorkOrder(
     supabase: any,
     payload: EmissionPayload,
     tipoDocumento: "NFCe" | "NFSe" | "NFe",
-    environment: "production" | "homologation"
+    environment: "production" | "homologation",
+    productSale = false
 ) {
     if (!payload.work_order_id) return null;
 
-    let query = supabase
-        .from("fiscal_invoices")
-        .select("id, status")
-        .eq("organization_id", payload.organization_id)
-        .eq("work_order_id", payload.work_order_id)
-        .eq("direction", "output")
-        .eq("environment", environment)
-        .in("status", ["draft", "processing", "authorized"])
-        .limit(1);
+    for (let from = 0; ; from += 500) {
+        let query = supabase
+            .from("fiscal_invoices")
+            .select("id, status, tipo_documento, payload_json")
+            .eq("organization_id", payload.organization_id)
+            .eq("work_order_id", payload.work_order_id)
+            .eq("direction", "output")
+            .eq("environment", environment)
+            .in("status", ACTIVE_FISCAL_STATUSES);
 
-    // Bloqueio apenas por mesmo tipo de documento.
-    // NFC-e e NF-e nao se bloqueiam entre si.
-    query = query.eq("tipo_documento", tipoDocumento);
+        query = productSale
+            ? query.in("tipo_documento", ["NFCe", "NFe"]).order("id").range(from, from + 499)
+            : query.eq("tipo_documento", tipoDocumento).limit(1);
 
-    const { data: existingInvoice, error } = await query.maybeSingle();
+        const { data: invoices, error } = await query;
 
-    if (error) {
-        throw new Error(`Nao foi possivel validar duplicidade de ${tipoDocumento}.`);
+        if (error) {
+            throw new Error(`Nao foi possivel validar duplicidade de ${tipoDocumento}.`);
+        }
+
+        const existingInvoice = (invoices || []).find((invoice: any) => !productSale || isProductSaleInvoice(invoice));
+        if (existingInvoice) return `Ja existe ${productSale ? "nota de venda dos produtos" : tipoDocumento} ${environment === "production" ? "de producao" : "de homologacao"} autorizada ou em andamento para esta OS. Consulte as notas vinculadas.`;
+
+        if (!productSale || !invoices || invoices.length < 500) return null;
     }
-
-    if (!existingInvoice) return null;
-
-    return `Ja existe ${tipoDocumento} ${environment === "production" ? "de producao" : "de homologacao"} para esta OS.`;
 }
 
 async function ensureDevolucaoQuantitiesAreAvailable(
@@ -1280,7 +1284,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
         await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || 'production';
 
-        const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFCe", env);
+        const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFCe", env, true);
         if (duplicateError) {
             return { success: false, error: duplicateError };
         }
@@ -1889,7 +1893,7 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
         await assertBillingAllowsFiscalEmission(payload.organization_id);
         const env = payload.environment || "production";
 
-        const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFe", env);
+        const duplicateError = await ensureNoActiveInvoiceForWorkOrder(supabase, payload, "NFe", env, true);
         if (duplicateError) {
             return { success: false, error: duplicateError };
         }

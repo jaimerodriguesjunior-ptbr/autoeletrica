@@ -1,0 +1,60 @@
+{
+  "completed_at": "2026-10-23T16:19:23.999Z",
+  "postgres_version": "17.10",
+  "image": "postgres:17-alpine",
+  "isolation": "read committed",
+  "real_independent_connections": true,
+  "synthetic_role": "fiscal_app_test NOBYPASSRLS",
+  "cases": [
+    {
+      "name": "Instalacao da migracao e papel sem bypass de RLS",
+      "passed": true
+    },
+    {
+      "name": "NFC-e e NF-e bloqueiam a outra venda nos quatro status ativos",
+      "passed": true
+    },
+    {
+      "name": "Concorrencia real: NFC-e primeiro, NF-e espera e e recusada",
+      "passed": true
+    },
+    {
+      "name": "Concorrencia real: NF-e primeiro, NFC-e espera e e recusada",
+      "passed": true
+    },
+    {
+      "name": "Concorrencia real: rollback libera a segunda conexao",
+      "passed": true
+    },
+    {
+      "name": "Concorrencia real: duas NFS-e da mesma OS",
+      "passed": true
+    },
+    {
+      "name": "Cancelamento/rejeicao permitem outra venda",
+      "passed": true
+    },
+    {
+      "name": "Reativar erro/cancelamento e mover OS/ambiente passam pela trava",
+      "passed": true
+    },
+    {
+      "name": "Isolamento de organizacao, ambiente e categoria de servico",
+      "passed": true
+    },
+    {
+      "name": "Remessas/retornos/devolucoes nao consomem a venda",
+      "passed": true
+    },
+    {
+      "name": "Notas legadas duplicadas podem sincronizar, novas ficam bloqueadas",
+      "passed": true
+    },
+    {
+      "name": "Classificacao SQL corresponde ao TypeScript nos casos gravados",
+      "passed": true
+    }
+  ],
+  "passed": 12,
+  "limitation": "Fixture com as colunas do trigger e politicas por organizacao; nao reproduz PostgREST/JWT nem todos os constraints do Supabase."
+}
