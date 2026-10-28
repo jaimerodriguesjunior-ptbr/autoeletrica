@@ -3,7 +3,20 @@ import { createClient } from "../../../../src/utils/supabase/server";
 
 export const dynamic = "force-dynamic"; // Desativa cache para exibir em tempo real dependendo dos minutos
 
+function isAfterAppointmentAlertHours(date = new Date()) {
+    const hour = Number(new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Sao_Paulo",
+        hour: "numeric",
+        hourCycle: "h23",
+    }).format(date))
+    return hour >= 19 || hour < 7
+}
+
 export async function GET() {
+    if (isAfterAppointmentAlertHours()) {
+        return NextResponse.json([])
+    }
+
     console.log("[API Alertas] Incializada chamada...");
     try {
         const supabase = createClient();

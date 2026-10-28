@@ -6,6 +6,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RescheduleModal } from "../../app/(admin)/agendamentos/_components/RescheduleModal";
 
+const ALERT_POLL_MS = 120_000
+
+function isAfterAppointmentAlertHours(date = new Date()) {
+    const hour = Number(new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Sao_Paulo",
+        hour: "numeric",
+        hourCycle: "h23",
+    }).format(date))
+    return hour >= 19 || hour < 7
+}
+
 type Apto = {
     id: string;
     start_time: string;
@@ -31,6 +42,10 @@ export function GlobalAppointmentAlert() {
     const router = useRouter();
 
     const fetchAlertas = useCallback(async () => {
+        if (isAfterAppointmentAlertHours()) {
+            setAgendamentos([]);
+            return;
+        }
         try {
             const res = await fetch("/api/agendamentos/alertas");
             if (!res.ok) {
@@ -54,10 +69,10 @@ export function GlobalAppointmentAlert() {
         }
     }, [currentIndex]);
 
-    // Polling a cada 1 minuto
+    // Polling a cada 2 minutos, das 7h as 19h. Fora disso a funcao retorna sem chamar a API.
     useEffect(() => {
         fetchAlertas();
-        const interval = setInterval(fetchAlertas, 60000);
+        const interval = setInterval(fetchAlertas, ALERT_POLL_MS);
         return () => clearInterval(interval);
     }, [fetchAlertas]);
 

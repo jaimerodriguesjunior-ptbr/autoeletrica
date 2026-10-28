@@ -1,3 +1,14 @@
+## Leitura obrigatória — NFS-e Nacional em homologação
+
+Antes de trabalhar na emissão fiscal, leia este README junto com
+[CORRECAO_NFSE_NACIONAL_HOMOLOGACAO_2026-10.md](CORRECAO_NFSE_NACIONAL_HOMOLOGACAO_2026-10.md).
+
+O documento registra a rejeição E1235 causada pelo XML antigo de homologação,
+a correção necessária na Nuvem Local Fiscal compartilhada e a validação que
+deve ser feita neste aplicativo após a publicação da API.
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
