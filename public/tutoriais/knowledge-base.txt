@@ -1,5 +1,5 @@
 # BASE DE CONHECIMENTO — SISTEMA AUTOELÉTRICA
-# Versão 2.0 | Revisado em 09/09/2026 conforme as funcionalidades atuais do sistema.
+# Versão 2.1 | Revisado em 28/10/2026 com base na conferência do código local.
 # Este arquivo é usado pela IA para responder perguntas de uso do sistema.
 # Regra para a IA: explique somente procedimentos de uso confirmados abaixo. Para CFOP, NCM,
 # impostos, códigos de serviço, alíquotas ou qualquer decisão tributária, oriente o usuário a
@@ -80,8 +80,8 @@ Fluxo de status de OS com veículo:
 1. Orçamento → A aprovação CORRETA vem pelo portal do cliente.
    - Envie o link de rastreamento pelo WhatsApp (botão verde no cabeçalho da OS).
    - O cliente acessa o link pelo celular e aprova o orçamento.
-   - A aprovação pelo portal registra IP, dispositivo e hash criptográfico como comprovante de que foi o cliente quem aprovou.
-   - ATENÇÃO: existe um botão "Aprovar" dentro da OS, mas deve ser usado apenas em último caso (cliente presente ou serviço urgente). Aprovações manuais não geram comprovante de aceite do cliente.
+   - A aprovação pelo portal registra data/hora, IP informado pelo navegador, identificação do navegador/dispositivo e hash da versão do orçamento. São registros técnicos da aprovação feita pelo link; o portal não exige login nem confirma a identidade de quem o acessou.
+   - ATENÇÃO: existe um botão "Aprovar" dentro da OS, mas deve ser usado apenas em último caso (cliente presente ou serviço urgente). A aprovação manual não gera os registros técnicos de aceite pelo portal.
 2. Aprovado / Aguardando Peça → clique em "Iniciar Serviço" quando entrar na bancada.
 3. Em Serviço → clique em "Finalizar" quando concluído.
 4. Pronto p/ Entrega → clique em "Entregar & Fechar" para registrar pagamento.
@@ -104,8 +104,10 @@ PASSO 8 — CANCELAR OU EXCLUIR
 
 REABRIR OS FECHADA
 - Gerente: use "Reabrir Ordem de Serviço" na tela da OS e informe o PIN de gerência.
-- A reabertura estorna os recebimentos e as comissões pendentes gerados no fechamento; a OS volta ao status "Pronto".
-- Use somente para correção real do fechamento. Depois de corrigir, faça um novo fechamento para gerar os registros financeiros corretos.
+- O PIN precisa estar configurado em Configurações > Opções de Uso.
+- A reabertura remove as comissões pendentes da OS e volta ao status "Pronto". Se houver comissões já pagas, o sistema bloqueia a reabertura.
+- Limitação atual: a ação de reabertura não remove os recebimentos do fechamento anterior, apesar do aviso exibido na tela. Não trate essa ação como estorno financeiro completo.
+- Antes de fechar novamente, peça ao gerente e ao suporte para conferir e corrigir os lançamentos anteriores, evitando recebimentos duplicados. A IA não deve recomendar um novo fechamento como correção automática do financeiro.
 
 --- VENDA DE PEÇAS (VENDA DIRETA) ---
 
@@ -194,10 +196,12 @@ IMPORTAÇÃO DE XML:
 - Lê o arquivo .xml da NF-e do fornecedor.
 - Extrai número da nota, emitente, data, valor total e lista de itens.
 - Conciliação: cada item recebe status Encontrado (EAN bateu), Novo (EAN não existe), ou Manual (precisa vincular manualmente).
-- Ações por item: Atualizar (soma estoque + atualiza custo), Criar novo (cadastra produto com dados da nota; se markup ativo o preço de venda é calculado automaticamente, caso contrário fica zerado), ou Ignorar.
+- Ações por item: Atualizar (soma estoque e atualiza custo de reposição), Criar novo (cadastra produto com dados da nota), ou Ignorar.
+- Preço de venda ao criar produto pelo XML: com markup ativo, aplica o multiplicador configurado ao custo unitário da nota; com markup inativo, aplica o padrão de duas vezes esse custo. O preço não fica zerado nesse fluxo.
+- Ao atualizar um produto existente, recalcula o preço de venda apenas se o markup estiver ativo; com markup inativo, mantém o preço de venda anterior. Confira os preços no estoque após a importação.
 - Opção "Atualizar nome": substitui o nome do produto pelo da nota.
 - Confirmar Entrada: processa todas as ações e retorna ao estoque atualizado.
-- Data da nota é registrada como Data da Última Compra de cada produto atualizado.
+- A Data da Última Compra do produto recebe a data em que a importação é processada, tanto na criação quanto na atualização; não recebe a data de emissão da nota.
 
 --- MÃO DE OBRA / SERVIÇOS ---
 
@@ -249,11 +253,11 @@ CADASTRAR CLIENTE SEM SAIR DO ATENDIMENTO:
 - Ao abrir uma nova OS ou Venda Direta, é possível cadastrar um cliente diretamente no modal, sem precisar acessar a tela de Clientes.
 
 =======================================================
-FIM DO TUTORIAL 2
+FIM DO TUTORIAL 3
 =======================================================
 
 =======================================================
-TUTORIAL 2B: EXTRATO DO CLIENTE (LINK PÚBLICO)
+TUTORIAL 4: EXTRATO DO CLIENTE (LINK PÚBLICO)
 =======================================================
 
 O extrato do cliente é uma página web pública acessada pelo link único enviado via WhatsApp. Não requer login.
@@ -284,11 +288,11 @@ VISÃO DO GERENTE LOGADO:
 - Se um usuário logado no sistema abrir o link, aparece um botão extra "Mostrar OS/Compra" em cada card — abre diretamente a tela de detalhes da OS.
 
 =======================================================
-FIM DO TUTORIAL 2B
+FIM DO TUTORIAL 4
 =======================================================
 
 =======================================================
-TUTORIAL 3: PORTAL DO CLIENTE
+TUTORIAL 5: PORTAL DO CLIENTE
 =======================================================
 
 O portal do cliente é uma página web acessada pelo link de rastreamento enviado via WhatsApp. O cliente não precisa de login — o link já identifica a OS.
@@ -307,7 +311,7 @@ O QUE O CLIENTE VÊ
 
 3. Valor Total — clicando no card, expande a lista com todos os itens (serviços e peças) e seus valores.
 
-4. Aprovação do Orçamento — quando a OS está em Orçamento, aparece o botão "APROVAR ORÇAMENTO". Ao tocar, um drawer exibe o valor, alerta sobre peças do cliente (se houver), seleção da forma de pagamento e o botão "SIM, APROVAR". A aprovação registra IP, dispositivo e hash criptográfico como comprovante.
+4. Aprovação do Orçamento — quando a OS está em Orçamento, aparece o botão "APROVAR ORÇAMENTO". Ao tocar, um drawer exibe o valor, alerta sobre peças do cliente (se houver), seleção da forma de pagamento e o botão "SIM, APROVAR". A aprovação registra data/hora, IP informado pelo navegador, identificação do navegador/dispositivo e hash da versão do orçamento. Esses registros não confirmam a identidade da pessoa que acessou o link.
 
 5. Facilidades de Pagamento (se módulo ativo) — o cliente pode ver o QR Code do PIX e a tabela de parcelamento no cartão. Isso é apenas informativo — o pagamento é registrado pela oficina no fechamento da OS.
 
@@ -320,16 +324,16 @@ O QUE O CLIENTE VÊ
 9. Agendamento — se houver agendamento futuro vinculado, o cliente pode confirmar a presença pelo botão "CONFIRMAR PRESENÇA".
 
 =======================================================
-FIM DO TUTORIAL 2
+FIM DO TUTORIAL 5
 =======================================================
 
 =======================================================
-TUTORIAL 3: EXTRATO FINANCEIRO
+TUTORIAL 6: CAIXA (EXTRATO FINANCEIRO)
 =======================================================
 
 ACESSO
-- Celular: menu inferior > Financeiro (ícone de carteira).
-- Computador: menu lateral > Financeiro.
+- Celular: toque no botão de menu no topo para abrir o menu lateral > Caixa (ícone de carteira).
+- Computador: menu lateral > Caixa.
 - Exclusivo para Gerentes (cargo owner). Colaboradores não têm acesso.
 
 FILTROS (barra no topo da tela)
@@ -378,11 +382,11 @@ RELATÓRIOS DETALHADOS
 - Mostra análises por categoria, evolução mensal e outros indicadores gerenciais.
 
 =======================================================
-FIM DO TUTORIAL 3
+FIM DO TUTORIAL 6
 =======================================================
 
 =======================================================
-TUTORIAL 8: NOTAS FISCAIS (NFC-e, NFS-e e NF-e)
+TUTORIAL 7: NOTAS FISCAIS (NFC-e, NFS-e e NF-e)
 =======================================================
 
 TIPOS DE NOTA:
@@ -468,11 +472,11 @@ NF-e DE DEVOLUÇÃO E RETORNOS:
 - Essas operações têm impacto fiscal e de estoque. Se houver qualquer dúvida sobre finalidade, CFOP, tributação ou quantidade devolvida, pare e confirme com o contador.
 
 =======================================================
-FIM DO TUTORIAL 8
+FIM DO TUTORIAL 7
 =======================================================
 
 =======================================================
-TUTORIAL 9: AGENDAMENTO
+TUTORIAL 8: AGENDAMENTO
 =======================================================
 
 O QUE É:
@@ -486,7 +490,7 @@ DOIS TIPOS DE AGENDAMENTO:
 2. Já tem OS: cliente com OS aberta vai retornar para aprovação de orçamento, buscar o veículo, ou continuar o serviço. O agendamento fica vinculado à OS.
 
 O PAINEL DE AGENDAMENTOS:
-- Acesse pelo menu lateral em Agendamentos.
+- Acesse pelo menu lateral > Agenda (computador) ou pelo menu inferior > Agenda (celular).
 - Calendário do mês no topo — clique em qualquer dia para ver os agendamentos daquele dia.
 - Heatmap por hora (7h–18h): verde = tranquilo, amarelo = movimentado, vermelho = lotado. Use para evitar concentrar agendamentos na mesma hora.
 - Lista abaixo mostra os agendamentos do dia em ordem de horário, com ícones de ação ao lado.
@@ -528,8 +532,13 @@ ALERTAS EM TEMPO REAL:
   - "Avisar +15min": dorme o alerta por 15 minutos (snooze). Útil quando o cliente está a caminho.
   - "Não compareceu": marca o status e remove o alerta. O cliente vê isso no portal.
   - "Reagendar": abre o formulário de reagendamento sem sair da tela atual.
-  - "Abrir OS": cria uma nova OS vinculada ao agendamento, direto na tela de novo atendimento.
+  - Atalho para nova OS: atualmente o atalho do alerta está com o destino incorreto. Para criar a OS, acesse Atendimento > Nova OS e preencha cliente e veículo. O vínculo automático entre essa nova OS e o agendamento não está implementado.
 - Para receber notificações do navegador, é necessário autorizar quando o sistema pedir.
+
+LIMITAÇÃO DOS ATALHOS PARA NOVA OS:
+- O botão "Abrir Nova OS" na lista de agendamentos abre o formulário de nova OS, mas os dados enviados pelo atalho não são aproveitados para preencher cliente/veículo ou vincular o agendamento automaticamente.
+- Preencha os dados da nova OS pelo fluxo normal de Atendimento. Não considere o agendamento vinculado à OS apenas por usar esse atalho.
+- A IA deve orientar o fluxo normal de abertura e não prometer vínculo automático ao converter uma avaliação em OS.
 
 AÇÕES NA LISTA DE AGENDAMENTOS:
 - WhatsApp: envia ou reenvia o link ao cliente.
@@ -555,15 +564,15 @@ FLUXO COMPLETO (AVALIAÇÃO):
 2. Admin clica no WhatsApp e envia o link ao cliente.
 3. Cliente confirma presença pelo link. Painel mostra status "Confirmado".
 4. 15 minutos antes: alerta aparece no painel com som.
-5. Cliente chega. Admin clica "Abrir OS" no alerta para criar a OS vinculada.
+5. Cliente chega. Admin acessa Atendimento > Nova OS e preenche cliente e veículo. A nova OS não fica vinculada automaticamente ao agendamento de avaliação. Depois do atendimento da avaliação, dê baixa nesse agendamento pela ação Concluir na lista.
 6. Se precisar de retorno: mecânico cria novo agendamento tipo "Já tem OS" vinculado à mesma OS. O cliente usa o link da OS para confirmar o retorno.
 
 =======================================================
-FIM DO TUTORIAL 9
+FIM DO TUTORIAL 8
 =======================================================
 
 =======================================================
-TUTORIAL 10: CONFIGURAÇÕES (3 ABAS)
+TUTORIAL 9: CONFIGURAÇÕES (3 ABAS)
 =======================================================
 
 ONDE FICA:
@@ -660,5 +669,5 @@ CHECKLIST FINAL:
 6. Validar dados fiscais/certificado, se usa emissão de notas.
 
 =======================================================
-FIM DO TUTORIAL 10
+FIM DO TUTORIAL 9
 =======================================================
