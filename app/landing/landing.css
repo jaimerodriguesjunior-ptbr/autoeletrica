@@ -172,6 +172,9 @@
 .garage-testimonial:nth-child(3).is-ready { transition-delay: .2s; }
 .garage-finale__contact { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(40px, 8vw, 100px); padding: clamp(30px, 5vw, 60px); border: 1px solid #e8c38b42; border-radius: 18px; background: #25231ed9; }
 .garage-finale__invitation h2 { margin: 24px 0 18px; }
+.garage-finale__trial { margin-top: 26px; padding-top: 22px; border-top: 1px solid #e8c38b36; }
+.garage-finale__trial h3 { margin: 0 0 8px; color: #e8bf7c; font: 400 24px/1.2 Georgia, 'Times New Roman', serif; }
+.garage-finale__trial p { margin: 0; color: #cfc6b8; font-size: 14px; line-height: 1.6; }
 .garage-finale__links { display: grid; gap: 10px; }
 .garage-finale__links a { display: flex; align-items: center; gap: 15px; padding: 15px; border: 1px solid #e8c38b33; border-radius: 10px; color: #f5eee4; background: #14151082; text-decoration: none; transition: border-color .2s, background .2s; }
 .garage-finale__links a:hover { border-color: #e8bf7c; background: #352c1f; }
