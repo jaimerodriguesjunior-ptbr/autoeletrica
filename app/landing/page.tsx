@@ -13,6 +13,6 @@ export const metadata: Metadata = {
 
 export default function LandingPage() {
   return (
-    <main className="garage-landing"><GarageIntro /><GarageCustomer /><GarageClosing /><GarageFinale /><ContactShortcut /></main>
+    <main className="garage-landing"><GarageIntro /><GarageCustomer /><GarageClosing /><GarageFinale /><div className="garage-scroll-hint"><span aria-hidden="true">↕</span><span className="garage-scroll-hint__touch">Deslize para cima<br />ou para baixo</span><span className="garage-scroll-hint__mouse">Role para cima<br />ou para baixo</span></div><ContactShortcut /></main>
   );
 }
