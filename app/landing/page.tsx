@@ -4,6 +4,7 @@ import GarageClosing from "./garage-closing";
 import GarageCustomer from "./garage-customer";
 import GarageFinale from "./garage-finale";
 import ContactShortcut from "./contact-shortcut";
+import LandingScrollHint from "./landing-scroll-hint";
 import "./landing.css";
 
 export const metadata: Metadata = {
@@ -13,6 +14,6 @@ export const metadata: Metadata = {
 
 export default function LandingPage() {
   return (
-    <main className="garage-landing"><GarageIntro /><GarageCustomer /><GarageClosing /><GarageFinale /><div className="garage-scroll-hint"><span aria-hidden="true">↕</span><span className="garage-scroll-hint__touch">Deslize para cima<br />ou para baixo</span><span className="garage-scroll-hint__mouse">Role para cima<br />ou para baixo</span></div><ContactShortcut /></main>
+    <main className="garage-landing"><GarageIntro /><GarageCustomer /><GarageClosing /><GarageFinale /><LandingScrollHint /><ContactShortcut /></main>
   );
 }

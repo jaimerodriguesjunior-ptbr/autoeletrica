@@ -1,9 +1,8 @@
 .garage-landing { background: #121310; color: #faf8f1; font-family: Arial, Helvetica, sans-serif; }
-.garage-scroll-hint { position: fixed; z-index: 40; top: max(20px, env(safe-area-inset-top)); right: max(20px, env(safe-area-inset-right)); display: flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid #e8c38b66; border-radius: 9px; background: #171713d9; color: #f8f3e9; font-size: 10px; line-height: 1.3; pointer-events: none; }
-.garage-scroll-hint > span:first-child { color: #e8bf7c; font-size: 20px; line-height: 1; animation: garage-scroll-direction 1.6s ease-in-out infinite; }
-@keyframes garage-scroll-direction { 0%, 100% { transform: translateY(-3px); } 50% { transform: translateY(3px); } }
-.garage-scroll-hint__touch { display: none; }
-@media (hover: none), (pointer: coarse) { .garage-scroll-hint__touch { display: inline; } .garage-scroll-hint__mouse { display: none; } }
+.garage-scroll-hint { position: fixed; z-index: 40; left: max(20px, env(safe-area-inset-left)); bottom: max(20px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 40px); padding: 12px 18px; border: 1px solid #e8c997a6; border-radius: 999px; background: #1b130ef2; box-shadow: 0 8px 28px #0c0606a6; color: #fff4dc; font-size: 13px; font-weight: 600; letter-spacing: .035em; pointer-events: none; }
+.garage-scroll-hint__arrow { flex: none; width: 20px; height: 20px; color: #f1cf91; animation: garage-scroll-drift 1.25s ease-in-out infinite; }
+@keyframes garage-scroll-drift { 0%, 100% { transform: translateY(0); opacity: .6; } 50% { transform: translateY(7px); opacity: 1; } }
+@media (max-width: 600px) { .garage-scroll-hint { left: max(16px, env(safe-area-inset-left)); bottom: calc(max(12px, env(safe-area-inset-bottom)) + 64px); max-width: calc(100vw - 32px); padding: 11px 15px; font-size: 12px; } }
 .garage-story { --camera: 0; --voice-camera: 0; --team-camera: 0; --team-opacity: 0; --intro-opacity: 1; --scene-opacity: 0; --scene-shade: 0; --voice-opacity: 0; --speech-opacity: 0; --solution-opacity: 0; --vehicle-opacity: 0; --client-opacity: 0; --service-opacity: 0; height: 735svh; }
 .garage-hero { position: sticky; top: 0; isolation: isolate; height: 100svh; min-height: 0; overflow: hidden; display: flex; align-items: center; padding: 160px clamp(28px, 7.5vw, 144px) 150px; }
 .garage-hero__image { position: absolute; z-index: -3; inset: 0; background: url('/landingpage/oficina-panoramica.webp') calc(50% - 50% * var(--camera) + 50% * var(--voice-camera) + 50% * var(--team-camera)) 46% / cover no-repeat; transform: scale(calc(1 + .16 * var(--camera))); transform-origin: calc(28% + 72% * var(--team-camera)) 48%; }
