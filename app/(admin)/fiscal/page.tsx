@@ -1,4 +1,5 @@
 "use client";
+import WhatsAppPdfButton from "@/src/components/WhatsAppPdfButton";
 
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/src/contexts/AuthContext";
@@ -678,6 +679,7 @@ export default function FiscalDashboard() {
                                                     </button>
                                                 )}
 
+                                                {isOutputInvoice(inv) && inv.status === "authorized" && <WhatsAppPdfButton kind="invoice" documentId={inv.id} phone={inv.work_orders?.clients?.whatsapp} />}
                                                 {isOutputInvoice(inv) && inv.status === "authorized" && (
                                                     <button
                                                         onClick={() => handleWhatsApp(inv)}

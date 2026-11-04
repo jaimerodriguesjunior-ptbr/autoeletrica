@@ -1,4 +1,5 @@
 "use client";
+import WhatsAppPdfButton from "@/src/components/WhatsAppPdfButton";
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -193,6 +194,7 @@ export default function ReciboVendaPage() {
                             <Printer size={16} /> Imprimir
                         </Link>
                     )}
+                    {!isCancelada && <WhatsAppPdfButton kind="sale" documentId={String(wo.id)} phone={wo.clients?.whatsapp} />}
                     {wo.clients?.whatsapp && !isCancelada && (
                         <button onClick={handleWhatsApp} className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition shadow-lg shadow-green-500/20">
                             <MessageCircle size={16} /> WhatsApp

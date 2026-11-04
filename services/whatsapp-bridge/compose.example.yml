@@ -1,0 +1,17 @@
+services:
+  mbgarage-whatsapp:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:3101:3101"
+    networks:
+      - evolution
+    mem_limit: 192m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+networks:
+  evolution:
+    external: true
+    name: ${EVOLUTION_DOCKER_NETWORK:?Informe a rede existente da Evolution}

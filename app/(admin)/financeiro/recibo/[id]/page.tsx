@@ -1,4 +1,5 @@
 "use client";
+import WhatsAppPdfButton from "@/src/components/WhatsAppPdfButton";
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -146,6 +147,7 @@ export default function ReciboFinanceiroPage() {
                     <button onClick={() => window.print()} className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition">
                         <Printer size={16} /> Imprimir
                     </button>
+                    {isIncome && tx.status === 'paid' && <WhatsAppPdfButton kind="transaction" documentId={tx.id} phone={tx.work_orders?.clients?.whatsapp} />}
                     {tx.work_orders?.clients?.whatsapp && isIncome && (
                         <button onClick={handleWhatsApp} className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition shadow-lg shadow-green-500/20">
                             <MessageCircle size={16} /> WhatsApp

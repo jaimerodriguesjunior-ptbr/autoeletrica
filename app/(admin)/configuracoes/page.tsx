@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { getCompanySettings, toggleCompanyModule } from "@/src/actions/fiscal";
 
+import WhatsAppSettings from "@/src/components/WhatsAppSettings";
+
 // Tipos
 type Profile = {
   id: string;
@@ -423,6 +425,7 @@ export default function Configuracoes() {
 
   return (
     <div className="space-y-6 pb-32">
+      <WhatsAppSettings />
 
       <h1 className="text-3xl font-bold text-[#1A1A1A]">Configurações</h1>
 
