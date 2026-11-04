@@ -7,11 +7,12 @@ import {
     Loader2, ArrowLeft, Printer, MessageCircle,
     CheckCircle, Receipt, ArrowUpRight, ArrowDownRight
 } from "lucide-react";
-import Link from "next/link";
 import { useAuth } from "@/src/contexts/AuthContext";
+import { receiptItemText, receiptMoney, type ReceiptItem } from "@/src/lib/receiptItems";
 
 type TransactionRecibo = {
     id: string;
+    organization_id: string;
     description: string;
     amount: number;
     type: 'income' | 'expense';
@@ -21,7 +22,8 @@ type TransactionRecibo = {
     payment_method: string;
     created_at: string;
     work_orders?: {
-        id: string;
+        id: string | number;
+        work_order_items: ReceiptItem[];
         clients?: {
             nome: string;
             cpf_cnpj: string;
@@ -45,6 +47,7 @@ export default function ReciboFinanceiroPage() {
 
     const [loading, setLoading] = useState(true);
     const [tx, setTx] = useState<TransactionRecibo | null>(null);
+    const [companyName, setCompanyName] = useState("");
 
     useEffect(() => {
         if (!id) return;
@@ -59,7 +62,8 @@ export default function ReciboFinanceiroPage() {
                     *,
                     work_orders (
                         id,
-                        clients ( nome, cpf_cnpj, whatsapp )
+                        clients ( nome, cpf_cnpj, whatsapp ),
+                        work_order_items ( id, name, tipo, quantity, unit_price, total_price, peca_cliente )
                     )
                 `)
                 .eq('id', id)
@@ -67,6 +71,16 @@ export default function ReciboFinanceiroPage() {
 
             if (error) throw error;
             setTx(data as unknown as TransactionRecibo);
+            if (data.organization_id) {
+                const { data: company, error: companyError } = await supabase
+                    .from('company_settings')
+                    .select('nome_fantasia, razao_social')
+                    .eq('organization_id', data.organization_id)
+                    .limit(1)
+                    .maybeSingle();
+                if (companyError) console.error("Erro ao carregar empresa do recibo:", companyError);
+                setCompanyName(company?.nome_fantasia?.trim() || company?.razao_social?.trim() || "");
+            }
         } catch (error) {
             console.error(error);
             alert("Erro ao carregar recibo da transação");
@@ -79,8 +93,15 @@ export default function ReciboFinanceiroPage() {
         if (!tx) return;
         const client = tx.work_orders?.clients;
         if (!client?.whatsapp) return alert("Cliente não possui WhatsApp cadastrado.");
+        const empresa = companyName || (profile?.organization_id === tx.organization_id ? profile?.nome_fantasia?.trim() : "");
+        if (!empresa) return alert("Cadastre o nome fantasia ou a razão social da empresa em Configurações para enviar o recibo.");
         const numero = client.whatsapp.replace(/\D/g, '');
-        const mensagem = `Olá, ${client.nome}! Aqui está o comprovante do seu pagamento na AutoElétrica:\n\n*Recibo*\nReferência: ${tx.description}\nValor: R$ ${Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nObrigado!`;
+        const itens = tx.work_orders?.work_order_items || [];
+        const detalhes = itens.length ? `\n\n*Produtos e serviços da OS (valores dos itens)*\n${itens.map(receiptItemText).join('\n')}` : '';
+        const status = tx.status === 'paid' ? 'Pago' : 'Pendente';
+        const valor = tx.status === 'paid' ? 'Valor deste pagamento' : 'Valor previsto';
+        const data = tx.date ? new Date(`${tx.date.slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '';
+        const mensagem = `Olá, ${client.nome}! Segue o recibo da *${empresa}*:\n\n*Recibo${tx.work_orders ? ` — OS #${tx.work_orders.id}` : ''}*\nReferência: ${tx.description}${detalhes}\n\n${valor}: ${receiptMoney(tx.amount)}\nStatus: ${status}\nForma: ${PAYMENT_LABELS[tx.payment_method] || tx.payment_method || 'Não informada'}${data ? `\nData: ${data}` : ''}\n\nObrigado!`;
         window.open(`https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`, '_blank');
     };
 
@@ -137,6 +158,8 @@ export default function ReciboFinanceiroPage() {
             <div className="bg-white rounded-[32px] p-8 shadow-sm border border-stone-200 relative overflow-hidden print-area">
                 <div className={`absolute top-0 left-0 w-full h-2 ${isIncome ? 'bg-green-500' : 'bg-red-500'}`} />
 
+                <p className="text-lg font-black text-[#1A1A1A] mb-6">{companyName || (profile?.organization_id === tx.organization_id && profile?.nome_fantasia) || 'Oficina'}</p>
+
                 <div className="flex flex-col md:flex-row justify-between mb-8 pb-8 border-b border-dashed border-stone-200">
                     <div>
                         <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">{isIncome ? 'Recebemos de' : 'Pagamos a'}</p>
@@ -172,10 +195,21 @@ export default function ReciboFinanceiroPage() {
                     </div>
                 </div>
 
+                {!!tx.work_orders?.work_order_items?.length && (
+                    <div className="mb-8">
+                        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4">Produtos e serviços da OS #{tx.work_orders.id}</p>
+                        <div className="space-y-2">
+                            {tx.work_orders.work_order_items.map((item) => (
+                                <p key={item.id} className="text-sm text-stone-700">{receiptItemText(item)}</p>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Totais e Pagamentos */}
                 <div className={`${isIncome ? 'bg-green-50' : 'bg-red-50'} rounded-[24px] p-6`}>
                     <div className="flex justify-between items-center mb-6 pb-6 border-b border-stone-200/50">
-                        <p className={`${isIncome ? 'text-green-700' : 'text-red-700'} font-bold uppercase text-xs tracking-widest`}>A Importância de</p>
+                        <p className={`${isIncome ? 'text-green-700' : 'text-red-700'} font-bold uppercase text-xs tracking-widest`}>Valor desta transação</p>
                         <p className={`text-3xl font-black ${isIncome ? 'text-green-600' : 'text-red-600'}`}>R$ {Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                     </div>
 

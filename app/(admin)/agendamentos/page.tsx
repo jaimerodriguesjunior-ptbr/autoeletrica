@@ -356,7 +356,9 @@ export default function AgendamentosPage() {
 
         const nome = a.clients?.nome || 'Cliente';
 
+        const empresa = profile?.nome_fantasia?.trim() || "Oficina";
         const text = `Olá ${nome}, tudo bem?\n\n` +
+            `Aqui é da *${empresa}*.\n\n` +
             `Seu agendamento de *${getTypeLabel(a.type)}* está marcado para o dia *${dataFormatada}* às *${horaFormatada}*.\n\n` +
             `Você pode confirmar sua presença e acompanhar tudo pelo link abaixo:\n\n${link}`;
 

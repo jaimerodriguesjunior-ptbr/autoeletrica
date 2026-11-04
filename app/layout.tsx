@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: "Autoelétrica Pro",
+  title: "MB Garage",
   description: "Sistema de Gestão Inteligente",
   manifest: "/manifest.json",
   icons: {

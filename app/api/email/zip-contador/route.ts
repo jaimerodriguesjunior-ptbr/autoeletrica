@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        const nomeEmpresa = company?.nome_fantasia || company?.razao_social || "AutoElétrica";
+        const nomeEmpresa = company?.nome_fantasia || company?.razao_social || "Oficina";
 
         // Configurar transporter SMTP
         const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
         const smtpUser = process.env.SMTP_USER?.trim() || "";
         const smtpPass = process.env.SMTP_PASS?.trim() || "";
         const smtpFromEmail = process.env.SMTP_FROM_EMAIL || smtpUser;
-        const smtpFromName = process.env.SMTP_FROM_NAME || "AutoElétrica Pro";
+        const smtpFromName = nomeEmpresa;
 
         if (!smtpUser || !smtpPass) {
             const missing = [
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
         const zipBuffer = Buffer.from(zipBase64, "base64");
 
         await transporter.sendMail({
-            from: `${smtpFromName} <${smtpFromEmail}>`,
+            from: { name: smtpFromName, address: smtpFromEmail },
             to: emailContador,
             subject: `Fechamento Fiscal — ${nomeEmpresa} — ${fileName.replace(".zip", "")}`,
             html: `
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
                     </p>
                     <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
                     <p style="color: #aaa; font-size: 12px;">
-                        Enviado automaticamente pelo sistema ${smtpFromName}.
+                        Enviado por ${nomeEmpresa}.
                     </p>
                 </div>
             `,

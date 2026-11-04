@@ -51,7 +51,7 @@ export async function getProfileServerAction() {
         usa_caixa = company.usa_caixa !== undefined ? company.usa_caixa : true;
         usa_agendamento = company.usa_agendamento !== undefined ? company.usa_agendamento : true;
         usa_comissao = company.usa_comissao !== undefined ? company.usa_comissao : false;
-        nome_fantasia = company.nome_fantasia || "";
+        nome_fantasia = company.nome_fantasia?.trim() || company.razao_social?.trim() || "";
         logo_url = company.logo_url || "";
         logo_impressos_url = company.logo_impressos_url || "";
       }

@@ -1425,7 +1425,7 @@ export async function emitirNFCe(payload: EmissionPayload) {
 
                     procEmi: 0,
 
-                    verProc: "AutoEletrica 1.0"
+                    verProc: "1.0"
 
                 },
 
@@ -1973,7 +1973,7 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                     indPres: payload.ind_pres ?? 1,
                     indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
-                    verProc: "AutoEletrica 1.0",
+                    verProc: "1.0",
                 },
                 emit: {
                     CNPJ: cnpjEmit,
@@ -2274,7 +2274,7 @@ export async function emitirNFeRemessaConserto(payload: EmissionPayload & { obse
                     indPres: payload.ind_pres ?? 9,
                     indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
-                    verProc: "AutoEletrica 1.0",
+                    verProc: "1.0",
                 },
                 emit: {
                     CNPJ: cnpjEmit,
@@ -2543,7 +2543,7 @@ export async function emitirNFeRemessaGarantia(payload: EmissionPayload & { obse
                     indPres: payload.ind_pres ?? 9,
                     indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
-                    verProc: "AutoEletrica 1.0",
+                    verProc: "1.0",
                 },
                 emit: {
                     CNPJ: cnpjEmit,
@@ -2815,7 +2815,7 @@ export async function emitirNFeTransferencia(payload: EmissionPayload & { observ
                     indPres: payload.ind_pres ?? 9,
                     indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
-                    verProc: "AutoEletrica 1.0",
+                    verProc: "1.0",
                 },
                 emit: {
                     CNPJ: cnpjEmit,
@@ -3079,7 +3079,7 @@ export async function emitirNFeBonificacaoDoacao(payload: EmissionPayload & { ob
                     indPres: payload.ind_pres ?? 9,
                     indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
-                    verProc: "AutoEletrica 1.0",
+                    verProc: "1.0",
                 },
                 emit: {
                     CNPJ: cnpjEmit,
@@ -3304,7 +3304,7 @@ export async function emitirNFeAssistida(payload: EmissionPayload & { observacao
                     indPres: payload.ind_pres ?? 9,
                     indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
-                    verProc: "AutoEletrica 1.0",
+                    verProc: "1.0",
                     ...(hasReferencedKey ? { NFref: [{ refNFe: cleanReferencedKey }] } : {}),
                 },
                 emit: {
@@ -3612,7 +3612,7 @@ export async function emitirNFeRetornoConserto(payload: EmissionPayload & { obse
                     indPres: payload.ind_pres ?? 9,
                     indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
-                    verProc: "AutoEletrica 1.0",
+                    verProc: "1.0",
                     NFref: [{ refNFe: cleanReferencedKey }],
                 },
                 emit: {
@@ -3888,7 +3888,7 @@ export async function emitirNFeRetornoGarantia(payload: EmissionPayload & { obse
                     indPres: payload.ind_pres ?? 9,
                     indIntermed: payload.ind_intermed ?? 0,
                     procEmi: 0,
-                    verProc: "AutoEletrica 1.0",
+                    verProc: "1.0",
                     NFref: [{ refNFe: cleanReferencedKey }],
                 },
                 emit: {
@@ -6458,7 +6458,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     indFinal: 0,
                     indPres: 9,
                     procEmi: 0,
-                    verProc: "AutoEletrica 1.0",
+                    verProc: "1.0",
                     NFref: [{ refNFe: chaveAcesso }],
                 },
                 emit: {

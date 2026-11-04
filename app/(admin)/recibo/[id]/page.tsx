@@ -9,9 +9,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/src/contexts/AuthContext";
+import { receiptItemText, receiptMoney, type ReceiptItem } from "@/src/lib/receiptItems";
 
 type ExtratoData = {
     id: string;
+    organization_id: string;
     created_at: string;
     total: number;
     description: string;
@@ -23,15 +25,9 @@ type ExtratoData = {
         cpf_cnpj: string | null;
         public_token: string | null;
     } | null;
-    work_order_items: {
-        id: string;
-        name: string;
-        quantity: number;
-        unit_price: number;
-        total_price: number;
+    work_order_items: (ReceiptItem & {
         product_id: string | null;
-        peca_cliente: boolean | null;
-    }[];
+    })[];
     transactions: {
         id: string;
         amount: number;
@@ -56,6 +52,7 @@ export default function ReciboVendaPage() {
 
     const [loading, setLoading] = useState(true);
     const [wo, setWo] = useState<ExtratoData | null>(null);
+    const [companyName, setCompanyName] = useState("");
     const [cancelando, setCancelando] = useState(false);
     const [modalCancelarAberto, setModalCancelarAberto] = useState(false);
 
@@ -69,9 +66,9 @@ export default function ReciboVendaPage() {
             const { data, error } = await supabase
                 .from('work_orders')
                 .select(`
-                    id, created_at, total, description, status,
+                    id, organization_id, created_at, total, description, status,
                     clients ( id, nome, whatsapp, cpf_cnpj, public_token ),
-                    work_order_items ( id, name, quantity, unit_price, total_price, product_id, peca_cliente ),
+                    work_order_items ( id, name, tipo, quantity, unit_price, total_price, product_id, peca_cliente ),
                     transactions ( id, amount, payment_method, status, date )
                 `)
                 .eq('id', id)
@@ -79,6 +76,16 @@ export default function ReciboVendaPage() {
 
             if (error) throw error;
             setWo(data as unknown as ExtratoData);
+            if (data.organization_id) {
+                const { data: company, error: companyError } = await supabase
+                    .from('company_settings')
+                    .select('nome_fantasia, razao_social')
+                    .eq('organization_id', data.organization_id)
+                    .limit(1)
+                    .maybeSingle();
+                if (companyError) console.error("Erro ao carregar empresa do recibo:", companyError);
+                setCompanyName(company?.nome_fantasia?.trim() || company?.razao_social?.trim() || "");
+            }
         } catch (error) {
             console.error(error);
             alert("Erro ao carregar recibo");
@@ -89,8 +96,11 @@ export default function ReciboVendaPage() {
 
     const handleWhatsApp = () => {
         if (!wo?.clients?.whatsapp) return alert("Cliente não possui WhatsApp cadastrado.");
+        const empresa = companyName || (profile?.organization_id === wo.organization_id ? profile?.nome_fantasia?.trim() : "");
+        if (!empresa) return alert("Cadastre o nome fantasia ou a razão social da empresa em Configurações para enviar o recibo.");
         const numero = wo.clients.whatsapp.replace(/\D/g, '');
-        const mensagem = `Olá, ${wo.clients.nome}! Aqui está o comprovante da sua compra na AutoElétrica:\n\n*Recibo #${wo.id}*\nValor Total: R$ ${wo.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nObrigado pela preferência!`;
+        const detalhes = wo.work_order_items?.length ? `\n\n*Produtos e serviços*\n${wo.work_order_items.map(receiptItemText).join('\n')}` : '';
+        const mensagem = `Olá, ${wo.clients.nome}! Segue o comprovante da sua compra na *${empresa}*:\n\n*Recibo #${wo.id}*${detalhes}\n\nValor total: ${receiptMoney(wo.total)}\n\nObrigado pela preferência!`;
         window.open(`https://wa.me/55${numero}?text=${encodeURIComponent(mensagem)}`, '_blank');
     };
 
@@ -206,6 +216,7 @@ export default function ReciboVendaPage() {
 
             {/* Recibo Card */}
             <div className={`bg-white rounded-[32px] p-8 shadow-sm border relative overflow-hidden ${isCancelada ? 'border-red-200 opacity-75' : 'border-stone-200'}`}>
+                <p className="text-lg font-black text-[#1A1A1A] mb-6">{companyName || (profile?.organization_id === wo.organization_id && profile?.nome_fantasia) || 'Oficina'}</p>
                 <div className={`absolute top-0 left-0 w-full h-2 ${isCancelada ? 'bg-red-400' : 'bg-[#FACC15]'}`} />
 
                 <div className="flex flex-col md:flex-row justify-between mb-8 pb-8 border-b border-dashed border-stone-200">

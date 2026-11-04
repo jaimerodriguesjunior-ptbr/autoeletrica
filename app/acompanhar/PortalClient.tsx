@@ -50,7 +50,7 @@ function ConteudoPortal() {
   const [isAppointment, setIsAppointment] = useState(false);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [confirmando, setConfirmando] = useState(false);
-  const [logoUrl, setLogoUrl] = useState<string>("/logo.svg");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [telefoneEmpresa, setTelefoneEmpresa] = useState<string>("");
   const [invoices, setInvoices] = useState<any[]>([]);
   const [paymentIntent, setPaymentIntent] = useState<string>("");
@@ -113,9 +113,7 @@ function ConteudoPortal() {
       setAppointments(json.appointments || []);
       setInvoices(json.invoices || []);
 
-      if (json.logoUrl) {
-        setLogoUrl(json.logoUrl);
-      }
+      setLogoUrl(json.logoUrl || null);
       if (json.telefone) {
         setTelefoneEmpresa(json.telefone.replace(/\D/g, ''));
       }
@@ -272,7 +270,7 @@ function ConteudoPortal() {
       <header className="bg-white py-4 px-6 shadow-md border-b-2 border-stone-300 sticky top-0 z-50">
         <div className="flex items-center justify-center h-full">
           <div className="flex items-center justify-center pr-5">
-            <img src={logoUrl} alt="Logo" className="h-10 w-auto object-contain" />
+            {logoUrl ? <img src={logoUrl} alt={`Logo ${companySettings?.nome_fantasia || 'da oficina'}`} className="h-10 w-auto object-contain" /> : <span className="text-sm font-bold">{companySettings?.nome_fantasia || companySettings?.razao_social || "Oficina"}</span>}
           </div>
           <div className="w-px h-8 bg-stone-400"></div>
           <div className="pl-5 flex items-center">

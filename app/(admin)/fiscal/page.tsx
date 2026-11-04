@@ -281,7 +281,8 @@ export default function FiscalDashboard() {
             : invoice.tipo_documento === "NFe"
                 ? "Nota Fiscal Eletrônica (NF-e)"
                 : "Nota Fiscal (NFC-e)";
-        const text = `Olá, segue o link para baixar a sua ${tipoText}:\n\n${link}`;
+        const empresa = profile?.nome_fantasia?.trim() || "Oficina";
+        const text = `Olá, segue o link para baixar a sua ${tipoText} da *${empresa}*:\n\n${link}`;
 
         let url = `https://wa.me/?text=${encodeURIComponent(text)}`;
         if (phone && phone.length >= 10) {

@@ -1,4 +1,4 @@
-# BASE DE CONHECIMENTO — SISTEMA AUTOELÉTRICA
+# BASE DE CONHECIMENTO — MB GARAGE
 # Versão 2.1 | Revisado em 28/10/2026 com base na conferência do código local.
 # Este arquivo é usado pela IA para responder perguntas de uso do sistema.
 # Regra para a IA: explique somente procedimentos de uso confirmados abaixo. Para CFOP, NCM,

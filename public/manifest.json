@@ -1,7 +1,7 @@
 {
-  "name": "Autoelétrica Pro",
-  "short_name": "AutoPro",
-  "description": "Sistema de Gestão para Autoelétricas",
+  "name": "MB Garage",
+  "short_name": "MB Garage",
+  "description": "Sistema de gestão para oficinas",
   "id": "/",
   "start_url": "/dashboard",
   "scope": "/",

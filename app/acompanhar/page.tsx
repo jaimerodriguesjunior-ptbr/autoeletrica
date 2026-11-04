@@ -34,7 +34,7 @@ async function getWorkshopPreview(token: string) {
 
   const { data: company } = await supabase
     .from("company_settings")
-    .select("nome_fantasia, logo_impressos_url, logo_url")
+    .select("nome_fantasia, razao_social, logo_impressos_url, logo_url")
     .eq("organization_id", organizationId)
     .limit(1)
     .maybeSingle();
@@ -42,7 +42,7 @@ async function getWorkshopPreview(token: string) {
   if (!company) return null;
 
   return {
-    name: company.nome_fantasia?.trim() || "Oficina",
+    name: company.nome_fantasia?.trim() || company.razao_social?.trim() || "Oficina",
     logoUrl: company.logo_impressos_url || company.logo_url || null,
   };
 }
@@ -69,12 +69,14 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
     }
   }
 
-  const imageUrl = logoUrl || `${PUBLIC_APP_ORIGIN}/web-app-manifest-512x512.png`;
+  const images = logoUrl ? [{ url: logoUrl, width: 512, height: 512, alt: `Logo ${workshopName}` }] : [];
 
   return {
     metadataBase: new URL(PUBLIC_APP_ORIGIN),
     title: workshopName,
     description: "Acompanhe o serviço e consulte seu orçamento.",
+    manifest: null,
+    icons: { icon: logoUrl ? [{ url: logoUrl }] : [], shortcut: [], apple: [] },
     alternates: {
       canonical: portalUrl,
     },
@@ -83,14 +85,7 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
       description: "Acompanhe o serviço e consulte seu orçamento.",
       url: portalUrl,
       siteName: workshopName,
-      images: [
-        {
-          url: imageUrl,
-          width: 512,
-          height: 512,
-          alt: `Logo ${workshopName}`,
-        },
-      ],
+      images,
       locale: "pt_BR",
       type: "website",
     },
@@ -98,7 +93,7 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
       card: "summary",
       title: workshopName,
       description: "Acompanhe o serviço e consulte seu orçamento.",
-      images: [imageUrl],
+      images: logoUrl ? [logoUrl] : [],
     },
   };
 }

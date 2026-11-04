@@ -244,7 +244,8 @@ export default function EditarCliente() {
       return;
     }
     const url = getExtratoUrl();
-    const msg = `Olá ${nome}! Segue o link do seu extrato financeiro:\n${url}`;
+    const empresa = profile?.nome_fantasia?.trim() || "Oficina";
+    const msg = `Olá ${nome}! Segue o link do seu extrato financeiro da *${empresa}*:\n${url}`;
     const wp = whatsapp.replace(/\D/g, '');
     window.open(`https://wa.me/55${wp}?text=${encodeURIComponent(msg)}`, '_blank');
   }

@@ -10,7 +10,6 @@ import {
   Plus, Minus, X, Calendar, CreditCard, Trash2, Printer, Camera, UserCheck, ShieldCheck,
   Gauge, Thermometer, Fuel, ChevronDown, ChevronUp, FileUp, Download, Search, AlertTriangle, Mic, AlertCircle, Play, Video, Users2
 } from "lucide-react";
-import heic2any from "heic2any";
 import { createClient } from "../../../../../src/lib/supabase";
 import { useAuth } from "../../../../../src/contexts/AuthContext";
 import { ScannerModal } from "@/components/ui/ScannerModal";
@@ -616,6 +615,7 @@ export default function DetalhesOS() {
 
       // Conversão de HEIC para JPEG se necessário
       if (fileExt === 'heic' || file.type === 'image/heic') {
+        const { default: heic2any } = await import("heic2any");
         const convertedBlob = await heic2any({
           blob: file,
           toType: "image/jpeg",
@@ -1697,7 +1697,8 @@ export default function DetalhesOS() {
       const osId = String(os!.id);
       const trackingLink = `${PUBLIC_APP_ORIGIN}/acompanhar?token=${os!.public_token}`;
 
-      let message = `Olá ${os!.clients.nome}. Para aprovar e acompanhar o serviço clique no link abaixo ${trackingLink}`;
+      const empresa = profile?.nome_fantasia?.trim() || "Oficina";
+      const message = `Olá ${os!.clients.nome}! Segue o link da *${empresa}* para aprovar ou acompanhar o serviço:\n\n${trackingLink}`;
 
       window.open(`https://wa.me/55${number}?text=${encodeURIComponent(message)}`, '_blank');
     } else {
