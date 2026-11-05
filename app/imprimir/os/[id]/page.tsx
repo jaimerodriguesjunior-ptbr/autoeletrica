@@ -60,6 +60,10 @@ export default function ImprimirOSA5() {
 
   const totalPecas = os.work_order_items?.filter((i: any) => i.tipo === 'peca').reduce((acc: number, i: any) => acc + i.total_price, 0) || 0;
   const totalServicos = os.work_order_items?.filter((i: any) => i.tipo === 'servico').reduce((acc: number, i: any) => acc + i.total_price, 0) || 0;
+  const totalCalculado = (os.work_order_items || []).reduce((acc: number, item: any) =>
+    acc + (item.peca_cliente ? 0 : Number(item.total_price || 0)), 0);
+  const totalGravado = Number(os.total);
+  const totalOS = Number.isFinite(totalGravado) && totalGravado > 0 ? totalGravado : totalCalculado;
 
   const empresaNome = company?.nome_fantasia || "Centro Automotivo";
   const empresaCnpj = company?.cnpj || "CNPJ não cadastrado";
@@ -202,8 +206,7 @@ export default function ImprimirOSA5() {
             </div>
 
             <div className="border border-black bg-gray-50 px-3 py-1.5 rounded text-right min-w-[30%]">
-              <p className="text-[8px] uppercase font-bold text-gray-600 mb-0.5">TOTAL DA OS</p>
-              <p className="font-black text-base text-black">R$ {Number(os.total).toFixed(2)}</p>
+              <p className="font-black text-sm text-black">TOTAL DA OS: R$ {totalOS.toFixed(2)}</p>
             </div>
           </div>
 
