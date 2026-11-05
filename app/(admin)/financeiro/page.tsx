@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowUpRight, ArrowDownRight, Wallet,
   Wrench, ShoppingCart, Zap, X, Save, Loader2, Trash2, Calendar,
-  CheckCircle2, Clock, Filter, FileText, FileArchive, PieChart, Pencil, Printer
+  CheckCircle2, Clock, Filter, FileText, FileArchive, PieChart, Pencil, Printer, MessageCircle
 } from "lucide-react";
 import { createClient } from "../../../src/lib/supabase";
 import { useAuth } from "../../../src/contexts/AuthContext";
@@ -379,8 +379,13 @@ export default function Financeiro() {
                       )}
                       
                       {item.status === 'paid' && (
-                        <Link href={`/financeiro/recibo/${item.id}`} target="_blank" className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition" title="Imprimir Recibo">
+                        <Link href={`/financeiro/recibo/${item.id}`} className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition" title="Imprimir Recibo">
                           <Printer size={18} />
+                        </Link>
+                      )}
+                      {item.status === 'paid' && item.tipo === 'entrada' && (
+                        <Link href={`/financeiro/recibo/${item.id}`} className="p-2 text-green-600 hover:text-green-700 hover:bg-green-100 rounded-lg transition" title="Enviar recibo pelo WhatsApp" aria-label="Abrir recibo para enviar pelo WhatsApp">
+                          <MessageCircle size={18} aria-hidden="true" />
                         </Link>
                       )}
                     </div>

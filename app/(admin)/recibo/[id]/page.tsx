@@ -1,11 +1,12 @@
 "use client";
 import WhatsAppPdfButton from "@/src/components/WhatsAppPdfButton";
+import PrintReceiptButton from "@/src/components/receipts/PrintReceiptButton";
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase";
 import {
-    Loader2, ArrowLeft, Printer, MessageCircle,
+    Loader2, ArrowLeft, MessageCircle,
     CheckCircle, Package, Receipt
 } from "lucide-react";
 import Link from "next/link";
@@ -190,14 +191,12 @@ export default function ReciboVendaPage() {
                 </div>
                 <div className="flex items-center gap-2">
                     {!isCancelada && (
-                        <Link href={`/imprimir/os/${wo.id}`} target="_blank" className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition">
-                            <Printer size={16} /> Imprimir
-                        </Link>
+                        <PrintReceiptButton kind="sale" documentId={String(wo.id)} />
                     )}
                     {!isCancelada && <WhatsAppPdfButton kind="sale" documentId={String(wo.id)} phone={wo.clients?.whatsapp} />}
                     {wo.clients?.whatsapp && !isCancelada && (
                         <button onClick={handleWhatsApp} className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition shadow-lg shadow-green-500/20">
-                            <MessageCircle size={16} /> WhatsApp
+                            <MessageCircle size={16} /> Texto
                         </button>
                     )}
                 </div>
@@ -358,18 +357,7 @@ export default function ReciboVendaPage() {
                 </div>
             )}
 
-            <style jsx global>{`
-                @media print {
-                    body * { visibility: hidden; }
-                    .max-w-2xl, .max-w-2xl * { visibility: visible; }
-                    .max-w-2xl { position: absolute; left: 0; top: 0; padding: 0 !important; width: 100%; margin: 0; }
-                    button, a { display: none !important; }
-                    .bg-\\[\\#1A1A1A\\] { background-color: #f5f5f4 !important; color: black !important; -webkit-print-color-adjust: exact; }
-                    .text-white { color: black !important; }
-                    .border-white\\/10 { border-color: #e5e5e5 !important; }
-                    .text-\\[\\#FACC15\\] { color: black !important; }
-                }
-            `}</style>
+
         </div>
     );
 }

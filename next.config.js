@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  experimental: {
+    outputFileTracingIncludes: {
+      '/api/whatsapp/send': ['./public/**/*.{png,jpg,jpeg,webp,PNG,JPG,JPEG,WEBP}'],
+    },
+  },
   images: {
     remotePatterns: [
       {

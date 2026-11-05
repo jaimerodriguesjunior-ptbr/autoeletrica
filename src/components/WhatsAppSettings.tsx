@@ -13,6 +13,31 @@ export default function WhatsAppSettings() {
     if (d.error) throw new Error(d.error);
     setEnabled(d.enabled); setCanManage(d.canManage);
   }).catch(e => setMessage(e.message)).finally(() => setBusy(false)); }, []);
+  useEffect(() => {
+    if (!enabled || !canManage || busy) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
+    const refresh = async () => {
+      try {
+        const response = await fetch('/api/whatsapp/settings', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'status' }), signal: controller.signal,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+        if (stopped) return;
+        setState(code && data.state !== 'open' ? 'connecting' : data.state);
+        if (data.state === 'open') { setCode(''); setMessage(''); }
+      } catch {
+        if (!stopped) setMessage('Não foi possível atualizar o estado do WhatsApp. Tentaremos novamente.');
+      } finally {
+        if (!stopped) timer = setTimeout(refresh, 10000);
+      }
+    };
+    refresh();
+    return () => { stopped = true; controller.abort(); clearTimeout(timer); };
+  }, [enabled, canManage, busy, code]);
   async function act(action: string) {
     setBusy(true); setMessage(''); setCode('');
     try {
@@ -29,8 +54,8 @@ export default function WhatsAppSettings() {
     <label className="flex gap-3 items-center"><input type="checkbox" checked={enabled} disabled={busy || !canManage} onChange={() => act('toggle')} /> Ativar envio pelo WhatsApp</label>
     {!canManage && <p className="text-sm">A configuração é feita pelo gerente.</p>}
     <p className="text-sm text-stone-500">Desativar bloqueia novos envios. Para encerrar a sessão no aparelho, use Desconectar.</p>
-    {canManage && <div className="flex gap-3 flex-wrap">{['connect', 'status', 'disconnect'].map((a, i) => <button key={a} className="px-4 py-2 bg-stone-100 rounded-xl disabled:opacity-50" disabled={busy || (!enabled && a !== 'disconnect')} onClick={() => { if (a !== 'disconnect' || window.confirm('Desconectar o WhatsApp desta oficina?')) act(a); }}>{['Conectar / renovar QR code', 'Atualizar estado', 'Desconectar'][i]}</button>)}</div>}
-    {state && <p role="status">{state === 'open' ? 'Conectado' : state === 'connecting' ? 'Aguardando conexão. Leia o QR code e atualize o estado.' : 'Desconectado'}</p>}
+    {canManage && <div className="flex gap-3 flex-wrap">{['connect', 'status', 'disconnect'].map((a, i) => <button key={a} className="px-4 py-2 bg-stone-700 text-white font-medium rounded-xl hover:bg-stone-800 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled={busy || (!enabled && a !== 'disconnect')} onClick={() => { if (a !== 'disconnect' || window.confirm('Desconectar o WhatsApp desta oficina?')) act(a); }}>{['Conectar / renovar QR code', 'Atualizar estado', 'Desconectar'][i]}</button>)}</div>}
+    {state && <p role="status" className={state === 'open' ? 'inline-flex items-center gap-2 rounded-full bg-green-100 px-3 py-1.5 text-sm font-semibold text-green-800' : 'text-sm text-stone-600'}>{state === 'open' && <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-green-600" />}{state === 'open' ? 'Conectado' : state === 'connecting' ? 'Aguardando conexão. Leia o QR code; o estado será atualizado automaticamente.' : 'Desconectado'}</p>}
     {code && <div><QRCodeSVG value={code} size={240} /><p>No WhatsApp, abra Aparelhos conectados → Conectar aparelho. Se expirar, renove o QR code.</p></div>}
     {message && <p role="alert" className="text-red-700">{message}</p>}
   </section>;

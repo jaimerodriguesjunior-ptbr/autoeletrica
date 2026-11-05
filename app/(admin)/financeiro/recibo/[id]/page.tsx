@@ -1,11 +1,12 @@
 "use client";
 import WhatsAppPdfButton from "@/src/components/WhatsAppPdfButton";
+import PrintReceiptButton from "@/src/components/receipts/PrintReceiptButton";
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase";
 import {
-    Loader2, ArrowLeft, Printer, MessageCircle,
+    Loader2, ArrowLeft, MessageCircle,
     CheckCircle, Receipt, ArrowUpRight, ArrowDownRight
 } from "lucide-react";
 import { useAuth } from "@/src/contexts/AuthContext";
@@ -144,13 +145,11 @@ export default function ReciboFinanceiroPage() {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={() => window.print()} className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition">
-                        <Printer size={16} /> Imprimir
-                    </button>
+                    <PrintReceiptButton kind="transaction" documentId={tx.id} />
                     {isIncome && tx.status === 'paid' && <WhatsAppPdfButton kind="transaction" documentId={tx.id} phone={tx.work_orders?.clients?.whatsapp} />}
                     {tx.work_orders?.clients?.whatsapp && isIncome && (
                         <button onClick={handleWhatsApp} className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition shadow-lg shadow-green-500/20">
-                            <MessageCircle size={16} /> WhatsApp
+                            <MessageCircle size={16} /> Texto
                         </button>
                     )}
                 </div>
@@ -234,17 +233,7 @@ export default function ReciboFinanceiroPage() {
                 </div>
             </div>
 
-            <style jsx global>{`
-                @media print {
-                    body * { visibility: hidden; }
-                    .print-area, .print-area * { visibility: visible; }
-                    .print-hide { display: none !important; }
-                    .print-area { position: absolute; left: 0; top: 0; padding: 0 !important; width: 100%; margin: 0; box-shadow: none !important; border: none !important; }
-                    .bg-green-50, .bg-red-50 { background-color: transparent !important; border: 1px solid #e5e5e5; }
-                    .text-green-600, .text-red-600 { color: black !important; }
-                    .text-green-700, .text-red-700 { color: #666 !important; }
-                }
-            `}</style>
+
         </div>
     );
 }

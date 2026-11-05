@@ -425,8 +425,6 @@ export default function Configuracoes() {
 
   return (
     <div className="space-y-6 pb-32">
-      <WhatsAppSettings />
-
       <h1 className="text-3xl font-bold text-[#1A1A1A]">Configurações</h1>
 
       {/* --- NAVEGAÇÃO DE ABAS --- */}
@@ -986,6 +984,7 @@ export default function Configuracoes() {
       ================================================================================= */}
       {activeTab === 'modules' && (
         <div className="bg-white p-8 rounded-[32px] border border-stone-100 shadow-sm animate-in fade-in slide-in-from-right-4 duration-300 max-w-3xl">
+          <WhatsAppSettings />
           <div className="mb-6">
             <h2 className="text-xl font-bold text-[#1A1A1A] mb-1">Módulos Opcionais</h2>
             <p className="text-sm text-stone-500">Habilite ou desabilite recursos do sistema. Isso altera os menus e ferramentas para os colaboradores.</p>

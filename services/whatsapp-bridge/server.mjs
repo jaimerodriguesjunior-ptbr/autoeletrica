@@ -27,17 +27,18 @@ export function createBridge({ evolutionUrl, evolutionKey, token, fetchImpl = fe
       if (action === 'status') { reply(200, { state: await status() }); return; }
       if (action === 'disconnect') { if (await status() !== 'missing') await evolution(`/instance/logout/${instance}`, 'DELETE'); reply(200, { state: 'close' }); return; }
       if (action === 'connect') {
-        if (await status() === 'missing') await evolution('/instance/create', 'POST', { instanceName: instance, integration: 'WHATSAPP-BAILEYS', qrcode: false, syncFullHistory: false, readMessages: false, readStatus: false, alwaysOnline: false, groupsIgnore: true, webhook: { enabled: false, events: [] } });
+        if (await status() === 'missing') await evolution('/instance/create', 'POST', { instanceName: instance, integration: 'WHATSAPP-BAILEYS', qrcode: false, syncFullHistory: false, readMessages: false, readStatus: false, alwaysOnline: false, groupsIgnore: true });
         if (await status() === 'open') { reply(200, { state: 'open' }); return; }
         const result = await evolution(`/instance/connect/${instance}`);
         reply(200, { state: 'connecting', code: result.code || '' }); return;
       }
       if (!/^55[1-9]\d{9,10}$/.test(body.phone) || !/^[\w-]+\.pdf$/.test(body.filename) || typeof body.media !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(body.media)) { reply(400, { error: 'Documento inválido' }); return; }
+      if (body.caption !== undefined && (typeof body.caption !== 'string' || body.caption.length > 1000)) { reply(400, { error: 'Mensagem inválida' }); return; }
       const pdf = Buffer.from(body.media, 'base64');
       if (pdf.length > 10 * 1024 * 1024 || pdf.subarray(0, 5).toString() !== '%PDF-') { reply(400, { error: 'PDF inválido' }); return; }
       if (await status() !== 'open') { reply(409, { error: 'WhatsApp desconectado' }); return; }
       // Sem tentativas automáticas: timeout tem resultado incerto.
-      const result = await evolution(`/message/sendMedia/${instance}`, 'POST', { number: body.phone, mediatype: 'document', mimetype: 'application/pdf', fileName: body.filename, media: body.media });
+      const result = await evolution(`/message/sendMedia/${instance}`, 'POST', { number: body.phone, mediatype: 'document', mimetype: 'application/pdf', fileName: body.filename, caption: body.caption || '', media: body.media });
       if (!result.key?.id) throw new Error('Resposta sem ID');
       reply(200, { messageId: result.key.id });
     } catch { reply(502, { error: 'Operação não confirmada pela Evolution API' }); }
