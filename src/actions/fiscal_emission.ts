@@ -2124,7 +2124,6 @@ export async function emitirNFeVenda(payload: EmissionPayload) {
                     numero: String(rejectedNumber || ""),
                     serie: String(nfeSerie || ""),
                     error_message: `Erro ${codigoErro}: ${motivoErro}`,
-                    motivo_rejeicao: `Erro ${codigoErro}: ${motivoErro}`,
                 })
                 .eq("id", invoice.id);
             const retryHint = String(codigoErro) === "539" ? " A numeracao local foi ajustada; tente emitir novamente para usar o proximo numero." : "";
@@ -6133,6 +6132,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         let fornecedorUF = "SP";
         const originQuantityByCode = new Map<string, number>();
         const exactCodeByLegacyCode = new Map<string, string>();
+        const originItemNumberByCode = new Map<string, number>();
         const originCodeAliases = new Map<string, string>();
         const ambiguousOriginCodes = new Set<string>();
         let isImpartsXml = false;
@@ -6185,6 +6185,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         if (!legacyCode || !exactCode) return;
                         if (exactCodeByLegacyCode.has(legacyCode)) ambiguousOriginCodes.add(legacyCode);
                         exactCodeByLegacyCode.set(legacyCode, exactCode);
+                        originItemNumberByCode.set(legacyCode, Number(exactItems[index]?.["@_nItem"]));
                         originCodeAliases.set(exactCode, legacyCode);
                     });
                 }
@@ -6268,6 +6269,12 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         // pendente de uma regra centralizada na Nuvem Local.
         const mesmoEstado = company.uf === fornecedorUF;
         if (isImpartsReturn) {
+            if (!isValidChave(chaveAcesso) || payload.itens.some((item) => {
+                const number = originItemNumberByCode.get(item.codigo || "") ?? 0;
+                return !Number.isInteger(number) || number < 1 || number > 990;
+            })) {
+                return { success: false, error: "Não foi possível identificar a chave e o número de cada item no XML de origem." };
+            }
             if (!isImpartsXml || !fornecedorEnd || !mesmoEstado) {
                 return { success: false, error: "A devolução Imparts exige o XML da filial 06.151.722/0004-76 e uma operação dentro do mesmo estado." };
             }
@@ -6403,6 +6410,12 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             return {
                 det: {
                     nItem: idx + 1,
+                    ...(isImpartsReturn ? {
+                        DFeReferenciado: {
+                            chaveAcesso,
+                            nItem: originItemNumberByCode.get(item.codigo || ""),
+                        },
+                    } : {}),
                     prod: {
                         cProd: (isImpartsReturn && exactCodeByLegacyCode.get(item.codigo || "")) || item.codigo || String(idx + 1),
                         cEAN: "SEM GTIN",
@@ -6512,7 +6525,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     indPres: 9,
                     procEmi: 0,
                     verProc: "1.0",
-                    NFref: [{ refNFe: chaveAcesso }],
+                    ...(!isImpartsReturn ? { NFref: [{ refNFe: chaveAcesso }] } : {}),
                 },
                 emit: {
                     CNPJ: cnpjEmit,
@@ -6692,7 +6705,6 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                     numero: String(rejectedNumber),
                     serie: String(nfeSerie),
                     error_message: `Erro 539: ${motivoErroLocal}`,
-                    motivo_rejeicao: `Erro 539: ${motivoErroLocal}`,
                 })
                 .eq("id", invoice.id);
             return {
