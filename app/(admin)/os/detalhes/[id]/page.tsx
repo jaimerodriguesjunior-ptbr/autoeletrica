@@ -182,6 +182,7 @@ export default function DetalhesOS() {
   const [listaServicos, setListaServicos] = useState<CatalogItem[]>([]);
   const [termoBusca, setTermoBusca] = useState("");
   const [adicionandoItem, setAdicionandoItem] = useState(false);
+  const adicionandoItemRef = useRef(false);
 
   // Scanner de código de barras
   const [scannerAberto, setScannerAberto] = useState(false);
@@ -197,6 +198,8 @@ export default function DetalhesOS() {
   const [modalAdicionarTipo, setModalAdicionarTipo] = useState<'peca' | 'servico' | null>(null);
   const [modalEditarItemAberto, setModalEditarItemAberto] = useState(false);
   const [itemEditando, setItemEditando] = useState<WorkOrderItem | null>(null);
+  const itemEditandoOriginalRef = useRef<WorkOrderItem | null>(null);
+  const salvandoItemRef = useRef(false);
   const [novoValorItem, setNovoValorItem] = useState('');
   const [novaQtdItem, setNovaQtdItem] = useState('');
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
@@ -1231,8 +1234,41 @@ export default function DetalhesOS() {
     }
   };
 
-  const handleAdicionarItem = async (item: CatalogItem, tipo: "peca" | "servico", baixarEstoque = true) => {
-    if (!os || !profile?.organization_id) return;
+  const handleSalvarEdicaoItem = async () => {
+    const original = itemEditandoOriginalRef.current;
+    if (!os || !itemEditando || !original || salvandoItemRef.current) return;
+    salvandoItemRef.current = true;
+    setUpdating(true);
+    try {
+      const { error } = await supabase.rpc('update_work_order_item_with_stock', {
+        p_work_order_id: os.id,
+        p_item_id: itemEditando.id,
+        p_quantity: itemEditando.quantity,
+        p_unit_price: itemEditando.unit_price,
+        p_expected_item: {
+          quantity: original.quantity,
+          unit_price: original.unit_price,
+          product_id: original.product_id,
+          tipo: original.tipo,
+          peca_cliente: original.peca_cliente ?? false,
+        },
+      });
+      if (error) throw error;
+      await Promise.all([fetchOS(), fetchCatalogo()]);
+      setModalEditarItemAberto(false);
+      setItemEditando(null);
+      itemEditandoOriginalRef.current = null;
+    } catch (error: any) {
+      alert('Erro ao atualizar item: ' + error.message);
+    } finally {
+      salvandoItemRef.current = false;
+      setUpdating(false);
+    }
+  };
+
+  const handleAdicionarItem = async (item: CatalogItem, tipo: "peca" | "servico") => {
+    if (!os || !profile?.organization_id || adicionandoItemRef.current) return;
+    adicionandoItemRef.current = true;
     setAdicionandoItem(true);
 
     const valorUnitario = item.price || item.preco_venda || 0;
@@ -1240,26 +1276,36 @@ export default function DetalhesOS() {
     const totalItem = valorUnitario * quantidade;
 
     try {
-      const { data: itemData, error: itemError } = await supabase
-        .from("work_order_items")
-        .insert({
-          work_order_id: os!.id,
-          organization_id: profile.organization_id,
-          product_id: tipo === "peca" ? item.id : null,
-          service_id: tipo === "servico" ? item.id : null,
-          marca: tipo === "peca" ? (item.marca || null) : null,
-          catalog_status: "resolved",
-          tipo: tipo,
-          name: item.nome,
-          quantity: quantidade,
-          unit_price: valorUnitario,
-          total_price: totalItem,
-          peca_cliente: false
-        })
-        .select('id')
-        .single();
-
-      if (itemError) throw itemError;
+      let itemData: { id: string } | null = null;
+      if (tipo === 'peca') {
+        // Item, baixa e total são confirmados juntos no banco.
+        const { error } = await supabase.rpc('add_work_order_part_with_stock', {
+          p_work_order_id: os.id,
+          p_product_id: item.id,
+          p_quantity: quantidade,
+          p_unit_price: valorUnitario,
+        });
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase
+          .from("work_order_items")
+          .insert({
+            work_order_id: os.id,
+            organization_id: profile.organization_id,
+            service_id: item.id,
+            catalog_status: "resolved",
+            tipo,
+            name: item.nome,
+            quantity: quantidade,
+            unit_price: valorUnitario,
+            total_price: totalItem,
+            peca_cliente: false,
+          })
+          .select('id')
+          .single();
+        if (error) throw error;
+        itemData = data;
+      }
 
       // Auto-atribuição: se é serviço e a OS foi criada por um funcionário
       if (tipo === 'servico' && usaComissao && osCreatorIsEmployee && os!.employee_id && itemData?.id) {
@@ -1271,38 +1317,24 @@ export default function DetalhesOS() {
         setAssignmentsMap(prev => ({ ...prev, [itemData.id]: [os!.employee_id!] }));
       }
 
-      if (tipo === "peca" && baixarEstoque) {
-        const { data: prodData } = await supabase
-          .from('products')
-          .select('estoque_atual')
-          .eq('id', item.id)
-          .single();
-
-        if (prodData) {
-          const novoEstoque = (prodData.estoque_atual || 0) - quantidade;
-          await supabase
-            .from('products')
-            .update({ estoque_atual: novoEstoque })
-            .eq('id', item.id);
-        }
+      if (tipo === 'servico') {
+        const novoTotalOS = (os.total || 0) + totalItem;
+        const { error: osError } = await supabase
+          .from("work_orders")
+          .update({ total: novoTotalOS })
+          .eq("id", os.id);
+        if (osError) throw osError;
       }
-
-      const novoTotalOS = (os!.total || 0) + totalItem;
-      const { error: osError } = await supabase
-        .from("work_orders")
-        .update({ total: novoTotalOS })
-        .eq("id", os!.id);
-
-      if (osError) throw osError;
 
       setModalAdicionarTipo(null);
       setTermoBusca("");
-      fetchOS();
-      alert(baixarEstoque ? "Item adicionado e estoque atualizado!" : "Item cadastrado e adicionado à OS!");
+      await Promise.all([fetchOS(), fetchCatalogo()]);
+      alert(tipo === 'peca' ? "Peça adicionada e estoque atualizado!" : "Serviço adicionado à OS!");
 
     } catch (error: any) {
       alert("Erro ao adicionar item: " + error.message);
     } finally {
+      adicionandoItemRef.current = false;
       setAdicionandoItem(false);
     }
   };
@@ -1360,7 +1392,7 @@ export default function DetalhesOS() {
       setMarcaNovoItem('');
       setNcmNovoItem('');
       setPrecoNovoItem('');
-      await handleAdicionarItem(novoProduto as CatalogItem, 'peca', false);
+      await handleAdicionarItem(novoProduto as CatalogItem, 'peca');
     } catch (error: any) {
       alert('Erro ao cadastrar a peça: ' + error.message);
     } finally {
@@ -2252,6 +2284,7 @@ export default function DetalhesOS() {
                       {os!.status !== 'cancelado' && os!.status !== 'entregue' ? (
                         <button
                           onClick={() => {
+                            itemEditandoOriginalRef.current = { ...item };
                             setItemEditando(item);
                             setNovoValorItem(item.unit_price.toString());
                             setNovaQtdItem(item.quantity.toString());
@@ -2330,6 +2363,7 @@ export default function DetalhesOS() {
                       {os!.status !== 'cancelado' && os!.status !== 'entregue' ? (
                         <button
                           onClick={() => {
+                            itemEditandoOriginalRef.current = { ...item };
                             setItemEditando(item);
                             setNovoValorItem(item.unit_price.toString());
                             setNovaQtdItem(item.quantity.toString());
@@ -3397,7 +3431,7 @@ export default function DetalhesOS() {
             <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="font-bold text-lg text-[#1A1A1A]">Editar Item</h2>
-                <button onClick={() => { setModalEditarItemAberto(false); setItemEditando(null); }}>
+                <button disabled={updating} onClick={() => { setModalEditarItemAberto(false); setItemEditando(null); itemEditandoOriginalRef.current = null; }}>
                   <X size={20} className="text-stone-400" />
                 </button>
               </div>
@@ -3459,33 +3493,7 @@ export default function DetalhesOS() {
               </div>
 
               <button
-                onClick={async () => {
-                  if (!os) return;
-                  setUpdating(true);
-                  try {
-                    const novoTotalPrice = itemEditando.unit_price * itemEditando.quantity;
-                    await supabase
-                      .from('work_order_items')
-                      .update({ unit_price: itemEditando.unit_price, quantity: itemEditando.quantity, total_price: novoTotalPrice })
-                      .eq('id', itemEditando.id);
-
-                    const itensAtualizados = os!.work_order_items.map(i =>
-                      i.id === itemEditando.id ? { ...i, unit_price: itemEditando.unit_price, quantity: itemEditando.quantity, total_price: novoTotalPrice } : i
-                    );
-                    const novoTotalOS = itensAtualizados!.reduce((acc, i) =>
-                      i.peca_cliente ? acc : acc + i.total_price, 0
-                    );
-                    await supabase.from('work_orders').update({ total: novoTotalOS }).eq('id', os!.id);
-
-                    fetchOS();
-                    setModalEditarItemAberto(false);
-                    setItemEditando(null);
-                  } catch (error: any) {
-                    alert('Erro ao atualizar item: ' + error.message);
-                  } finally {
-                    setUpdating(false);
-                  }
-                }}
+                onClick={handleSalvarEdicaoItem}
                 disabled={updating}
                 className="w-full bg-[#1A1A1A] text-[#FACC15] font-bold py-4 rounded-xl shadow-md hover:scale-105 transition flex items-center justify-center gap-2 disabled:opacity-70"
               >

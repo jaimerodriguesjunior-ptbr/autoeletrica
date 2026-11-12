@@ -1,5 +1,7 @@
 "use server";
 
+import { IMPARTS_RETURN_CFOP, isImpartsReturnSupplier } from "@/src/lib/imparts-return";
+
 
 
 import { createClient } from "@/src/utils/supabase/server";
@@ -456,6 +458,7 @@ async function ensureDevolucaoQuantitiesAreAvailable(
     environment: "production" | "homologation",
     originQuantityByCode: Map<string, number>,
     requestedItems: DevolucaoPayload["itens"],
+    originCodeAliases?: Map<string, string>,
 ) {
     if (!entryInvoiceId) return null;
 
@@ -480,7 +483,8 @@ async function ensureDevolucaoQuantitiesAreAvailable(
             : [];
 
         for (const detail of details) {
-            const code = String(detail?.prod?.cProd || "").trim();
+            const storedCode = String(detail?.prod?.cProd || "").trim();
+            const code = originCodeAliases?.get(storedCode) ?? storedCode;
             const quantity = Number(detail?.prod?.qCom ?? detail?.prod?.qTrib ?? 0);
             if (!code || !Number.isFinite(quantity) || quantity <= 0) continue;
             returnedQuantityByCode.set(code, (returnedQuantityByCode.get(code) || 0) + quantity);
@@ -6006,7 +6010,7 @@ type DevolucaoPayload = {
     entry_invoice_id: string;
     // A devolução rápida considera somente o valor dos produtos. A emissão
     // completa mantém o espelhamento fiscal detalhado da NF-e de origem.
-    modo?: "rapida" | "completa";
+    modo?: "rapida" | "completa" | "imparts";
     itens: {
         codigo: string;
         descricao: string;
@@ -6030,7 +6034,11 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
     let invoiceId: string | null = null;
 
     try {
-        const applyFullReturnInstructions = payload.modo === "completa";
+        const isImpartsReturn = payload.modo === "imparts";
+        const applyFullReturnInstructions = payload.modo === "completa" || isImpartsReturn;
+        if (isImpartsReturn && (payload.valor_outras_despesas == null || !Number.isFinite(payload.valor_outras_despesas))) {
+            return { success: false, error: "Informe o valor de outras despesas orientado pela Imparts." };
+        }
         const manualReturnCfops = new Set(["5202", "6202", "5411"]);
         if (applyFullReturnInstructions && payload.itens.some((item) => (
             item.cfop_manual === true && !manualReturnCfops.has(String(item.cfop || "").replace(/\D/g, ""))
@@ -6054,6 +6062,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             .from("fiscal_invoices")
             .select("*")
             .eq("id", payload.entry_invoice_id)
+            .eq("organization_id", payload.organization_id)
             .eq("direction", "entry")
             .single();
 
@@ -6123,6 +6132,10 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         let fornecedorIE: string | undefined;
         let fornecedorUF = "SP";
         const originQuantityByCode = new Map<string, number>();
+        const exactCodeByLegacyCode = new Map<string, string>();
+        const originCodeAliases = new Map<string, string>();
+        const ambiguousOriginCodes = new Set<string>();
+        let isImpartsXml = false;
         // cProd -> perfil fiscal da entrada. A devolução é definida por item,
         // pois uma mesma NF-e pode misturar revenda comum, ST e lubrificantes.
         const itemTaxProfileMap = new Map<string, {
@@ -6160,6 +6173,21 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 const xml = parser.parse(entryInvoice.xml_content);
                 const nfeProc = xml.nfeProc || xml.NFe;
                 const infNFe = nfeProc?.NFe?.infNFe || xml.infNFe;
+                if (isImpartsReturnSupplier(entryInvoice.emitente_cnpj)) {
+                    const exact = new XMLParser({ ignoreAttributes: false, parseTagValue: false }).parse(entryInvoice.xml_content);
+                    const exactInf = exact.nfeProc?.NFe?.infNFe || exact.NFe?.infNFe;
+                    isImpartsXml = isImpartsReturnSupplier(exactInf?.emit?.CNPJ);
+                    const exactItems = exactInf?.det ? [exactInf.det].flat() : [];
+                    const legacyItems = infNFe?.det ? [infNFe.det].flat() : [];
+                    legacyItems.forEach((detail, index) => {
+                        const legacyCode = String(detail.prod?.cProd ?? "");
+                        const exactCode = String(exactItems[index]?.prod?.cProd ?? "");
+                        if (!legacyCode || !exactCode) return;
+                        if (exactCodeByLegacyCode.has(legacyCode)) ambiguousOriginCodes.add(legacyCode);
+                        exactCodeByLegacyCode.set(legacyCode, exactCode);
+                        originCodeAliases.set(exactCode, legacyCode);
+                    });
+                }
                 const enderEmit = infNFe?.emit?.enderEmit;
                 if (enderEmit) {
                     fornecedorUF = enderEmit.UF || "SP";
@@ -6239,6 +6267,25 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         // 4. CFOP padrão de devolução. O detalhamento por produto permanece
         // pendente de uma regra centralizada na Nuvem Local.
         const mesmoEstado = company.uf === fornecedorUF;
+        if (isImpartsReturn) {
+            if (!isImpartsXml || !fornecedorEnd || !mesmoEstado) {
+                return { success: false, error: "A devolução Imparts exige o XML da filial 06.151.722/0004-76 e uma operação dentro do mesmo estado." };
+            }
+            const requestedCodes = new Set<string>();
+            if (!payload.itens.length || payload.itens.some((item) => {
+                const code = item.codigo || "";
+                const tax = itemTaxProfileMap.get(code);
+                if (requestedCodes.has(code)) return true;
+                requestedCodes.add(code);
+                return ambiguousOriginCodes.has(code) || tax?.cfop !== "5403" || !tax.st ||
+                    !Number.isFinite(tax.pICMS) || tax.pICMS <= 0 ||
+                    !Number.isFinite(tax.vBC) || tax.vBC <= 0 ||
+                    !Number.isFinite(item.quantidade) || item.quantidade <= 0 ||
+                    !Number.isFinite(item.valor_total) || item.valor_total <= 0;
+            })) {
+                return { success: false, error: "Selecione apenas itens Imparts com código único na origem, CFOP 5403, ICMS próprio e substituição tributária." };
+            }
+        }
         const resolveDevolucaoCfop = (originalTax?: { st?: boolean }) => {
             // Compra para revenda com ICMS-ST usa o CFOP específico de
             // devolução. Para os demais itens, mantém-se a devolução de compra
@@ -6246,7 +6293,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             if (originalTax?.st) return mesmoEstado ? "5411" : "6411";
             return mesmoEstado ? "5202" : "6202";
         };
-        const cfopDevolucao = resolveDevolucaoCfop();
+        const cfopDevolucao = isImpartsReturn ? IMPARTS_RETURN_CFOP : resolveDevolucaoCfop();
         const quantityError = await ensureDevolucaoQuantitiesAreAvailable(
             supabase,
             payload.organization_id,
@@ -6254,6 +6301,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             env,
             originQuantityByCode,
             payload.itens,
+            originCodeAliases,
         );
         if (quantityError) {
             return { success: false, error: quantityError };
@@ -6264,13 +6312,16 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             cfop: cfopDevolucao,
             sameState: mesmoEstado,
         };
-        const zeroIcmsForThisReturn = applyFullReturnInstructions && payload.zerar_icms === true;
+        const zeroIcmsForThisReturn = payload.modo === "completa" && payload.zerar_icms === true;
         const returnOtherExpenses = applyFullReturnInstructions
             ? toMoneyNumber(payload.valor_outras_despesas || 0)
             : 0;
         const returnAdjustmentPayload = applyFullReturnInstructions
             ? payload
             : { ...payload, valor_outras_despesas: 0 };
+        const returnProductValueForAllocation = isImpartsReturn
+            ? toMoneyNumber(payload.itens.reduce((total, item) => total + toMoneyNumber(item.valor_total), 0))
+            : toMoneyNumber(payload.valor_total);
 
         // 5. Próximo número de NF-e de devolução (série 1) — filtrado por ambiente
         const nfeSerie = getCompanyNFeSerie(company);
@@ -6282,7 +6333,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         const detItemsComputed = payload.itens.map((item, idx) => {
             const originalTax = itemTaxProfileMap.get(item.codigo || "");
             const itemVProd = toMoneyNumber(item.valor_total);
-            const isQuickReturn = payload.modo === "rapida";
+            const useProductValueAsIcmsBase = payload.modo === "rapida" || isImpartsReturn;
             const quantityFactor = originalTax?.qCom && originalTax.qCom > 0
                 ? item.quantidade / originalTax.qCom
                 : originalTax?.vProd && originalTax.vProd > 0
@@ -6298,8 +6349,8 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 : originalTax?.vBC && originalTax.vBC > 0
                     ? originalTax.vICMS / originalTax.vBC
                     : 0;
-            let vBC_item = isQuickReturn ? quickBaseItem : originalBaseItem;
-            let vICMS_item = isQuickReturn
+            let vBC_item = useProductValueAsIcmsBase ? quickBaseItem : originalBaseItem;
+            let vICMS_item = useProductValueAsIcmsBase
                 ? toMoneyNumber(quickBaseItem * quickRate)
                 : originalIcmsItem;
             const stTax = {
@@ -6317,6 +6368,8 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
             if (zeroIcmsForThisReturn) {
                 vBC_item = 0;
                 vICMS_item = 0;
+            }
+            if (zeroIcmsForThisReturn || isImpartsReturn) {
                 stTax.vBCST = 0;
                 stTax.vICMSST = 0;
             }
@@ -6342,7 +6395,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 },
             };
             const manualCfop = String(item.cfop || "").replace(/\D/g, "");
-            const cfopItem = applyFullReturnInstructions && item.cfop_manual === true
+            const cfopItem = isImpartsReturn ? IMPARTS_RETURN_CFOP : applyFullReturnInstructions && item.cfop_manual === true
                 ? manualCfop
                 : resolveDevolucaoCfop(originalTax);
             const combustivel = originalTax?.combustivel;
@@ -6351,7 +6404,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                 det: {
                     nItem: idx + 1,
                     prod: {
-                        cProd: item.codigo || String(idx + 1),
+                        cProd: (isImpartsReturn && exactCodeByLegacyCode.get(item.codigo || "")) || item.codigo || String(idx + 1),
                         cEAN: "SEM GTIN",
                         xProd: sanitizeFiscalText(item.descricao, 120),
                         NCM: item.ncm || "00000000",
@@ -6360,7 +6413,7 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
                         qCom: item.quantidade,
                         vUnCom: toMoneyNumber(item.valor_unitario),
                         vProd: itemVProd,
-                        ...buildNFeItemTotalAdjustments(returnAdjustmentPayload as any, idx, toMoneyNumber(payload.valor_total)),
+                        ...buildNFeItemTotalAdjustments(returnAdjustmentPayload as any, idx, returnProductValueForAllocation),
                         cEANTrib: "SEM GTIN",
                         uTrib: item.unidade,
                         qTrib: item.quantidade,
@@ -6385,15 +6438,15 @@ export async function emitirNFeDevolucao(payload: DevolucaoPayload) {
         const returnCfopMetadata = {
             devolucao: {
                 finalidadeCompra: "revenda",
-                manualCfopOverrideV1: applyFullReturnInstructions && payload.itens.some((item) => item.cfop_manual === true),
+                manualCfopOverrideV1: isImpartsReturn || (applyFullReturnInstructions && payload.itens.some((item) => item.cfop_manual === true)),
                 itens: payload.itens.map((item, idx) => {
                     const originalTax = itemTaxProfileMap.get(item.codigo || "");
                     return {
                         nItem: idx + 1,
                         cProd: item.codigo || String(idx + 1),
                         cfopOrigem: originalTax?.cfop || undefined,
-                        cfopManual: applyFullReturnInstructions && item.cfop_manual === true,
-                        cfopDestino: applyFullReturnInstructions && item.cfop_manual === true
+                        cfopManual: isImpartsReturn || (applyFullReturnInstructions && item.cfop_manual === true),
+                        cfopDestino: isImpartsReturn ? IMPARTS_RETURN_CFOP : applyFullReturnInstructions && item.cfop_manual === true
                             ? String(item.cfop || "").replace(/\D/g, "")
                             : undefined,
                         st: originalTax?.st ?? false,

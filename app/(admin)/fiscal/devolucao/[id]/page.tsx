@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { getEntryInvoiceWithItems, type ParsedNFeItem } from "@/src/actions/fiscal_db";
 import { emitirNFeDevolucao } from "@/src/actions/fiscal_emission";
+import { isImpartsReturnSupplier } from "@/src/lib/imparts-return";
 import { ArrowLeft, Loader2, RotateCcw, CheckCircle, AlertCircle, Package } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
@@ -36,6 +37,8 @@ export default function DevolucaoPage() {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
     const [environment, setEnvironment] = useState<"production" | "homologation">("production");
+    const [returnMode, setReturnMode] = useState<"rapida" | "imparts">("rapida");
+    const [otherExpenses, setOtherExpenses] = useState("");
 
     useEffect(() => {
         if (!profile?.organization_id || !invoiceId) return;
@@ -71,6 +74,14 @@ export default function DevolucaoPage() {
     const valorTotal = selectedItems.reduce((acc, item) => {
         return acc + item.qtd_devolver * item.valor_unitario;
     }, 0);
+    const offersImparts = isImpartsReturnSupplier(invoice?.emitente_cnpj);
+    const isImparts = offersImparts && returnMode === "imparts";
+    const expenses = Number(otherExpenses.replace(",", "."));
+    const validExpenses = otherExpenses.trim() !== "" && Number.isFinite(expenses) && expenses >= 0;
+    const totalWithExpenses = isImparts
+        ? selectedItems.reduce((sum, item) => sum + Number((item.qtd_devolver * item.valor_unitario).toFixed(2)), 0)
+            + (validExpenses ? expenses : 0)
+        : valorTotal;
 
     const handleQtdChange = (idx: number, value: string) => {
         const num = parseFloat(value) || 0;
@@ -93,6 +104,7 @@ export default function DevolucaoPage() {
 
     const handleEmitir = async () => {
         if (!profile?.organization_id) return;
+        if (isImparts && !validExpenses) return;
         if (selectedItems.length === 0) {
             alert("Selecione ao menos um item para devolver.");
             return;
@@ -101,7 +113,8 @@ export default function DevolucaoPage() {
             `Emitir NF-e de Devolução em ${environment === "production" ? "PRODUÇÃO" : "HOMOLOGAÇÃO"}?\n\n` +
             `Fornecedor: ${invoice?.emitente_nome}\n` +
             `Itens: ${selectedItems.length}\n` +
-            `Total: R$ ${valorTotal.toFixed(2)}`;
+            (isImparts ? `Devolução Imparts: CFOP 5411 · ICMS-ST zerado\nOutras despesas: R$ ${expenses.toFixed(2)}\n` : "") +
+            `Total: R$ ${totalWithExpenses.toFixed(2)}`;
 
         if (!confirm(confirmMsg)) return;
 
@@ -122,9 +135,12 @@ export default function DevolucaoPage() {
             const result = await emitirNFeDevolucao({
                 organization_id: profile.organization_id,
                 entry_invoice_id: invoiceId,
-                modo: "rapida",
+                modo: isImparts ? "imparts" : "rapida",
                 itens: itensPayload,
-                valor_total: parseFloat(valorTotal.toFixed(2)),
+                valor_total: isImparts
+                    ? itensPayload.reduce((sum, item) => sum + item.valor_total, 0)
+                    : parseFloat(valorTotal.toFixed(2)),
+                ...(isImparts ? { valor_outras_despesas: Number(expenses.toFixed(2)) } : {}),
                 environment,
             });
 
@@ -208,6 +224,42 @@ export default function DevolucaoPage() {
                     Produção
                 </button>
             </div>
+
+            {offersImparts && (
+                <div className="bg-white rounded-xl border border-stone-200 p-4 space-y-3">
+                    <label className="block text-sm font-bold">
+                        Tipo de devolução
+                        <select
+                            className="block mt-1 rounded-lg border border-stone-200 p-2"
+                            value={returnMode}
+                            onChange={(event) => setReturnMode(event.target.value === "imparts" ? "imparts" : "rapida")}
+                            disabled={emitting}
+                        >
+                            <option value="rapida">Devolução rápida</option>
+                            <option value="imparts">Devolução – Imparts</option>
+                        </select>
+                    </label>
+                    {isImparts && (
+                        <>
+                            <p className="text-sm text-stone-600">
+                                Selecione os itens de origem com CFOP 5403 e ICMS-ST. A devolução usa CFOP 5411, mantém o ICMS próprio e zera o ICMS-ST.
+                            </p>
+                            <label className="block text-sm font-bold">
+                                Outras despesas orientadas pela Imparts (R$)
+                                <input
+                                    className="block mt-1 rounded-lg border border-stone-200 p-2"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={otherExpenses}
+                                    onChange={(event) => setOtherExpenses(event.target.value)}
+                                    disabled={emitting}
+                                />
+                            </label>
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* Dados da nota de entrada */}
             {invoice && (
@@ -333,7 +385,7 @@ export default function DevolucaoPage() {
                 <div>
                     <p className="text-xs text-stone-400 font-bold uppercase">Total da Devolução</p>
                     <p className="text-2xl font-bold text-[#1A1A1A]">
-                        R$ {valorTotal.toFixed(2)}
+                        R$ {totalWithExpenses.toFixed(2)}
                     </p>
                     <p className="text-xs text-stone-400">
                         {selectedItems.length} {selectedItems.length === 1 ? "item" : "itens"} selecionado
@@ -347,7 +399,7 @@ export default function DevolucaoPage() {
 
                 <button
                     onClick={handleEmitir}
-                    disabled={emitting || selectedItems.length === 0}
+                    disabled={emitting || selectedItems.length === 0 || (isImparts && !validExpenses)}
                     className="bg-[#1A1A1A] hover:bg-black text-[#FACC15] px-8 py-3 rounded-full font-bold text-sm shadow-lg flex items-center gap-2 transition hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                     {emitting ? (
