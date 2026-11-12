@@ -28,6 +28,7 @@ import {
     MessageCircle,
 } from "lucide-react";
 import { useAuth } from "@/src/contexts/AuthContext";
+import { isImpartsReturnSupplier } from "@/src/lib/imparts-return";
 import { createClient } from "@/src/lib/supabase";
 import { auditarNFeAssistidaComIaAction } from "@/src/actions/fiscal_ai_audit";
 import { emitirNFeAssistidaUiAction, emitirNFeBonificacaoDoacaoUiAction, emitirNFeDevolucaoAction, emitirNFeRemessaConsertoUiAction, emitirNFeRemessaGarantiaUiAction, emitirNFeRetornoConsertoUiAction, emitirNFeRetornoGarantiaUiAction, emitirNFeTransferenciaUiAction, emitirNFeVendaAction } from "@/src/actions/fiscal_emission_actions";
@@ -155,7 +156,7 @@ const OPERATIONS: {
         title: "Devolução",
         subtitle: "Devolução de compra ou venda",
         icon: RotateCcw,
-        purposes: ["Devolução de compra", "Devolução de venda"],
+        purposes: ["Devolução de compra", "Devolução – Imparts", "Devolução de venda"],
     },
     {
         id: "shipment",
@@ -627,6 +628,7 @@ export default function NFeCompletaPage() {
     const [returnItems, setReturnItems] = useState<ReturnItemState[]>([]);
     const [returnZeroIcms, setReturnZeroIcms] = useState(false);
     const [returnOtherExpenses, setReturnOtherExpenses] = useState(0);
+    const [impartsExpenses, setImpartsExpenses] = useState("");
     const [loadingEntryItems, setLoadingEntryItems] = useState(false);
     const [items, setItems] = useState<DraftItem[]>([makeItem()]);
     const [advancedExtraItems, setAdvancedExtraItems] = useState<DraftItem[]>([]);
@@ -678,7 +680,8 @@ export default function NFeCompletaPage() {
     const isTransferenciaMvp = false;
     const isBonusMvp = false;
     const isSalePurposeUnavailable = operation === "sale" && purpose !== "Venda comum";
-    const isReturnPurposeUnavailable = operation === "return" && purpose !== "Devolução de compra";
+    const isImpartsReturn = operation === "return" && purpose === "Devolução – Imparts";
+    const isReturnPurposeUnavailable = operation === "return" && purpose !== "Devolução de compra" && !isImpartsReturn;
     const usesOriginItems = operation === "return" || isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp;
     // MVP de NF-e: somente venda comum; devolução e venda com parâmetros fiscais de
     // venda/devolução entram pelo caminho de "Outra operação" (advanced).
@@ -695,7 +698,10 @@ export default function NFeCompletaPage() {
     const selectedReturnItems = returnItems.filter((item) => item.selected && item.qtd_devolver > 0);
     const usesAdvancedOriginItems = operation === "advanced" && returnItems.length > 0;
     const returnTotal = selectedReturnItems.reduce((sum, item) => sum + item.qtd_devolver * item.valor_unitario, 0);
-    const returnDisplayTotal = Number((returnTotal + Number(returnOtherExpenses || 0)).toFixed(2));
+    const impartsExpensesValue = Number(impartsExpenses);
+    const validImpartsExpenses = impartsExpenses.trim() !== "" && Number.isFinite(impartsExpensesValue) && impartsExpensesValue >= 0;
+    const activeReturnExpenses = isImpartsReturn ? (validImpartsExpenses ? impartsExpensesValue : 0) : returnOtherExpenses;
+    const returnDisplayTotal = Number((selectedReturnItems.reduce((sum, item) => sum + Number((item.qtd_devolver * item.valor_unitario).toFixed(2)), 0) + Number(activeReturnExpenses || 0)).toFixed(2));
     const displayTotal = operation === "return"
         ? returnDisplayTotal
         : usesOriginItems ? returnTotal : usesAdvancedOriginItems ? totalItems + advancedExtraTotal : totalItems;
@@ -1179,7 +1185,9 @@ export default function NFeCompletaPage() {
             issues.push("Emissão real indisponível para a combinação atual de operação/finalidade.");
         }
         if (operation === "return") {
-            if (purpose !== "Devolução de compra") issues.push("Emissão real de devolução liberada apenas para Devolução de compra com NF-e de entrada importada.");
+            if (isReturnPurposeUnavailable) issues.push("Escolha uma finalidade de devolução disponível.");
+            if (isImpartsReturn && selectedEntryInvoice && !isImpartsReturnSupplier(selectedEntryInvoice.emitente_cnpj)) issues.push("Selecione uma NF-e da Imparts, CNPJ 06.151.722/0004-76.");
+            if (isImpartsReturn && !validImpartsExpenses) issues.push("Informe o valor de outras despesas orientado pela Imparts, inclusive zero quando aplicável.");
             if (!selectedEntryInvoice) issues.push("Selecione uma NF-e de entrada importada para devolução.");
             if (digits(referencedKey).length !== 44) issues.push("A nota de origem precisa ter chave de acesso válida.");
             if (selectedReturnItems.length === 0) issues.push("Selecione ao menos um item da nota de origem para devolver.");
@@ -1261,7 +1269,7 @@ export default function NFeCompletaPage() {
         }
 
         return issues;
-    }, [operation, purpose, isEmissionSupported, isRetornoConsertoMvp, isRetornoGarantiaMvp, isRetornoDepositoMvp, selectedEntryInvoice, referencedKey, selectedReturnItems.length, returnItems.length, participant, items, advancedExtraItems, modFrete, carrierName, carrierDoc, isTransferBetweenBranches, transferHasDifferentRoot, advancedNature, advancedTpNF, advancedFinNFe, indPres, indIntermed, intermediadorCnpj, intermediadorIdCadastro, meioPagamento, valorFrete, valorSeguro, valorDesconto, valorOutrasDespesas, totalItems]);
+    }, [operation, purpose, isEmissionSupported, isRetornoConsertoMvp, isRetornoGarantiaMvp, isRetornoDepositoMvp, selectedEntryInvoice, referencedKey, selectedReturnItems.length, returnItems.length, participant, items, advancedExtraItems, modFrete, carrierName, carrierDoc, isTransferBetweenBranches, transferHasDifferentRoot, advancedNature, advancedTpNF, advancedFinNFe, indPres, indIntermed, intermediadorCnpj, intermediadorIdCadastro, meioPagamento, valorFrete, valorSeguro, valorDesconto, valorOutrasDespesas, totalItems, isReturnPurposeUnavailable, isImpartsReturn, validImpartsExpenses]);
 
     const stepHasPending = (id: StepId) => {
         if (id === "operation") return !operation || !purpose || (requiresReference && (!selectedEntryInvoice || digits(referencedKey).length !== 44));
@@ -1320,6 +1328,7 @@ export default function NFeCompletaPage() {
         setOriginSelectorExpanded(false);
         setReturnZeroIcms(false);
         setReturnOtherExpenses(0);
+        setImpartsExpenses("");
 
         setLoadingEntryItems(true);
 
@@ -1388,6 +1397,7 @@ export default function NFeCompletaPage() {
         setLoadingEntryItems(true);
         setReturnZeroIcms(false);
         setReturnOtherExpenses(0);
+        setImpartsExpenses("");
         try {
             const result = await resolveEntryInvoiceByAccessKeyWithItemsAction(cleanKey);
             if (!result.success) {
@@ -1847,13 +1857,18 @@ export default function NFeCompletaPage() {
             return;
         }
 
-        if (purpose !== "Devolução de compra") {
+        if (isReturnPurposeUnavailable) {
             alert("Nesta etapa, a emissão real de devolução está liberada apenas para Devolução de compra com NF-e de entrada importada.");
             return;
         }
 
         if (!selectedEntryInvoice) {
             alert("Selecione uma NF-e de entrada para devolução.");
+            return;
+        }
+
+        if (isImpartsReturn && (!isImpartsReturnSupplier(selectedEntryInvoice.emitente_cnpj) || !validImpartsExpenses)) {
+            alert("Selecione uma nota da Imparts e informe o valor de outras despesas.");
             return;
         }
 
@@ -1867,10 +1882,10 @@ export default function NFeCompletaPage() {
             `Fornecedor: ${selectedEntryInvoice.emitente_nome || "-"}\n` +
             `Itens: ${selectedReturnItems.length}\n` +
             `Produtos: ${money(returnTotal)}\n` +
-            `Outras despesas / IPI: ${money(returnOtherExpenses)}\n` +
+            `Outras despesas / IPI: ${money(activeReturnExpenses)}\n` +
             `Total da NF-e: ${money(returnDisplayTotal)}\n` +
-            (returnZeroIcms ? "Bases e valores de ICMS e ICMS-ST nos totais: zerados\n" : "") +
-            `CFOPs: ${selectedReturnItems.map((item) => item.cfop || "automático").join(", ")}`;
+            (isImpartsReturn ? "CFOP 5411; ICMS próprio sobre os produtos; ICMS-ST zerado\n" : returnZeroIcms ? "Bases e valores de ICMS e ICMS-ST nos totais: zerados\n" : "") +
+            `CFOPs: ${isImpartsReturn ? "5411" : selectedReturnItems.map((item) => item.cfop || "automático").join(", ")}`;
 
         if (!confirm(confirmMessage)) return;
 
@@ -1879,7 +1894,7 @@ export default function NFeCompletaPage() {
             const result = await emitirNFeDevolucaoAction({
                 organization_id: profile.organization_id,
                 entry_invoice_id: selectedEntryInvoice.id,
-                modo: "completa",
+                modo: isImpartsReturn ? "imparts" : "completa",
                 itens: selectedReturnItems.map((item) => ({
                     codigo: item.codigo,
                     descricao: item.descricao,
@@ -1891,9 +1906,11 @@ export default function NFeCompletaPage() {
                     valor_unitario: item.valor_unitario,
                     valor_total: Number((item.qtd_devolver * item.valor_unitario).toFixed(2)),
                 })),
-                valor_total: Number(returnTotal.toFixed(2)),
+                valor_total: isImpartsReturn
+                    ? Number(selectedReturnItems.reduce((sum, item) => sum + Number((item.qtd_devolver * item.valor_unitario).toFixed(2)), 0).toFixed(2))
+                    : Number(returnTotal.toFixed(2)),
                 zerar_icms: returnZeroIcms,
-                valor_outras_despesas: Number(returnOtherExpenses.toFixed(2)),
+                valor_outras_despesas: Number(activeReturnExpenses.toFixed(2)),
                 observacao: infCpl,
                 environment,
             });
@@ -2423,7 +2440,7 @@ export default function NFeCompletaPage() {
     const participantLabelClass = "ml-1 text-[10px] font-black uppercase text-stone-600";
     const itemFieldClass = "w-full rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-900 outline-none transition placeholder:text-stone-500 focus:border-[#1A1A1A] focus:ring-2 focus:ring-[#1A1A1A]/15";
     const itemLabelClass = "ml-1 text-[10px] font-black uppercase text-stone-600";
-    const returnCfopForPreview = (item: ReturnItemState) => item.cfop_manual ? item.cfop || "" : suggestedCfop;
+    const returnCfopForPreview = (item: ReturnItemState) => isImpartsReturn ? "5411" : item.cfop_manual ? item.cfop || "" : suggestedCfop;
     const returnCfopSummary = Array.from(new Set(
         selectedReturnItems.map(returnCfopForPreview).filter(Boolean),
     ));
@@ -3094,19 +3111,20 @@ export default function NFeCompletaPage() {
                                         loading={loadingEntryItems}
                                         toggleItem={toggleReturnItem}
                                         updateQty={updateReturnQty}
-                                        updateCfop={operation === "return" || usesAdvancedOriginItems ? updateReturnCfop : undefined}
+                                        updateCfop={!isImpartsReturn && (operation === "return" || usesAdvancedOriginItems) ? updateReturnCfop : undefined}
+                                        isImparts={isImpartsReturn}
                                         mode={(isRetornoConsertoMvp || isRetornoGarantiaMvp || isRetornoDepositoMvp) ? "retorno" : "devolucao"}
                                     />
                                     {operation === "return" && (
                                         <div className="mt-3 space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
                                             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                                 <div>
-                                                    <p className="text-sm font-black text-[#1A1A1A]">Ajustes da devolução completa</p>
+                                                    <p className="text-sm font-black text-[#1A1A1A]">{isImpartsReturn ? "Devolução – Imparts" : "Ajustes da devolução completa"}</p>
                                                     <p className="mt-1 text-xs font-medium text-stone-600">
-                                                        Estes valores são opcionais e só afetam esta emissão completa.
+                                                        {isImpartsReturn ? "Selecione itens com CFOP de origem 5403 e ICMS-ST. A devolução utiliza CFOP 5411, ICMS próprio e ICMS-ST zerado." : "Estes valores são opcionais e só afetam esta emissão completa."}
                                                     </p>
                                                 </div>
-                                                {digits(selectedEntryInvoice?.numero || "") === "519243" && (
+                                                {!isImpartsReturn && digits(selectedEntryInvoice?.numero || "") === "519243" && (
                                                     <button
                                                         type="button"
                                                         onClick={applySupplierReturnInstructions}
@@ -3117,7 +3135,7 @@ export default function NFeCompletaPage() {
                                                 )}
                                             </div>
                                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                                <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-white p-3">
+                                                {!isImpartsReturn && <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-white p-3">
                                                     <input
                                                         type="checkbox"
                                                         checked={returnZeroIcms}
@@ -3128,15 +3146,15 @@ export default function NFeCompletaPage() {
                                                         <span className="block text-xs font-black text-[#1A1A1A]">Zerar bases e valores de ICMS e ICMS-ST</span>
                                                         <span className="mt-1 block text-[11px] font-medium text-stone-500">Os valores informativos do rodapé permanecem como texto complementar.</span>
                                                     </span>
-                                                </label>
+                                                </label>}
                                                 <div className="rounded-xl border border-amber-200 bg-white p-3">
-                                                    <label className={labelClass}>Outras despesas / IPI (vOutro)</label>
+                                                    <label className={labelClass}>{isImpartsReturn ? "Outras despesas orientadas pela Imparts (R$)" : "Outras despesas / IPI (vOutro)"}</label>
                                                     <input
                                                         type="number"
                                                         min="0"
                                                         step="0.01"
-                                                        value={returnOtherExpenses}
-                                                        onChange={(event) => setReturnOtherExpenses(Number(event.target.value || 0))}
+                                                        value={isImpartsReturn ? impartsExpenses : returnOtherExpenses}
+                                                        onChange={(event) => isImpartsReturn ? setImpartsExpenses(event.target.value) : setReturnOtherExpenses(Number(event.target.value || 0))}
                                                         className={fieldClass}
                                                     />
                                                 </div>
@@ -3683,7 +3701,9 @@ export default function NFeCompletaPage() {
                                             <p className="text-[10px] font-black uppercase text-stone-400">CFOP nos itens</p>
                                             <p className="mt-1 text-sm font-black text-[#1A1A1A]">{returnCfopSummary.join(", ") || "Pendente"}</p>
                                         </div>
-                                        {returnZeroIcms ? (
+                                        {isImpartsReturn ? (
+                                            <div className="rounded-xl bg-white p-3"><p className="text-[10px] font-black uppercase text-stone-400">ICMS e ICMS ST</p><p className="mt-1 text-sm font-black text-[#1A1A1A]">ICMS próprio sobre os produtos; ICMS-ST zerado</p></div>
+                                        ) : returnZeroIcms ? (
                                             <>
                                                 <div className="rounded-xl bg-white p-3"><p className="text-[10px] font-black uppercase text-stone-400">Base ICMS</p><p className="mt-1 text-sm font-black text-[#1A1A1A]">R$ 0,00</p></div>
                                                 <div className="rounded-xl bg-white p-3"><p className="text-[10px] font-black uppercase text-stone-400">Valor ICMS</p><p className="mt-1 text-sm font-black text-[#1A1A1A]">R$ 0,00</p></div>
@@ -3698,10 +3718,10 @@ export default function NFeCompletaPage() {
                                         )}
                                         <div className="rounded-xl bg-white p-3">
                                             <p className="text-[10px] font-black uppercase text-stone-400">Outras despesas (vOutro)</p>
-                                            <p className="mt-1 text-sm font-black text-[#1A1A1A]">{money(returnOtherExpenses)}</p>
+                                            <p className="mt-1 text-sm font-black text-[#1A1A1A]">{money(activeReturnExpenses)}</p>
                                         </div>
                                     </div>
-                                    {returnZeroIcms && (
+                                    {!isImpartsReturn && returnZeroIcms && (
                                         <p className="mt-3 text-xs font-medium text-blue-800">
                                             Os valores fiscais acima ficam zerados; os valores informados pelo fornecedor aparecem em Informações complementares.
                                         </p>
@@ -4112,6 +4132,7 @@ function ReturnItemsTable({
     updateQty,
     updateCfop,
     mode,
+    isImparts = false,
 }: {
     items: ReturnItemState[];
     loading: boolean;
@@ -4119,6 +4140,7 @@ function ReturnItemsTable({
     updateQty: (index: number, value: string) => void;
     updateCfop?: (index: number, cfop: string) => void;
     mode: "devolucao" | "retorno";
+    isImparts?: boolean;
 }) {
     if (loading) {
         return (
@@ -4145,7 +4167,9 @@ function ReturnItemsTable({
                     {mode === "retorno" ? "Itens da remessa de origem" : "Itens espelhados da NF-e de entrada"}
                 </p>
                 <p className="mt-1 text-xs font-medium text-stone-500">
-                    {updateCfop
+                    {isImparts
+                        ? "Selecione os itens para devolução. O CFOP de saída será 5411."
+                        : updateCfop
                         ? "Edite o CFOP de cada item conforme necessário para esta operação. Os demais dados são espelhados da nota de origem."
                         : mode === "retorno"
                             ? "O retorno referencia a chave original e usa os itens do XML autorizado como base."
