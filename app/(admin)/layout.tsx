@@ -18,6 +18,7 @@ import {
   ChevronRight,
   CalendarDays,
   PieChart,
+  Activity,
   Award,
   BookOpen,
   HelpCircle
@@ -57,6 +58,7 @@ export default function AdminLayout({
 
     { name: "Agenda", category: "Atendimento", icon: CalendarDays, path: "/agendamentos", restricted: false, module: 'usa_agendamento' as const },
     { name: "Comissões", category: "Gestão Corporativa", icon: Award, path: "/comissoes", restricted: true, module: 'usa_comissao' as const },
+    { name: "Uso da Cosmos", category: "Gestão Corporativa", icon: Activity, path: "/cosmos", restricted: true },
     { name: "IA", category: "Visão Geral", icon: Sparkles, path: "/ia", restricted: true },
     { name: "Tutoriais", category: "Visão Geral", icon: BookOpen, path: "/tutorial", restricted: false },
   ];

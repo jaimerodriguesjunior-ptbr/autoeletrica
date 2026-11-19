@@ -155,7 +155,7 @@ export async function buildClosingZip(
 
     const startDate = new Date(year, month, 1).toISOString();
     const endDate = new Date(year, month + 1, 1).toISOString();
-    const baseFields = "id, direction, tipo_documento, xml_content, xml_url, chave_acesso, numero, status, error_message, data_emissao, created_at";
+    const baseFields = "id, direction, tipo_documento, serie, xml_content, xml_url, chave_acesso, numero, status, error_message, data_emissao, created_at";
 
     const [
         { data: datedFiles, error: datedFilesError },
@@ -235,7 +235,10 @@ export async function buildClosingZip(
             let xmlContent = f.xml_content;
             if (!xmlContent) xmlContent = await fetchXmlContent(f.id, f.xml_url);
             if (xmlContent) {
-                const name = `${f.numero || f.chave_acesso || "doc"}.xml`;
+                // O número pode se repetir entre modelos, séries e emitentes.
+                // O ID do registro garante que nenhum XML sobrescreva outro no ZIP.
+                const safePart = (value: unknown) => String(value || "").replace(/[^a-zA-Z0-9_-]/g, "_");
+                const name = `${safePart(f.tipo_documento) || "Documento"}_${safePart(f.numero) || "sem_numero"}_S${safePart(f.serie) || "sem_serie"}_${safePart(f.id)}.xml`;
                 if (f.status === "cancelled" && cancelFolder) cancelFolder.file(`Cancelado_${name}`, xmlContent);
                 else if (f.status === "authorized" && f.direction === "output" && outFolder) outFolder.file(name, xmlContent);
                 else if (f.status === "authorized" && f.direction === "entry" && inFolder) inFolder.file(name, xmlContent);

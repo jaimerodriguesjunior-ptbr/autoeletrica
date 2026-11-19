@@ -268,6 +268,11 @@ function buildNfseProviderErrorMessage(result: any, fallback?: string) {
         return providerMessage.trim();
     }
 
+    // A Nuvem Local Fiscal retorna rejeicoes nacionais fora de `error`.
+    for (const message of [result?.motivo, result?.autorizacao?.motivo_status, result?.message]) {
+        if (typeof message === "string" && message.trim()) return message.trim();
+    }
+
     return fallback || "Erro na emissao da NFS-e.";
 }
 
@@ -4789,6 +4794,14 @@ export async function emitirNFSe(payload: EmissionPayload) {
         if (!response.ok) {
             const errorDetails = buildNfseProviderErrorMessage(result, JSON.stringify(result));
 
+            // Mesmo rejeitada, a DPS pode ter um documento consultavel no fiscal local.
+            // Preserve o identificador antes dos tratamentos de erro/recuperacao.
+            if (typeof result?.id === "string" && result.id.trim()) {
+                await supabase.from("fiscal_invoices").update({
+                    nuvemfiscal_uuid: result.id.trim()
+                }).eq("id", invoice.id);
+            }
+
             console.error("[NuvemFiscal] Erro detalhado:", errorDetails);
 
             const fullErrorString = JSON.stringify(result);
@@ -5111,6 +5124,17 @@ export async function consultarNFSe(invoiceId: string) {
         }
 
         if (!invoice.nuvemfiscal_uuid) {
+            if (invoice.status === "error" && invoice.error_message) {
+                let savedError: any;
+                try {
+                    savedError = JSON.parse(invoice.error_message);
+                } catch {
+                    savedError = null;
+                }
+                const message = buildNfseProviderErrorMessage(savedError, invoice.error_message);
+                return { success: true, status: "error", error: message, data: { mensagem_amigavel: message } };
+            }
+
             if (invoice.status === "authorized" && invoice.xml_url && !invoice.xml_content) {
                 const xmlContent = await tryFetchXmlContent(invoice.xml_url);
                 if (xmlContent) {
